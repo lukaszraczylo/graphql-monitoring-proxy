@@ -17,7 +17,7 @@ func enableCache() {
 	var err error
 	cfg.Cache.CacheClient = cache.New(time.Duration(cfg.Cache.CacheTTL) * time.Second * 2)
 	if err != nil {
-		fmt.Println(">> Error while creating cache client;", "error", err.Error())
+		cfg.Logger.Critical("Can't create cache client", map[string]interface{}{"error": err.Error()})
 		panic(err)
 	}
 }

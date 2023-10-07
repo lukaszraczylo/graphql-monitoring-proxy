@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/akyoto/cache"
+	graphql "github.com/lukaszraczylo/go-simple-graphql"
 	libpack_logging "github.com/telegram-bot-app/libpack/logging"
 	libpack_monitoring "github.com/telegram-bot-app/libpack/monitoring"
 )
@@ -20,6 +21,7 @@ type config struct {
 
 	Client struct {
 		JWTUserClaimPath string
+		GQLClient        *graphql.BaseClient
 	}
 
 	Cache struct {

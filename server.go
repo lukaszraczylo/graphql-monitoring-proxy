@@ -25,12 +25,19 @@ func StartHTTPProxy() {
 	server.Get("/healthz", healthCheck)
 	err := server.Listen(fmt.Sprintf(":%d", cfg.Server.PortGraphQL))
 	if err != nil {
-		fmt.Println("Can't start the service: ", err)
+		cfg.Logger.Critical("Can't start the service", map[string]interface{}{"error": err.Error()})
 	}
 }
 
 func healthCheck(c *fiber.Ctx) error {
-	return c.SendString("OK")
+	query := `{ __typename }`
+	_, err := cfg.Client.GQLClient.Query(query, nil, nil)
+	if err != nil {
+		cfg.Logger.Error("Can't reach the GraphQL server", map[string]interface{}{"error": err.Error()})
+		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+		return c.SendStatus(500)
+	}
+	return c.SendStatus(200)
 }
 
 func processGraphQLRequest(c *fiber.Ctx) error {

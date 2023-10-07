@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/tls"
-	"fmt"
 
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/proxy"
@@ -19,7 +18,7 @@ func proxyTheRequest(c *fiber.Ctx) error {
 
 	err := proxy.DoRedirects(c, cfg.Server.HostGraphQL, 3)
 	if err != nil {
-		fmt.Println("Can't proxy the request: ", err)
+		cfg.Logger.Error("Can't proxy the request", map[string]interface{}{"error": err.Error()})
 		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 		return err
 	}

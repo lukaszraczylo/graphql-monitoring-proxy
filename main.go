@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/gookit/goutil/envutil"
+	graphql "github.com/lukaszraczylo/go-simple-graphql"
 	libpack_config "github.com/telegram-bot-app/libpack/config"
 	libpack_logging "github.com/telegram-bot-app/libpack/logging"
 )
@@ -18,6 +19,8 @@ func parseConfig() {
 	c.Cache.CacheEnable = envutil.GetBool("CACHE_ENABLE", false)
 	c.Cache.CacheTTL = envutil.GetInt("CACHE_TTL", 60)
 	c.Logger = libpack_logging.NewLogger()
+	c.Client.GQLClient = graphql.NewConnection()
+	c.Client.GQLClient.SetEndpoint(c.Server.HostGraphQL)
 	cfg = &c
 	enableCache() // takes close to no resources, but can be used with dynamic query cache
 }
