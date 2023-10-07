@@ -1,0 +1,17 @@
+name: Test and release
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+    - '**.md'
+    branches:
+      - "*"
+
+jobs:
+  shared:
+    uses: telegram-bot-app/ci-scripts/.github/workflows/build-test-publish-inject.yaml@main
+    with:
+      enable-code-scans: false
+    secrets:
+      ghcr-token: ${{ secrets.GHCR_TOKEN }}

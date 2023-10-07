@@ -1,0 +1,14 @@
+version: 1
+force:
+  existing: true
+  strict: false
+wording:
+  patch:
+    - update
+    - initial
+    - fix
+  minor:
+    - change
+    - improve
+  major:
+    - breaking
