@@ -34,7 +34,11 @@ func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cache
 	for _, d := range p.Definitions {
 		if oper, ok := d.(*ast.OperationDefinition); ok {
 			operationType = oper.Operation
-			operationName = oper.Name.Value
+			if oper.Name != nil {
+				operationName = oper.Name.Value
+			} else {
+				operationName = "undefined"
+			}
 			for _, dir := range oper.Directives {
 				if dir.Name.Value == "cached" {
 					cacheRequest = true
