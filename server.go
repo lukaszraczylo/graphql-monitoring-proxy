@@ -30,13 +30,13 @@ func StartHTTPProxy() {
 }
 
 func healthCheck(c *fiber.Ctx) error {
-	query := `{ __typename }`
-	_, err := cfg.Client.GQLClient.Query(query, nil, nil)
-	if err != nil {
-		cfg.Logger.Error("Can't reach the GraphQL server", map[string]interface{}{"error": err.Error()})
-		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
-		return c.SendStatus(500)
-	}
+	// query := `{ __typename }`
+	// _, err := cfg.Client.GQLClient.Query(query, nil, nil)
+	// if err != nil {
+	// 	cfg.Logger.Error("Can't reach the GraphQL server", map[string]interface{}{"error": err.Error()})
+	// 	cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+	// 	return c.SendStatus(500)
+	// }
 	return c.SendStatus(200)
 }
 
