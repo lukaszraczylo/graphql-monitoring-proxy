@@ -6,7 +6,7 @@ This project is in active use by [telegram-bot.app](https://telegram-bot.app), a
 
 Image of the static/monitoring-at-glance.png
 
-![Example of monitoring dashboard](https://github.com/lukaszraczylo/graphql-monitoring/proxy/blob/main/static/monitoring-at-glance.png?raw-true)
+![Example of monitoring dashboard](static/monitoring-at-glance.png?raw=true)
 
 You can find the example of the kubernetes manifest in the [example deployment](static/kubernetes-deployment.yaml) file.
 
