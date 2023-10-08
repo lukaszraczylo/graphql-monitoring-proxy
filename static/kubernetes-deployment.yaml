@@ -59,7 +59,7 @@ spec:
             value: "9393"
           - name: HOST_GRAPHQL
             value: http://hasura-internal:8080/v1/graphql
-          - name: ENABLE_CACHE
+          - name: ENABLE_GLOBAL_CACHE
             value: "true"
           - name: CACHE_TTL
             value: "10"
