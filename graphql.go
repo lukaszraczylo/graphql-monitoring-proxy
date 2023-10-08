@@ -4,7 +4,6 @@ import (
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/graphql-go/graphql/language/ast"
 	"github.com/graphql-go/graphql/language/parser"
-	"github.com/k0kubun/pp"
 	libpack_monitoring "github.com/telegram-bot-app/libpack/monitoring"
 )
 
@@ -30,6 +29,9 @@ var retrospection_queries = []string{
 	"__inputobjects",
 	"__directives",
 }
+
+// Saving the introspection queries as a map O(1) operation instead of O(n) for a slice.
+var retrospectionQuerySet = make(map[string]struct{}, len(retrospection_queries))
 
 func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cacheRequest bool, should_block bool) {
 	m := make(map[string]interface{})
@@ -71,15 +73,12 @@ func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cache
 			if cfg.Security.BlockIntrospection {
 				for _, s := range oper.SelectionSet.Selections {
 					for _, s2 := range s.GetSelectionSet().Selections {
-						pp.Println(s2.(*ast.Field).Name.Value)
-						for _, introspection_query := range retrospection_queries {
-							if s2.(*ast.Field).Name.Value == introspection_query {
-								cfg.Logger.Warning("Introspection query blocked", m)
-								cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
-								c.Status(403).SendString("Introspection queries are not allowed")
-								should_block = true
-								return
-							}
+						if _, exists := retrospectionQuerySet[s2.(*ast.Field).Name.Value]; exists {
+							cfg.Logger.Warning("Introspection query blocked", m)
+							cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
+							c.Status(403).SendString("Introspection queries are not allowed")
+							should_block = true
+							return
 						}
 					}
 				}
