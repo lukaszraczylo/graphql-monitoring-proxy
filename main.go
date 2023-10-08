@@ -18,6 +18,7 @@ func parseConfig() {
 	c.Client.JWTUserClaimPath = envutil.Getenv("JWT_USER_CLAIM_PATH", "")
 	c.Cache.CacheEnable = envutil.GetBool("CACHE_ENABLE", false)
 	c.Cache.CacheTTL = envutil.GetInt("CACHE_TTL", 60)
+	c.Security.BlockIntrospection = envutil.GetBool("BLOCK_SCHEMA_INTROSPECTION", false)
 	c.Logger = libpack_logging.NewLogger()
 	c.Client.GQLClient = graphql.NewConnection()
 	c.Client.GQLClient.SetEndpoint(c.Server.HostGraphQL)

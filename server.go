@@ -50,7 +50,11 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	if authorization != nil && len(cfg.Client.JWTUserClaimPath) > 0 {
 		extracted_user_id = extractClaimsFromJWTHeader(string(authorization))
 	}
-	opType, opName, cache_from_query := parseGraphQLQuery(c)
+	opType, opName, cache_from_query, should_block := parseGraphQLQuery(c)
+
+	if should_block {
+		return nil
+	}
 
 	was_cached := false
 

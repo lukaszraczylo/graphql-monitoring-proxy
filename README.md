@@ -20,3 +20,5 @@ Creates a passthrough proxy to a graphql endpoint(s), allowing you for analysis 
 `CACHE_TTL` - the cache TTL (default: `60s`)
 
 `LOG_LEVEL` - the log level (default: `info`)
+
+`BLOCK_SCHEMA_INTROSPECTION` - blocks the schema introspection (default: `false`)

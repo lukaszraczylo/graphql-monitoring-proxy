@@ -29,4 +29,8 @@ type config struct {
 		CacheTTL    int
 		CacheClient *cache.Cache
 	}
+
+	Security struct {
+		BlockIntrospection bool
+	}
 }

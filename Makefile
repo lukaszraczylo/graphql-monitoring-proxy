@@ -11,7 +11,7 @@ help:  ## display this help
 
 .PHONY: run
 run: ## run application
-	@LOG_LEVEL=debug JWT_USER_CLAIM_PATH="Hasura.x-hasura-user-id" HOST_GRAPHQL=https://hasura8.lan/v1/graphql go run *.go
+	@LOG_LEVEL=debug BLOCK_SCHEMA_INTROSPECTION=true JWT_USER_CLAIM_PATH="Hasura.x-hasura-user-id" HOST_GRAPHQL=https://hasura8.lan/v1/graphql go run *.go
 
 .PHONY: build
 build: ## build the binary
