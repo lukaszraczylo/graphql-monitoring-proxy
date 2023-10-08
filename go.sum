@@ -63,8 +63,8 @@ github.com/stretchr/testify v1.8.4 h1:CcVxjf3Q8PM0mHUKJCdn+eZZtm5yQwehR5yeSVQQcU
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/telegram-bot-app/lib-logging v0.0.19 h1:zbyFr2ygeBY+yuaB9moXyOGk8dIBCn0jPJQjvx7YvLE=
 github.com/telegram-bot-app/lib-logging v0.0.19/go.mod h1:n8d29fRUTdgJhC4RZ8s4lP2RHiGCCRYEj2ENEClUGc8=
-github.com/telegram-bot-app/libpack v0.0.0-20231007021518-909ce2741a36 h1:DqXg0y57Q7BziHDu85OXgo/b8OlP7/+gDZvASQCkaW0=
-github.com/telegram-bot-app/libpack v0.0.0-20231007021518-909ce2741a36/go.mod h1:W2kWHcfNNS0r++dJ1T2XX/C4cTSxI3MsoiMbOtyqu+I=
+github.com/telegram-bot-app/libpack v0.0.0-20231008100411-9f7f8bf94315 h1:gf+3gFgtdh48RQNmLNdK1IcGqpuTuj6RAdHxDMd/YPY=
+github.com/telegram-bot-app/libpack v0.0.0-20231008100411-9f7f8bf94315/go.mod h1:W2kWHcfNNS0r++dJ1T2XX/C4cTSxI3MsoiMbOtyqu+I=
 github.com/valyala/bytebufferpool v1.0.0 h1:GqA5TC/0021Y/b9FG4Oi9Mr3q7XYx6KllzawFIhcdPw=
 github.com/valyala/bytebufferpool v1.0.0/go.mod h1:6bBcMArwyJ5K/AmCkWv1jt77kVWyCJ6HpOuEn7z0Csc=
 github.com/valyala/fasthttp v1.50.0 h1:H7fweIlBm0rXLs2q0XbalvJ6r0CUPFWK3/bB4N13e9M=

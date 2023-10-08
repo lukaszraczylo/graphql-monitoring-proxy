@@ -10,7 +10,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/lukaszraczylo/ask v0.0.0-20230927103145-2ff1123b4415
 	github.com/lukaszraczylo/go-simple-graphql v1.1.31
-	github.com/telegram-bot-app/libpack v0.0.0-20231007021518-909ce2741a36
+	github.com/telegram-bot-app/libpack v0.0.0-20231008100411-9f7f8bf94315
 )
 
 require (
