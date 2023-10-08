@@ -2,6 +2,7 @@ version: 1
 force:
   existing: true
   strict: false
+  minor: 1
 wording:
   patch:
     - update
