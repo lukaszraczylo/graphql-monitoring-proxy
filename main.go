@@ -9,12 +9,18 @@ import (
 
 var cfg *config
 
+func init() {
+	for _, query := range retrospection_queries {
+		retrospectionQuerySet[query] = struct{}{}
+	}
+}
+
 func parseConfig() {
 	libpack_config.PKG_NAME = "graphql_proxy"
 	var c config
 	c.Server.PortGraphQL = envutil.GetInt("PORT_GRAPHQL", 8080)
 	c.Server.PortMonitoring = envutil.GetInt("MONITORING_PORT", 9393)
-	c.Server.HostGraphQL = envutil.Getenv("HOST_GRAPHQL", "localhost/v1/graphql")
+	c.Server.HostGraphQL = envutil.Getenv("HOST_GRAPHQL", "http://localhost/v1/graphql")
 	c.Client.JWTUserClaimPath = envutil.Getenv("JWT_USER_CLAIM_PATH", "")
 	c.Cache.CacheEnable = envutil.GetBool("CACHE_ENABLE", false)
 	c.Cache.CacheTTL = envutil.GetInt("CACHE_TTL", 60)

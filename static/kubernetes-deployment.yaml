@@ -1,0 +1,92 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hasura-proxy-internal
+  labels:
+    app: hasura-proxy-internal
+    type: support
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hasura-proxy-internal
+      type: support
+  template:
+    metadata:
+      labels:
+        app: hasura-proxy-internal
+        type: support
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9393"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsUser: 65534 # nobody
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: node-role.kubernetes.io/worker
+                operator: Exists
+      containers:
+      - name: graphql-proxy
+        image: ghcr.io/lukaszraczylo/graphql-monitoring-proxy:latest
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: "1"
+            memory: "640Mi"
+          requests:
+            cpu: "0.75"
+            memory: "512Mi"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+        ports:
+          - name: web
+            containerPort: 8080
+          - name: monitoring
+            containerPort: 9393
+        env:
+          - name: PORT_GRAPHQL
+            value: "8080"
+          - name: MONITORING_PORT
+            value: "9393"
+          - name: HOST_GRAPHQL
+            value: http://hasura-internal:8080/v1/graphql
+          - name: ENABLE_CACHE
+            value: "true"
+          - name: CACHE_TTL
+            value: "10"
+          - name: BLOCK_SCHEMA_INTROSPECTION
+            value: "true"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hasura-proxy-internal
+  labels:
+    app: hasura-proxy-internal
+    type: support
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9393"
+    prometheus.io/path: "/metrics"
+spec:
+  ports:
+  - name: web
+    port: 8080
+    targetPort: 8080
+  - name: monitoring
+    port: 9393
+    targetPort: 9393
+  selector:
+    app: hasura-proxy-internal
+    type: support
+  type: ClusterIP
