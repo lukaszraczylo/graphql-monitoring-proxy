@@ -14,9 +14,9 @@ I wanted to monitor the queries and responses of our graphql endpoint, but we di
 
 ### Endpoints
 
-/v1/graphql - the graphql endpoint
-/metrics - the prometheus metrics endpoint
-/healthz - the healthcheck endpoint
+* `:8080/v1/graphql` - the graphql endpoint
+* `:9393/metrics` - the prometheus metrics endpoint
+* `:8080/healthz` - the healthcheck endpoint
 
 ### Features
 
