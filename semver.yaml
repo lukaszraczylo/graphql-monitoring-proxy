@@ -11,5 +11,6 @@ wording:
   minor:
     - change
     - improve
+    - release
   major:
     - breaking
