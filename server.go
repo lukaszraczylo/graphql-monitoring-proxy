@@ -46,7 +46,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 
 	var extracted_user_id string = "-"
 	var extracted_role_name string = "-"
-	var query_cache_hash string = ""
+	var query_cache_hash string
 
 	authorization := c.Request().Header.Peek("Authorization")
 	if authorization != nil && (len(cfg.Client.JWTUserClaimPath) > 0 || len(cfg.Client.JWTRoleClaimPath) > 0) {
