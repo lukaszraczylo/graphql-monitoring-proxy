@@ -60,6 +60,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 		cfg.Logger.Debug("Rate limiting enabled", map[string]interface{}{"user_id": extracted_user_id, "role_name": extracted_role_name})
 		if !rateLimitedRequest(extracted_user_id, extracted_role_name) {
 			c.Status(429).SendString("Rate limit exceeded, try again later")
+			return nil
 		}
 	}
 
