@@ -55,8 +55,14 @@ func rateLimitedRequest(userRole string, userId string) (shouldAllow bool) {
 	if rateLimits == nil {
 		return true
 	}
+	// check if userRole is in rateLimits
+	if _, ok := rateLimits[userRole]; !ok {
+		cfg.Logger.Warning("Rate limit role not found", map[string]interface{}{"user_role": userRole})
+		return true
+	}
+
 	if rateLimits[userRole].RateCounterTicker == nil {
-		cfg.Logger.Warning("Rate limit not found", map[string]interface{}{"user_role": userRole})
+		cfg.Logger.Warning("Rate limit ticker not found", map[string]interface{}{"user_role": userRole})
 		return true
 	}
 
