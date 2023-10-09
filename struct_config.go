@@ -22,6 +22,8 @@ type config struct {
 
 	Client struct {
 		JWTUserClaimPath string
+		JWTRoleClaimPath string
+		JWTRoleRateLimit bool
 		GQLClient        *graphql.BaseClient
 	}
 

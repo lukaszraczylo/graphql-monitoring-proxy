@@ -22,6 +22,8 @@ func parseConfig() {
 	c.Server.PortMonitoring = envutil.GetInt("MONITORING_PORT", 9393)
 	c.Server.HostGraphQL = envutil.Getenv("HOST_GRAPHQL", "http://localhost/v1/graphql")
 	c.Client.JWTUserClaimPath = envutil.Getenv("JWT_USER_CLAIM_PATH", "")
+	c.Client.JWTRoleClaimPath = envutil.Getenv("JWT_ROLE_CLAIM_PATH", "")
+	c.Client.JWTRoleRateLimit = envutil.GetBool("JWT_ROLE_RATE_LIMIT", false)
 	c.Cache.CacheEnable = envutil.GetBool("ENABLE_GLOBAL_CACHE", false)
 	c.Cache.CacheTTL = envutil.GetInt("CACHE_TTL", 60)
 	c.Security.BlockIntrospection = envutil.GetBool("BLOCK_SCHEMA_INTROSPECTION", false)
@@ -31,6 +33,7 @@ func parseConfig() {
 	c.Server.AccessLog = envutil.GetBool("ENABLE_ACCESS_LOG", false)
 	cfg = &c
 	enableCache() // takes close to no resources, but can be used with dynamic query cache
+	loadRatelimitConfig()
 }
 
 func main() {

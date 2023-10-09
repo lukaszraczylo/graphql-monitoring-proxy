@@ -15,5 +15,6 @@ jobs:
     uses: telegram-bot-app/ci-scripts/.github/workflows/build-test-publish-inject.yaml@main
     with:
       enable-code-scans: false
+      should-deploy: false
     secrets:
       ghcr-token: ${{ secrets.GHCR_TOKEN }}
