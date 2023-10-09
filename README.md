@@ -37,6 +37,7 @@ I wanted to monitor the queries and responses of our graphql endpoint, but we di
 * `CACHE_TTL` - the cache TTL (default: `60s`)
 * `LOG_LEVEL` - the log level (default: `info`)
 * `BLOCK_SCHEMA_INTROSPECTION` - blocks the schema introspection (default: `false`)
+* `ENABLE_ACCESS_LOG` - enable the access log (default: `false`)
 
 ### Caching
 
