@@ -6,6 +6,8 @@ import (
 
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
+
 	jsoniter "github.com/json-iterator/go"
 	libpack_monitoring "github.com/telegram-bot-app/libpack/monitoring"
 )
@@ -19,6 +21,8 @@ func StartHTTPProxy() {
 	server.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
 	}))
+
+	server.Use(limiter.New())
 
 	server.Post("/v1/graphql", processGraphQLRequest)
 
@@ -44,12 +48,21 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	t := time.Now()
 
 	var extracted_user_id string = "-"
+	var extracted_role_name string = "-"
 	var query_cache_hash string = ""
 
 	authorization := c.Request().Header.Peek("Authorization")
-	if authorization != nil && len(cfg.Client.JWTUserClaimPath) > 0 {
-		extracted_user_id = extractClaimsFromJWTHeader(string(authorization))
+	if authorization != nil && (len(cfg.Client.JWTUserClaimPath) > 0 || len(cfg.Client.JWTRoleClaimPath) > 0) {
+		extracted_user_id, extracted_role_name = extractClaimsFromJWTHeader(string(authorization))
 	}
+
+	if cfg.Client.JWTRoleRateLimit {
+		cfg.Logger.Debug("Rate limiting enabled", map[string]interface{}{"user_id": extracted_user_id, "role_name": extracted_role_name})
+		if !rateLimitedRequest(extracted_user_id, extracted_role_name) {
+			c.Status(429).SendString("Rate limit exceeded, try again later")
+		}
+	}
+
 	opType, opName, cache_from_query, should_block := parseGraphQLQuery(c)
 
 	if should_block {

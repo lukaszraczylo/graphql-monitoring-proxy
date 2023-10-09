@@ -26,6 +26,7 @@ I wanted to monitor the queries and responses of our graphql endpoint, but we di
 * MONITORING: Calculating the query duration and adding it to the metrics
 * SPEED: Caching the queries
 * SECURITY: Blocking schema introspection
+* SECURITY: Rate limiting queries based on user role
 
 ### Configuration
 
@@ -33,6 +34,8 @@ I wanted to monitor the queries and responses of our graphql endpoint, but we di
 * `PORT_GRAPHQL` - the port to expose the graphql endpoint on (default: 8080)
 * `HOST_GRAPHQL` - the host to proxy the graphql endpoint to (default: `http://localhost/v1/graphql`)
 * `JWT_USER_CLAIM_PATH` - the path to the user claim in the JWT token (default: ``)
+* `JWT_ROLE_CLAIM_PATH` - the path to the role claim in the JWT token (default: ``)
+* `JWT_ROLE_RATE_LIMITING` - enable request rate limiting based on the role (default: `false`)
 * `ENABLE_GLOBAL_CACHE` - enable the cache (default: `false`)
 * `CACHE_TTL` - the cache TTL (default: `60s`)
 * `LOG_LEVEL` - the log level (default: `info`)
@@ -43,6 +46,38 @@ I wanted to monitor the queries and responses of our graphql endpoint, but we di
 
 Cache engine is enabled in background as it does not use any additional resources.
 You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` environment variable to `true` - which will enable the cache for all queries, without introspection of the query. You can leave the global cache disabled and enable the cache for specific queries by adding the `@cache` directive to the query.
+
+### Role based rate limiting
+
+You are able to rate limit requests using the `JWT_ROLE_RATE_LIMITING` environment variable. If enabled, the proxy will rate limit the requests based on the role claim in the JWT token. You can then provide the json file in following format to specify the limits.
+Default interval is `second`, but you can use `minute`, `hour` and `day` as well. If you want to disable the rate limiting for specific role, you can set the `req` to `0`.
+
+To define path in JWT token where current user role is present use the `JWT_ROLE_CLAIM_PATH` environment variable.
+
+*Default / sample configuration:*
+
+```json
+{
+  "ratelimit": {
+      "admin": {
+          "req": 100,
+          "interval": "second"
+      },
+      "guest": {
+          "req": 50,
+          "interval": "minute"
+      },
+      "-": {
+          "req": 100,
+          "interval": "day"
+      }
+  }
+}
+```
+
+If you'd like to change it - mount your configmap as `/app/ratelimit.json` file.
+Remember to include the `-` role, which is used for unauthenticated users or when claim can't be found for any reason.
+If rate limit has been reached - the proxy will return `429 Too Many Requests` error.
 
 ### Monitoring endpoint
 
