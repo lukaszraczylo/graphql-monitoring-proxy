@@ -33,6 +33,7 @@ func parseConfig() {
 	c.Server.AccessLog = envutil.GetBool("ENABLE_ACCESS_LOG", false)
 	cfg = &c
 	enableCache() // takes close to no resources, but can be used with dynamic query cache
+	loadRatelimitConfig()
 }
 
 func main() {

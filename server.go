@@ -6,7 +6,6 @@ import (
 
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/gofiber/fiber/v2/middleware/limiter"
 
 	jsoniter "github.com/json-iterator/go"
 	libpack_monitoring "github.com/telegram-bot-app/libpack/monitoring"
@@ -21,8 +20,6 @@ func StartHTTPProxy() {
 	server.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
 	}))
-
-	server.Use(limiter.New())
 
 	server.Post("/v1/graphql", processGraphQLRequest)
 

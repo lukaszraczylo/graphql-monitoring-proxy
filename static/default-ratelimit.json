@@ -5,8 +5,8 @@
           "interval": "second"
       },
       "guest": {
-          "req": 50,
-          "interval": "minute"
+          "req": 3,
+          "interval": "second"
       },
       "-": {
           "req": 100,

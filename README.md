@@ -50,7 +50,10 @@ You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` environm
 ### Role based rate limiting
 
 You are able to rate limit requests using the `JWT_ROLE_RATE_LIMITING` environment variable. If enabled, the proxy will rate limit the requests based on the role claim in the JWT token. You can then provide the json file in following format to specify the limits.
-Default interval is `second`, but you can use `minute`, `hour` and `day` as well. If you want to disable the rate limiting for specific role, you can set the `req` to `0`.
+Default interval is `second`, but you can use other values as well. If you want to disable the rate limiting for specific role, you can set the `req` to `0`.
+
+Available values:
+`nano`, `micro`, `milli`, `second`, `minute`, `hour`, `day`
 
 To define path in JWT token where current user role is present use the `JWT_ROLE_CLAIM_PATH` environment variable.
 
