@@ -77,7 +77,9 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	}
 	time_taken := time.Since(t)
 
-	cfg.Logger.Info("Request processed", map[string]interface{}{"ip": c.IP(), "user_id": extracted_user_id, "op_type": opType, "op_name": opName, "time": time_taken, "cache": was_cached})
+	if cfg.Server.AccessLog {
+		cfg.Logger.Info("Request processed", map[string]interface{}{"ip": c.IP(), "user_id": extracted_user_id, "op_type": opType, "op_name": opName, "time": time_taken, "cache": was_cached})
+	}
 	cfg.Monitoring.Increment(libpack_monitoring.MetricsSucceeded, nil)
 
 	labels := map[string]string{

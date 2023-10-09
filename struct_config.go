@@ -17,6 +17,7 @@ type config struct {
 		PortGraphQL    int
 		PortMonitoring int
 		HostGraphQL    string
+		AccessLog      bool
 	}
 
 	Client struct {
