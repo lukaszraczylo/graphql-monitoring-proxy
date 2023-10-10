@@ -20,13 +20,14 @@ I wanted to monitor the queries and responses of our graphql endpoint, but we di
 
 ### Features
 
-* MONITORING: Prometheus / VictoriaMetrics metrics
-* MONITORING: Extracting user id from JWT token and adding it as a label to the metrics
-* MONITORING: Extracting the query name and type and adding it as a label to the metrics
-* MONITORING: Calculating the query duration and adding it to the metrics
-* SPEED: Caching the queries, together with per-query cache and TTL
-* SECURITY: Blocking schema introspection
-* SECURITY: Rate limiting queries based on user role
+* **MONITORING**: Prometheus / VictoriaMetrics metrics
+* **MONITORING**: Extracting user id from JWT token and adding it as a label to the metrics
+* **MONITORING**: Extracting the query name and type and adding it as a label to the metrics
+* **MONITORING**: Calculating the query duration and adding it to the metrics
+* **SPEED**: Caching the queries, together with per-query cache and TTL
+* **SECURITY**: Blocking schema introspection
+* **SECURITY**: Rate limiting queries based on user role
+* **SECURITY**: Blocking mutations in read only mode
 
 ### Configuration
 
