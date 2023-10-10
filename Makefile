@@ -11,7 +11,7 @@ help:  ## display this help
 
 .PHONY: run
 run: build ## run application
-	@LOG_LEVEL=warn BLOCK_SCHEMA_INTROSPECTION=false JWT_ROLE_RATE_LIMIT=false JWT_ROLE_CLAIM_PATH="Hasura.x-hasura-default-role" JWT_USER_CLAIM_PATH="Hasura.x-hasura-user-id" HOST_GRAPHQL=https://hasura8.lan/v1/graphql ./graphql-proxy
+	@LOG_LEVEL=debug BLOCK_SCHEMA_INTROSPECTION=false JWT_ROLE_RATE_LIMIT=false JWT_ROLE_CLAIM_PATH="Hasura.x-hasura-default-role" JWT_USER_CLAIM_PATH="Hasura.x-hasura-user-id" HOST_GRAPHQL=https://hasura8.lan/v1/graphql ./graphql-proxy
 
 .PHONY: build
 build: ## build the binary
