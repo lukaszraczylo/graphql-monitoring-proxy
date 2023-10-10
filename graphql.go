@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strconv"
+
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/graphql-go/graphql/language/ast"
 	"github.com/graphql-go/graphql/language/parser"
@@ -33,7 +35,7 @@ var retrospection_queries = []string{
 // Saving the introspection queries as a map O(1) operation instead of O(n) for a slice.
 var retrospectionQuerySet = make(map[string]struct{}, len(retrospection_queries))
 
-func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cacheRequest bool, should_block bool) {
+func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cacheRequest bool, cache_time int, should_block bool) {
 	m := make(map[string]interface{})
 	err := json.Unmarshal(c.Body(), &m)
 	if err != nil {
@@ -68,6 +70,16 @@ func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cache
 			for _, dir := range oper.Directives {
 				if dir.Name.Value == "cached" {
 					cacheRequest = true
+					for _, arg := range dir.Arguments {
+						if arg.Name.Value == "ttl" {
+							cache_time, err = strconv.Atoi(arg.Value.GetValue().(string))
+							if err != nil {
+								cfg.Logger.Error("Can't parse the ttl", map[string]interface{}{"ttl": arg.Value.GetValue().(string)})
+								cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+								return
+							}
+						}
+					}
 				}
 			}
 			if cfg.Security.BlockIntrospection {

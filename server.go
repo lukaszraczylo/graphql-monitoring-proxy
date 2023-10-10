@@ -63,9 +63,14 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 		}
 	}
 
-	opType, opName, cacheFromQuery, shouldBlock := parseGraphQLQuery(c)
+	opType, opName, cacheFromQuery, cache_time, shouldBlock := parseGraphQLQuery(c)
 	if shouldBlock {
 		return nil
+	}
+
+	if cache_time > 0 {
+		cfg.Logger.Debug("Cache time set via query", map[string]interface{}{"cache_time": cache_time})
+		cache_time = cfg.Cache.CacheTTL
 	}
 
 	wasCached := false
@@ -81,7 +86,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 			wasCached = true
 		} else {
 			cfg.Logger.Debug("Cache miss", map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID})
-			proxyAndCacheTheRequest(c, queryCacheHash)
+			proxyAndCacheTheRequest(c, queryCacheHash, cache_time)
 		}
 	} else {
 		proxyTheRequest(c)
@@ -96,9 +101,9 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 }
 
 // Additional helper function to avoid code repetition
-func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string) {
+func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cache_time int) {
 	proxyTheRequest(c)
-	cfg.Cache.CacheClient.Set(queryCacheHash, c.Response().Body(), time.Duration(cfg.Cache.CacheTTL)*time.Second)
+	cfg.Cache.CacheClient.Set(queryCacheHash, c.Response().Body(), time.Duration(cache_time)*time.Second)
 	c.Send(c.Response().Body())
 }
 
