@@ -11,6 +11,7 @@ require (
 	github.com/lukaszraczylo/ask v0.0.0-20230927103145-2ff1123b4415
 	github.com/lukaszraczylo/go-ratecounter v0.1.8
 	github.com/lukaszraczylo/go-simple-graphql v1.1.31
+	github.com/stretchr/testify v1.8.4
 	github.com/telegram-bot-app/libpack v0.0.0-20231008100411-9f7f8bf94315
 )
 
@@ -19,15 +20,18 @@ require (
 	github.com/VictoriaMetrics/metrics v1.24.0 // indirect
 	github.com/andybalholm/brotli v1.0.5 // indirect
 	github.com/avast/retry-go/v4 v4.5.0 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/google/uuid v1.3.1 // indirect
 	github.com/gookit/color v1.5.4 // indirect
 	github.com/klauspost/compress v1.17.0 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/lukaszraczylo/pandati v0.0.29 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
 	github.com/rs/zerolog v1.31.0 // indirect
 	github.com/telegram-bot-app/lib-logging v0.0.19 // indirect
@@ -43,4 +47,5 @@ require (
 	golang.org/x/sys v0.13.0 // indirect
 	golang.org/x/term v0.13.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
