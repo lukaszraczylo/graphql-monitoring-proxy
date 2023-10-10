@@ -20,29 +20,35 @@ I wanted to monitor the queries and responses of our graphql endpoint, but we di
 
 ### Features
 
-* **MONITORING**: Prometheus / VictoriaMetrics metrics
-* **MONITORING**: Extracting user id from JWT token and adding it as a label to the metrics
-* **MONITORING**: Extracting the query name and type and adding it as a label to the metrics
-* **MONITORING**: Calculating the query duration and adding it to the metrics
-* **SPEED**: Caching the queries, together with per-query cache and TTL
-* **SECURITY**: Blocking schema introspection
-* **SECURITY**: Rate limiting queries based on user role
-* **SECURITY**: Blocking mutations in read only mode
+| Category   | Detail                                                                |
+|------------|-----------------------------------------------------------------------|
+| MONITORING | Prometheus / VictoriaMetrics metrics                                  |
+| MONITORING | Extracting user id from JWT token and adding it as a label to metrics |
+| MONITORING | Extracting the query name and type and adding it as a label to metrics|
+| MONITORING | Calculating the query duration and adding it to the metrics           |
+| SPEED      | Caching the queries, together with per-query cache and TTL            |
+| SECURITY   | Blocking schema introspection                                         |
+| SECURITY   | Rate limiting queries based on user role                              |
+| SECURITY   | Blocking mutations in read only mode                                  |
+
 
 ### Configuration
 
-* `MONITORING_PORT` - the port to expose the metrics endpoint on (default: 9393)
-* `PORT_GRAPHQL` - the port to expose the graphql endpoint on (default: 8080)
-* `HOST_GRAPHQL` - the host to proxy the graphql endpoint to (default: `http://localhost/v1/graphql`)
-* `JWT_USER_CLAIM_PATH` - the path to the user claim in the JWT token (default: ``)
-* `JWT_ROLE_CLAIM_PATH` - the path to the role claim in the JWT token (default: ``)
-* `JWT_ROLE_RATE_LIMITING` - enable request rate limiting based on the role (default: `false`)
-* `ENABLE_GLOBAL_CACHE` - enable the cache (default: `false`)
-* `CACHE_TTL` - the cache TTL (default: `60s`)
-* `LOG_LEVEL` - the log level (default: `info`)
-* `BLOCK_SCHEMA_INTROSPECTION` - blocks the schema introspection (default: `false`)
-* `ENABLE_ACCESS_LOG` - enable the access log (default: `false`)
-* `READ_ONLY_MODE` - enable the read only mode (default: `false`)
+| Parameter                 | Description                              | Default Value              |
+|---------------------------|------------------------------------------|----------------------------|
+| `MONITORING_PORT`         | The port to expose the metrics endpoint  | `9393`                     |
+| `PORT_GRAPHQL`            | The port to expose the graphql endpoint  | `8080`                     |
+| `HOST_GRAPHQL`            | The host to proxy the graphql endpoint   | `http://localhost/v1/graphql` |
+| `JWT_USER_CLAIM_PATH`     | Path to the user claim in the JWT token  | ``                         |
+| `JWT_ROLE_CLAIM_PATH`     | Path to the role claim in the JWT token  | ``                         |
+| `JWT_ROLE_RATE_LIMITING`  | Enable request rate limiting based on role| `false`                   |
+| `ENABLE_GLOBAL_CACHE`     | Enable the cache                        | `false`                    |
+| `CACHE_TTL`               | The cache TTL                           | `60`                      |
+| `LOG_LEVEL`               | The log level                           | `info`                     |
+| `BLOCK_SCHEMA_INTROSPECTION`| Blocks the schema introspection       | `false`                    |
+| `ENABLE_ACCESS_LOG`       | Enable the access log                   | `false`                    |
+| `READ_ONLY_MODE`          | Enable the read only mode               | `false`                    |
+
 
 ### Caching
 
