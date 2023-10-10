@@ -10,7 +10,7 @@ import (
 	"github.com/VictoriaMetrics/metrics"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gookit/goutil/envutil"
-	logging "github.com/telegram-bot-app/lib-logging"
+	logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
 type MetricsSetup struct {
