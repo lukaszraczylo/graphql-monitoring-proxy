@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/lukaszraczylo/ask"
-	libpack_monitoring "github.com/telegram-bot-app/libpack/monitoring"
+	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
 
 func extractClaimsFromJWTHeader(authorization string) (usr string, role string) {

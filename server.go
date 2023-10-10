@@ -8,7 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 
 	jsoniter "github.com/json-iterator/go"
-	libpack_monitoring "github.com/telegram-bot-app/libpack/monitoring"
+	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
 
 var json = jsoniter.ConfigCompatibleWithStandardLibrary

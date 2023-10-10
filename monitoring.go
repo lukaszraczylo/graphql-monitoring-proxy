@@ -1,7 +1,7 @@
 package main
 
 import (
-	libpack_monitoring "github.com/telegram-bot-app/libpack/monitoring"
+	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
 
 func StartMonitoringServer() {

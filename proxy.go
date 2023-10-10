@@ -5,7 +5,7 @@ import (
 
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/proxy"
-	libpack_monitoring "github.com/telegram-bot-app/libpack/monitoring"
+	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
 
 func proxyTheRequest(c *fiber.Ctx) error {

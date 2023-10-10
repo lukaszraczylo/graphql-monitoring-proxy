@@ -7,7 +7,7 @@ import (
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/graphql-go/graphql/language/ast"
 	"github.com/graphql-go/graphql/language/parser"
-	libpack_monitoring "github.com/telegram-bot-app/libpack/monitoring"
+	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
 
 var retrospection_queries = []string{

@@ -3,8 +3,8 @@ package main
 import (
 	"github.com/gookit/goutil/envutil"
 	graphql "github.com/lukaszraczylo/go-simple-graphql"
-	libpack_config "github.com/telegram-bot-app/libpack/config"
-	libpack_logging "github.com/telegram-bot-app/libpack/logging"
+	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
+	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
 var cfg *config

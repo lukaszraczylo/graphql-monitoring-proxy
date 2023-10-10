@@ -3,8 +3,8 @@ package main
 import (
 	"github.com/akyoto/cache"
 	graphql "github.com/lukaszraczylo/go-simple-graphql"
-	libpack_logging "github.com/telegram-bot-app/libpack/logging"
-	libpack_monitoring "github.com/telegram-bot-app/libpack/monitoring"
+	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
+	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
 
 // config is a struct that holds the configuration of the application.
