@@ -54,8 +54,12 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 		extractedUserID, extractedRoleName = extractClaimsFromJWTHeader(string(authorization))
 	}
 
+	if len(cfg.Client.RoleFromHeader) > 0 {
+		extractedRoleName = string(c.Request().Header.Peek(cfg.Client.RoleFromHeader))
+	}
+
 	// Implementing rate limiting if enabled
-	if cfg.Client.JWTRoleRateLimit {
+	if cfg.Client.RoleRateLimit {
 		cfg.Logger.Debug("Rate limiting enabled", map[string]interface{}{"user_id": extractedUserID, "role_name": extractedRoleName})
 		if !rateLimitedRequest(extractedUserID, extractedRoleName) {
 			c.Status(429).SendString("Rate limit exceeded, try again later")

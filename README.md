@@ -1,16 +1,16 @@
 ## graphql monitoring proxy
 
-Creates a passthrough proxy to a graphql endpoint(s), allowing you for analysis of the queries and responses, producing the prometheus metrics at a fraction of the cost - because as we know - $0 is a fair price.
+Creates a passthrough proxy to a graphql endpoint(s), allowing you to analyse the queries and responses, producing the Prometheus metrics at a fraction of the cost - because, as we know - $0 is a fair price.
 
-This project is in active use by [telegram-bot.app](https://telegram-bot.app), and was tested with 30k queries per second on a single instance, consuming 10mb of RAM and 0.1% CPU.
+This project is in active use by [telegram-bot.app](https://telegram-bot.app), and was tested with 30k queries per second on a single instance, consuming 10 MB of RAM and 0.1% CPU.
 
 ![Example of monitoring dashboard](static/monitoring-at-glance.png?raw=true)
 
-You can find the example of the kubernetes manifest in the [example deployment](static/kubernetes-deployment.yaml) file.
+You can find the example of the Kubernetes manifest in the [example deployment](static/kubernetes-deployment.yaml) file.
 
 ### Why this project exists
 
-I wanted to monitor the queries and responses of our graphql endpoint, but we didn't want to pay the price of the graphql server itself ( and I will not point fingers and certain well-known project), as monitoring and basic security features should be a common, free functionality.
+I wanted to monitor the queries and responses of our graphql endpoint. Still, we didn't want to pay the price of the graphql server itself ( and I will not point fingers at a particular well-known project), as monitoring and basic security features should be a standard, free functionality.
 
 ### Endpoints
 
@@ -22,14 +22,14 @@ I wanted to monitor the queries and responses of our graphql endpoint, but we di
 
 | Category   | Detail                                                                |
 |------------|-----------------------------------------------------------------------|
-| MONITORING | Prometheus / VictoriaMetrics metrics                                  |
-| MONITORING | Extracting user id from JWT token and adding it as a label to metrics |
-| MONITORING | Extracting the query name and type and adding it as a label to metrics|
-| MONITORING | Calculating the query duration and adding it to the metrics           |
-| SPEED      | Caching the queries, together with per-query cache and TTL            |
-| SECURITY   | Blocking schema introspection                                         |
-| SECURITY   | Rate limiting queries based on user role                              |
-| SECURITY   | Blocking mutations in read only mode                                  |
+| monitor    | Prometheus / VictoriaMetrics metrics                                  |
+| monitor    | Extracting user id from JWT token and adding it as a label to metrics |
+| monitor    | Extracting the query name and type and adding it as a label to metrics|
+| monitor    | Calculating the query duration and adding it to the metrics           |
+| speed      | Caching the queries, together with per-query cache and TTL            |
+| security   | Blocking schema introspection                                         |
+| security   | Rate limiting queries based on user role                              |
+| security   | Blocking mutations in read-only mode                                  |
 
 
 ### Configuration
@@ -41,9 +41,10 @@ I wanted to monitor the queries and responses of our graphql endpoint, but we di
 | `HOST_GRAPHQL`            | The host to proxy the graphql endpoint   | `http://localhost/v1/graphql` |
 | `JWT_USER_CLAIM_PATH`     | Path to the user claim in the JWT token  | ``                         |
 | `JWT_ROLE_CLAIM_PATH`     | Path to the role claim in the JWT token  | ``                         |
-| `JWT_ROLE_RATE_LIMITING`  | Enable request rate limiting based on role| `false`                   |
+| `JWT_ROLE_FROM_HEADER`    | Header name to extract the role from     | ``                         |
+| `ROLE_RATE_LIMIT`         | Enable request rate limiting based on role| `false`                   |
 | `ENABLE_GLOBAL_CACHE`     | Enable the cache                        | `false`                    |
-| `CACHE_TTL`               | The cache TTL                           | `60`                      |
+| `CACHE_TTL`               | The cache TTL                           | `60`                       |
 | `LOG_LEVEL`               | The log level                           | `info`                     |
 | `BLOCK_SCHEMA_INTROSPECTION`| Blocks the schema introspection       | `false`                    |
 | `ENABLE_ACCESS_LOG`       | Enable the access log                   | `false`                    |
@@ -52,23 +53,25 @@ I wanted to monitor the queries and responses of our graphql endpoint, but we di
 
 ### Caching
 
-Cache engine is enabled in background as it does not use any additional resources.
-You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` environment variable to `true` - which will enable the cache for all queries, without introspection of the query. You can leave the global cache disabled and enable the cache for specific queries by adding the `@cached` directive to the query.
+The cache engine is enabled in the background by default, using no additional resources.
+You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` environment variable to `true` - which will enable the cache for all queries without introspection. You can leave the global cache disabled and enable the cache for specific queries by adding the `@cached` directive to the query.
 
-In case of the `@cached` you can add additional parameters to the directive which will set the cache for specific query to provided time.
-For example `query MyCachedQuery @cached(ttl: 90) ....` will set the cache for the query to 90 seconds.
+In the case of the `@cached` you can add additional parameters to the directive which will set the cache for specific queries to the provided time.
+For example, `query MyCachedQuery @cached(ttl: 90) ....` will set the cache for the query to 90 seconds.
 
-### Role based rate limiting
+### Role-based rate limiting
 
-You are able to rate limit requests using the `JWT_ROLE_RATE_LIMITING` environment variable. If enabled, the proxy will rate limit the requests based on the role claim in the JWT token. You can then provide the json file in following format to specify the limits.
-Default interval is `second`, but you can use other values as well. If you want to disable the rate limiting for specific role, you can set the `req` to `0`.
+You can rate limit requests using the `ROLE_RATE_LIMIT` environment variable. If enabled, the proxy will rate limit the requests based on the role claim in the JWT token. You can then provide the JSON file in the following format to specify the limits.
+The default interval is `second`, but you can use other values as well. If you want to disable the rate limiting for a specific role, you can set the `req` to `0`.
 
 Available values:
 `nano`, `micro`, `milli`, `second`, `minute`, `hour`, `day`
 
-To define path in JWT token where current user role is present use the `JWT_ROLE_CLAIM_PATH` environment variable.
+To define path in JWT token where the current user role is present, use the `JWT_ROLE_CLAIM_PATH` environment variable.
 
-*Default / sample configuration:*
+You can also set up the `ROLE_FROM_HEADER` environment variable to extract the role from the header instead of the JWT token. This is useful if you want to rate limit the requests for unauthenticated users. It's worth mentioning that `ROLE_FROM_HEADER` takes a priority over the `JWT_ROLE_CLAIM_PATH` environment variable and if its set, the proxy will not try to extract the role from the JWT token.
+
+*Default/sample configuration:*
 
 ```json
 {
@@ -94,9 +97,9 @@ Remember to include the `-` role, which is used for unauthenticated users or whe
 If rate limit has been reached - the proxy will return `429 Too Many Requests` error.
 
 
-### Read only mode
+### Read-only mode
 
-You can enable the read only mode by setting the `READ_ONLY_MODE` environment variable to `true` - which will block all the `mutation` queries.
+You can enable the read-only mode by setting the `READ_ONLY_MODE` environment variable to `true` - which will block all the `mutation` queries.
 
 ### Monitoring endpoint
 
