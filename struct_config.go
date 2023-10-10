@@ -18,6 +18,7 @@ type config struct {
 		PortMonitoring int
 		HostGraphQL    string
 		AccessLog      bool
+		ReadOnlyMode   bool
 	}
 
 	Client struct {

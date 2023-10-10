@@ -2,6 +2,7 @@ package main
 
 import (
 	"strconv"
+	"strings"
 
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/graphql-go/graphql/language/ast"
@@ -62,6 +63,14 @@ func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cache
 	for _, d := range p.Definitions {
 		if oper, ok := d.(*ast.OperationDefinition); ok {
 			operationType = oper.Operation
+			if strings.ToLower(operationType) == "mutation" && cfg.Server.ReadOnlyMode {
+				cfg.Logger.Warning("Mutation blocked", m)
+				cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
+				c.Status(403).SendString("The server is in read-only mode")
+				should_block = true
+				return
+			}
+
 			if oper.Name != nil {
 				operationName = oper.Name.Value
 			} else {

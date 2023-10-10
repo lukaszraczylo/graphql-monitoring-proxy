@@ -31,6 +31,7 @@ func parseConfig() {
 	c.Client.GQLClient = graphql.NewConnection()
 	c.Client.GQLClient.SetEndpoint(c.Server.HostGraphQL)
 	c.Server.AccessLog = envutil.GetBool("ENABLE_ACCESS_LOG", false)
+	c.Server.ReadOnlyMode = envutil.GetBool("READ_ONLY_MODE", false)
 	cfg = &c
 	enableCache() // takes close to no resources, but can be used with dynamic query cache
 	loadRatelimitConfig()

@@ -24,7 +24,7 @@ I wanted to monitor the queries and responses of our graphql endpoint, but we di
 * MONITORING: Extracting user id from JWT token and adding it as a label to the metrics
 * MONITORING: Extracting the query name and type and adding it as a label to the metrics
 * MONITORING: Calculating the query duration and adding it to the metrics
-* SPEED: Caching the queries
+* SPEED: Caching the queries, together with per-query cache and TTL
 * SECURITY: Blocking schema introspection
 * SECURITY: Rate limiting queries based on user role
 
@@ -41,6 +41,7 @@ I wanted to monitor the queries and responses of our graphql endpoint, but we di
 * `LOG_LEVEL` - the log level (default: `info`)
 * `BLOCK_SCHEMA_INTROSPECTION` - blocks the schema introspection (default: `false`)
 * `ENABLE_ACCESS_LOG` - enable the access log (default: `false`)
+* `READ_ONLY_MODE` - enable the read only mode (default: `false`)
 
 ### Caching
 
@@ -84,6 +85,11 @@ To define path in JWT token where current user role is present use the `JWT_ROLE
 If you'd like to change it - mount your configmap as `/app/ratelimit.json` file.
 Remember to include the `-` role, which is used for unauthenticated users or when claim can't be found for any reason.
 If rate limit has been reached - the proxy will return `429 Too Many Requests` error.
+
+
+### Read only mode
+
+You can enable the read only mode by setting the `READ_ONLY_MODE` environment variable to `true` - which will block all the `mutation` queries.
 
 ### Monitoring endpoint
 
