@@ -10,8 +10,8 @@ help:  ## display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n\nTargets:\n"} /^[a-zA-Z0-9_-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 .PHONY: run
-run: ## run application
-	@LOG_LEVEL=warn BLOCK_SCHEMA_INTROSPECTION=false JWT_ROLE_RATE_LIMIT=false JWT_ROLE_CLAIM_PATH="Hasura.x-hasura-default-role" JWT_USER_CLAIM_PATH="Hasura.x-hasura-user-id" HOST_GRAPHQL=https://hasura8.lan/v1/graphql go run *.go
+run: build ## run application
+	@LOG_LEVEL=warn BLOCK_SCHEMA_INTROSPECTION=false JWT_ROLE_RATE_LIMIT=false JWT_ROLE_CLAIM_PATH="Hasura.x-hasura-default-role" JWT_USER_CLAIM_PATH="Hasura.x-hasura-user-id" HOST_GRAPHQL=https://hasura8.lan/v1/graphql ./graphql-proxy
 
 .PHONY: build
 build: ## build the binary

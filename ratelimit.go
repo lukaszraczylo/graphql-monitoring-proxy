@@ -25,60 +25,89 @@ var ratelimit_intervals = map[string]time.Duration{
 }
 
 func loadRatelimitConfig() error {
-	paths := [3]string{"/app/ratelimit.json", "./ratelimit.json", "./static/default-ratelimit.json"}
+	paths := []string{"/app/ratelimit.json", "./ratelimit.json", "./static/default-ratelimit.json"}
+
 	for _, path := range paths {
-		file, err := os.Open(path)
-		if err != nil {
-			continue
+		err := loadConfigFromPath(path)
+		if err == nil {
+			return nil
 		}
-		defer file.Close()
-		decoder := json.NewDecoder(file)
-		config := struct {
-			RateLimit map[string]RateLimitConfig `json:"ratelimit"`
-		}{}
-		err = decoder.Decode(&config)
-		if err != nil {
-			return err
-		}
-
-		for key, value := range config.RateLimit {
-			value.RateCounterTicker = goratecounter.NewRateCounter().WithConfig(goratecounter.RateCounterConfig{
-				Interval: time.Duration(value.Req) * ratelimit_intervals[value.Interval],
-			})
-			cfg.Logger.Debug("Setting ratelimit config for role", map[string]interface{}{"role": key, "interval_provided": value.Interval, "interval_used": ratelimit_intervals[value.Interval], "ratelimit": value.Req})
-			config.RateLimit[key] = value
-		}
-
-		rateLimits = config.RateLimit
-		cfg.Logger.Debug("Rate limit config loaded", map[string]interface{}{"ratelimit": rateLimits})
-		return nil
+		cfg.Logger.Error("Failed to load config", map[string]interface{}{"path": path, "error": err})
 	}
+
 	cfg.Logger.Debug("Rate limit config not found")
 	return os.ErrNotExist
 }
 
-func rateLimitedRequest(userId string, userRole string) (shouldAllow bool) {
+func loadConfigFromPath(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	config := struct {
+		RateLimit map[string]RateLimitConfig `json:"ratelimit"`
+	}{}
+
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&config); err != nil {
+		return err
+	}
+
+	for key, value := range config.RateLimit {
+		value.RateCounterTicker = goratecounter.NewRateCounter().WithConfig(goratecounter.RateCounterConfig{
+			Interval: time.Duration(value.Req) * ratelimit_intervals[value.Interval],
+		})
+		cfg.Logger.Debug("Setting ratelimit config for role", map[string]interface{}{
+			"role":              key,
+			"interval_provided": value.Interval,
+			"interval_used":     ratelimit_intervals[value.Interval],
+			"ratelimit":         value.Req,
+		})
+		config.RateLimit[key] = value
+	}
+
+	rateLimits = config.RateLimit
+	cfg.Logger.Debug("Rate limit config loaded", map[string]interface{}{"ratelimit": rateLimits})
+	return nil
+}
+
+func rateLimitedRequest(userID string, userRole string) (shouldAllow bool) {
 	if rateLimits == nil {
 		cfg.Logger.Debug("Rate limit config not found", map[string]interface{}{"user_role": userRole})
 		return true
 	}
-	// check if userRole is in rateLimits
-	if _, ok := rateLimits[userRole]; !ok {
+
+	// Fetch role config once to avoid multiple map lookups
+	roleConfig, ok := rateLimits[userRole]
+	if !ok {
 		cfg.Logger.Warning("Rate limit role not found", map[string]interface{}{"user_role": userRole})
 		return true
 	}
 
-	if rateLimits[userRole].RateCounterTicker == nil {
+	if roleConfig.RateCounterTicker == nil {
 		cfg.Logger.Warning("Rate limit ticker not found", map[string]interface{}{"user_role": userRole})
 		return true
 	}
 
-	rateLimits[userRole].RateCounterTicker.Incr(1)
-	ticker_rate := rateLimits[userRole].RateCounterTicker.GetRate()
-	cfg.Logger.Debug("Rate limit ticker", map[string]interface{}{"user_role": userRole, "user_id": userId, "rate": ticker_rate, "config_rate": rateLimits[userRole].Req, "interval": rateLimits[userRole].Interval, "interval_duration": rateLimits[userRole].Interval})
-	if ticker_rate > float64(rateLimits[userRole].Req) {
-		cfg.Logger.Debug("Rate limit exceeded", map[string]interface{}{"user_role": userRole, "user_id": userId, "rate": ticker_rate, "config_rate": rateLimits[userRole].Req, "interval": rateLimits[userRole].Interval, "interval_duration": rateLimits[userRole].Interval})
+	roleConfig.RateCounterTicker.Incr(1)
+	tickerRate := roleConfig.RateCounterTicker.GetRate()
+
+	logDetails := map[string]interface{}{
+		"user_role":   userRole,
+		"user_id":     userID,
+		"rate":        tickerRate,
+		"config_rate": roleConfig.Req,
+		"interval":    roleConfig.Interval,
+	}
+
+	cfg.Logger.Debug("Rate limit ticker", logDetails)
+
+	if tickerRate > float64(roleConfig.Req) {
+		cfg.Logger.Debug("Rate limit exceeded", logDetails)
 		return false
 	}
+
 	return true
 }
