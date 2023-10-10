@@ -56,6 +56,9 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 
 	if len(cfg.Client.RoleFromHeader) > 0 {
 		extractedRoleName = string(c.Request().Header.Peek(cfg.Client.RoleFromHeader))
+		if extractedRoleName == "" {
+			extractedRoleName = "-"
+		}
 	}
 
 	// Implementing rate limiting if enabled
