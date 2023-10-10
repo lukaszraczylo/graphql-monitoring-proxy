@@ -9,6 +9,8 @@ import (
 )
 
 func extractClaimsFromJWTHeader(authorization string) (usr string, role string) {
+	usr = "-"
+	role = "-"
 	tokenParts := strings.Split(authorization, ".")
 	if len(tokenParts) != 3 {
 		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)

@@ -24,6 +24,7 @@ func (suite *Tests) BeforeTest(suiteName, testName string) {
 	fmt.Println("BeforeTest")
 	cfg = &config{}
 	parseConfig()
+	StartMonitoringServer()
 }
 
 // func (suite *Tests) AfterTest(suiteName, testName string) {)
