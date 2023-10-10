@@ -45,7 +45,10 @@ I wanted to monitor the queries and responses of our graphql endpoint, but we di
 ### Caching
 
 Cache engine is enabled in background as it does not use any additional resources.
-You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` environment variable to `true` - which will enable the cache for all queries, without introspection of the query. You can leave the global cache disabled and enable the cache for specific queries by adding the `@cache` directive to the query.
+You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` environment variable to `true` - which will enable the cache for all queries, without introspection of the query. You can leave the global cache disabled and enable the cache for specific queries by adding the `@cached` directive to the query.
+
+In case of the `@cached` you can add additional parameters to the directive which will set the cache for specific query to provided time.
+For example `query MyCachedQuery @cached(ttl: 90) ....` will set the cache for the query to 90 seconds.
 
 ### Role based rate limiting
 
