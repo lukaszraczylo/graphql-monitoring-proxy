@@ -14,7 +14,7 @@ I wanted to monitor the queries and responses of our graphql endpoint. Still, we
 
 ### Endpoints
 
-* `:8080/v1/graphql` - the graphql endpoint
+* `:8080/*` - the graphql passthrough endpoint
 * `:9393/metrics` - the prometheus metrics endpoint
 * `:8080/healthz` - the healthcheck endpoint
 
@@ -38,7 +38,7 @@ I wanted to monitor the queries and responses of our graphql endpoint. Still, we
 |---------------------------|------------------------------------------|----------------------------|
 | `MONITORING_PORT`         | The port to expose the metrics endpoint  | `9393`                     |
 | `PORT_GRAPHQL`            | The port to expose the graphql endpoint  | `8080`                     |
-| `HOST_GRAPHQL`            | The host to proxy the graphql endpoint   | `http://localhost/v1/graphql` |
+| `HOST_GRAPHQL`            | The host to proxy the graphql endpoint   | `http://localhost/` |
 | `JWT_USER_CLAIM_PATH`     | Path to the user claim in the JWT token  | ``                         |
 | `JWT_ROLE_CLAIM_PATH`     | Path to the role claim in the JWT token  | ``                         |
 | `JWT_ROLE_FROM_HEADER`    | Header name to extract the role from     | ``                         |

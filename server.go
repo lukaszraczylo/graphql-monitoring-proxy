@@ -21,7 +21,8 @@ func StartHTTPProxy() {
 		AllowOrigins: "*",
 	}))
 
-	server.Post("/v1/graphql", processGraphQLRequest)
+	server.Post("/*", processGraphQLRequest)
+	server.Get("/*", proxyTheRequest)
 
 	server.Get("/healthz", healthCheck)
 	err := server.Listen(fmt.Sprintf(":%d", cfg.Server.PortGraphQL))
@@ -70,9 +71,14 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 		}
 	}
 
-	opType, opName, cacheFromQuery, cache_time, shouldBlock := parseGraphQLQuery(c)
+	opType, opName, cacheFromQuery, cache_time, shouldBlock, should_ignore := parseGraphQLQuery(c)
 	if shouldBlock {
 		return nil
+	}
+
+	if should_ignore {
+		cfg.Logger.Debug("Request passed as-is - not a GraphQL")
+		return proxyTheRequest(c)
 	}
 
 	if cache_time > 0 {

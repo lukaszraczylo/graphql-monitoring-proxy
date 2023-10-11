@@ -20,7 +20,7 @@ func parseConfig() {
 	var c config
 	c.Server.PortGraphQL = envutil.GetInt("PORT_GRAPHQL", 8080)
 	c.Server.PortMonitoring = envutil.GetInt("MONITORING_PORT", 9393)
-	c.Server.HostGraphQL = envutil.Getenv("HOST_GRAPHQL", "http://localhost/v1/graphql")
+	c.Server.HostGraphQL = envutil.Getenv("HOST_GRAPHQL", "http://localhost/")
 	c.Client.JWTUserClaimPath = envutil.Getenv("JWT_USER_CLAIM_PATH", "")
 	c.Client.JWTRoleClaimPath = envutil.Getenv("JWT_ROLE_CLAIM_PATH", "")
 	c.Client.RoleFromHeader = envutil.Getenv("ROLE_FROM_HEADER", "")

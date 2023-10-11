@@ -36,12 +36,13 @@ var retrospection_queries = []string{
 // Saving the introspection queries as a map O(1) operation instead of O(n) for a slice.
 var retrospectionQuerySet = make(map[string]struct{}, len(retrospection_queries))
 
-func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cacheRequest bool, cache_time int, should_block bool) {
+func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cacheRequest bool, cache_time int, should_block bool, should_ignore bool) {
+	should_ignore = true
 	m := make(map[string]interface{})
 	err := json.Unmarshal(c.Body(), &m)
 	if err != nil {
-		cfg.Logger.Error("Can't unmarshal the request", map[string]interface{}{"error": err.Error(), "body": string(c.Body())})
-		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+		cfg.Logger.Debug("Can't unmarshal the request", map[string]interface{}{"error": err.Error(), "body": string(c.Body())})
+		cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 		return
 	}
 	// get the query
@@ -59,6 +60,7 @@ func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cache
 		return
 	}
 
+	should_ignore = false
 	operationName = "undefined"
 	for _, d := range p.Definitions {
 		if oper, ok := d.(*ast.OperationDefinition); ok {
