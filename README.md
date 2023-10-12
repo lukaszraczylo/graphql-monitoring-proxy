@@ -30,6 +30,7 @@ I wanted to monitor the queries and responses of our graphql endpoint. Still, we
 | security   | Blocking schema introspection                                         |
 | security   | Rate limiting queries based on user role                              |
 | security   | Blocking mutations in read-only mode                                  |
+| security   | Allow access only to listed URLs                                      |
 
 
 ### Configuration
@@ -49,6 +50,7 @@ I wanted to monitor the queries and responses of our graphql endpoint. Still, we
 | `BLOCK_SCHEMA_INTROSPECTION`| Blocks the schema introspection       | `false`                    |
 | `ENABLE_ACCESS_LOG`       | Enable the access log                   | `false`                    |
 | `READ_ONLY_MODE`          | Enable the read only mode               | `false`                    |
+| `ALLOWED_URLS`              | Allow access only to certain URLs       | `/v1/graphql,/v1/version`  |
 
 
 ### Caching
@@ -100,6 +102,11 @@ If rate limit has been reached - the proxy will return `429 Too Many Requests` e
 ### Read-only mode
 
 You can enable the read-only mode by setting the `READ_ONLY_MODE` environment variable to `true` - which will block all the `mutation` queries.
+
+### Allowing access to listed URLs
+
+You can allow access only to certain URLs by setting the `ALLOWED_URLS` environment variable to a comma-separated list of URLs. If enabled - other URLs will return `403 Forbidden` error and request will **not** reach the proxied service.
+
 
 ### Monitoring endpoint
 

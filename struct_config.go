@@ -19,6 +19,7 @@ type config struct {
 		HostGraphQL    string
 		AccessLog      bool
 		ReadOnlyMode   bool
+		AllowURLs      []string
 	}
 
 	Client struct {

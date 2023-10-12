@@ -31,6 +31,18 @@ func StartHTTPProxy() {
 	}
 }
 
+func checkAllowedURLs(c *fiber.Ctx) bool {
+	if len(cfg.Server.AllowURLs) == 0 {
+		return true
+	}
+	for _, allowedURL := range cfg.Server.AllowURLs {
+		if c.Path() == allowedURL {
+			return true
+		}
+	}
+	return false
+}
+
 func healthCheck(c *fiber.Ctx) error {
 	// query := `{ __typename }`
 	// _, err := cfg.Client.GQLClient.Query(query, nil, nil)
@@ -131,6 +143,7 @@ func logAndMonitorRequest(c *fiber.Ctx, userID, opType, opName string, wasCached
 	if cfg.Server.AccessLog {
 		cfg.Logger.Info("Request processed", map[string]interface{}{
 			"ip":      c.IP(),
+			"fwd-ip":  string(c.Request().Header.Peek("X-Forwarded-For")),
 			"user_id": userID,
 			"op_type": opType,
 			"op_name": opName,

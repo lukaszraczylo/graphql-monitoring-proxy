@@ -9,8 +9,15 @@ import (
 )
 
 func proxyTheRequest(c *fiber.Ctx) error {
+	if !checkAllowedURLs(c) {
+		cfg.Logger.Error("Request blocked", map[string]interface{}{"path": c.Path()})
+		cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
+		c.Status(403).SendString("Request blocked - not allowed URL")
+		return nil
+	}
+
 	c.Request().Header.Add("X-Real-IP", c.IP())
-	c.Request().Header.Add("X-Forwarded-For", c.IP())
+	c.Request().Header.Add(fiber.HeaderXForwardedFor, string(c.Request().Header.Peek("X-Forwarded-For")))
 
 	proxy.WithTlsConfig(&tls.Config{
 		InsecureSkipVerify: true,

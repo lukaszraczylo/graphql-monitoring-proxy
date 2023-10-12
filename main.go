@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/gookit/goutil/envutil"
 	graphql "github.com/lukaszraczylo/go-simple-graphql"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
@@ -33,6 +35,13 @@ func parseConfig() {
 	c.Client.GQLClient.SetEndpoint(c.Server.HostGraphQL)
 	c.Server.AccessLog = envutil.GetBool("ENABLE_ACCESS_LOG", false)
 	c.Server.ReadOnlyMode = envutil.GetBool("READ_ONLY_MODE", false)
+	c.Server.AllowURLs = func() []string {
+		urls := envutil.Getenv("ALLOWED_URLS", "")
+		if urls == "" {
+			return nil
+		}
+		return strings.Split(urls, ",")
+	}()
 	cfg = &c
 	enableCache() // takes close to no resources, but can be used with dynamic query cache
 	loadRatelimitConfig()
