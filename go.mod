@@ -12,9 +12,10 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/lukaszraczylo/ask v0.0.0-20230927103145-2ff1123b4415
 	github.com/lukaszraczylo/go-ratecounter v0.1.8
-	github.com/lukaszraczylo/go-simple-graphql v1.1.31
+	github.com/lukaszraczylo/go-simple-graphql v1.1.32
 	github.com/rs/zerolog v1.31.0
 	github.com/stretchr/testify v1.8.4
+	github.com/valyala/fasthttp v1.50.0
 )
 
 require (
@@ -34,7 +35,6 @@ require (
 	github.com/rivo/uniseg v0.4.4 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasthttp v1.50.0 // indirect
 	github.com/valyala/fastrand v1.1.0 // indirect
 	github.com/valyala/histogram v1.2.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect

@@ -42,6 +42,7 @@ func parseConfig() {
 		}
 		return strings.Split(urls, ",")
 	}()
+	c.Client.FastProxyClient = createFasthttpClient()
 	cfg = &c
 	enableCache() // takes close to no resources, but can be used with dynamic query cache
 	loadRatelimitConfig()
