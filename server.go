@@ -127,7 +127,13 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 
 // Additional helper function to avoid code repetition
 func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cache_time int) {
-	proxyTheRequest(c)
+	err := proxyTheRequest(c)
+	if err != nil {
+		cfg.Logger.Error("Can't proxy the request", map[string]interface{}{"error": err.Error()})
+		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+		c.Status(500).SendString("Can't proxy the request - try again later")
+		return
+	}
 	cfg.Cache.CacheClient.Set(queryCacheHash, c.Response().Body(), time.Duration(cache_time)*time.Second)
 	c.Send(c.Response().Body())
 }
