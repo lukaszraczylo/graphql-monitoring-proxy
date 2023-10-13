@@ -38,12 +38,14 @@ func proxyTheRequest(c *fiber.Ctx) error {
 
 	proxy.WithClient(cfg.Client.FastProxyClient)
 
+	cfg.Logger.Debug("Proxying the request", map[string]interface{}{"path": c.Path(), "body": string(c.Request().Body())})
 	err := proxy.DoRedirects(c, cfg.Server.HostGraphQL+c.Path(), 3)
 	if err != nil {
 		cfg.Logger.Error("Can't proxy the request", map[string]interface{}{"error": err.Error()})
 		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 		return err
 	}
+	cfg.Logger.Debug("Received proxied response", map[string]interface{}{"path": c.Path(), "response_body": string(c.Response().Body()), "response_code": c.Response().StatusCode()})
 
 	c.Response().Header.Del(fiber.HeaderServer)
 	return nil
