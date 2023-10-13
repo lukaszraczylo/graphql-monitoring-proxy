@@ -11,31 +11,29 @@ type CacheEntry struct {
 }
 
 type Cache struct {
-	sync.Mutex
+	sync.RWMutex
 	entries   map[string]CacheEntry
 	globalTTL time.Duration
-	ticker    *time.Ticker
 }
 
 func New(globalTTL time.Duration) *Cache {
 	cache := &Cache{
 		entries:   make(map[string]CacheEntry),
 		globalTTL: globalTTL,
-		ticker:    time.NewTicker(globalTTL / 2),
 	}
 
-	// Start the cache.
-	cache.Start()
+	// Start the cache cleanup.
+	go cache.cleanupRoutine(globalTTL)
 	return cache
 }
 
-func (c *Cache) Start() {
-	go func() {
-		for {
-			<-c.ticker.C
-			c.CleanExpiredEntries()
-		}
-	}()
+func (c *Cache) cleanupRoutine(globalTTL time.Duration) {
+	ticker := time.NewTicker(globalTTL / 2)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		c.CleanExpiredEntries()
+	}
 }
 
 func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
@@ -55,8 +53,8 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 }
 
 func (c *Cache) Get(key string) ([]byte, bool) {
-	c.Lock()
-	defer c.Unlock()
+	c.RLock()
+	defer c.RUnlock()
 
 	entry, ok := c.entries[key]
 	if !ok || entry.ExpiresAt.Before(time.Now()) {
@@ -75,13 +73,20 @@ func (c *Cache) Delete(key string) {
 
 func (c *Cache) CleanExpiredEntries() {
 	now := time.Now()
+	toDelete := make([]string, 0)
 
-	c.Lock()
-	defer c.Unlock()
-
+	c.RLock()
 	for key, entry := range c.entries {
 		if entry.ExpiresAt.Before(now) {
-			delete(c.entries, key)
+			toDelete = append(toDelete, key)
 		}
 	}
+	c.RUnlock()
+
+	// Separate the deletion to its own critical section to reduce lock contention.
+	c.Lock()
+	for _, key := range toDelete {
+		delete(c.entries, key)
+	}
+	c.Unlock()
 }
