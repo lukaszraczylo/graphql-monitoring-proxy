@@ -12,14 +12,19 @@ type CacheEntry struct {
 
 type Cache struct {
 	sync.RWMutex
-	entries   map[string]CacheEntry
+	entries   sync.Map
 	globalTTL time.Duration
+	bytePool  sync.Pool
 }
 
 func New(globalTTL time.Duration) *Cache {
 	cache := &Cache{
-		entries:   make(map[string]CacheEntry),
 		globalTTL: globalTTL,
+	}
+
+	// Initialize the byte pool.
+	cache.bytePool.New = func() interface{} {
+		return make([]byte, 0)
 	}
 
 	// Start the cache cleanup.
@@ -46,47 +51,64 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 		expiresAt = now.Add(c.globalTTL)
 	}
 
-	c.entries[key] = CacheEntry{
-		Value:     value,
+	// Allocate a byte slice from the pool.
+	entry := CacheEntry{
+		Value:     c.bytePool.Get().([]byte),
 		ExpiresAt: expiresAt,
 	}
+
+	// Copy the value into the byte slice.
+	copy(entry.Value, value)
+
+	// Set the entry in the cache.
+	c.entries.Store(key, entry)
 }
 
 func (c *Cache) Get(key string) ([]byte, bool) {
 	c.RLock()
 	defer c.RUnlock()
 
-	entry, ok := c.entries[key]
-	if !ok || entry.ExpiresAt.Before(time.Now()) {
+	entry, ok := c.entries.Load(key)
+	if !ok || entry.(CacheEntry).ExpiresAt.Before(time.Now()) {
 		return nil, false
 	}
 
-	return entry.Value, true
+	// Copy the value from the byte slice.
+	value := make([]byte, len(entry.(CacheEntry).Value))
+	copy(value, entry.(CacheEntry).Value)
+
+	return value, true
 }
 
 func (c *Cache) Delete(key string) {
 	c.Lock()
 	defer c.Unlock()
 
-	delete(c.entries, key)
+	entry, ok := c.entries.Load(key)
+	if !ok {
+		return
+	}
+
+	// Return the byte slice to the pool.
+	c.bytePool.Put(entry.(CacheEntry).Value)
+
+	// Delete the entry from the cache.
+	c.entries.Delete(key)
 }
 
 func (c *Cache) CleanExpiredEntries() {
 	now := time.Now()
-	toDelete := make([]string, 0)
-
-	c.RLock()
-	for key, entry := range c.entries {
+	c.entries.Range(func(key, value interface{}) bool {
+		entry := value.(CacheEntry)
 		if entry.ExpiresAt.Before(now) {
-			toDelete = append(toDelete, key)
-		}
-	}
-	c.RUnlock()
+			// Return the byte slice to the pool.
+			c.bytePool.Put(entry.Value)
 
-	// Separate the deletion to its own critical section to reduce lock contention.
-	c.Lock()
-	for _, key := range toDelete {
-		delete(c.entries, key)
-	}
-	c.Unlock()
+			// Delete the entry from the cache.
+			c.entries.Delete(key)
+		}
+
+		// Return true to continue iterating over the map.
+		return true
+	})
 }
