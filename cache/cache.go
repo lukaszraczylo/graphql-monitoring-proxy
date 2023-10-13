@@ -44,23 +44,22 @@ func (c *Cache) cleanupRoutine(globalTTL time.Duration) {
 func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 	c.Lock()
 	defer c.Unlock()
+	expiresAt := time.Now().Add(ttl)
 
-	now := time.Now()
-	expiresAt := now.Add(ttl)
-	if expiresAt.After(now.Add(c.globalTTL)) {
-		expiresAt = now.Add(c.globalTTL)
+	// Get a byte slice from the pool and ensure it's properly sized.
+	b := c.bytePool.Get().([]byte)
+	if cap(b) < len(value) {
+		b = make([]byte, len(value))
+	} else {
+		b = b[:len(value)]
 	}
 
-	// Allocate a byte slice from the pool.
+	copy(b, value)
+
 	entry := CacheEntry{
-		Value:     c.bytePool.Get().([]byte),
+		Value:     b,
 		ExpiresAt: expiresAt,
 	}
-
-	// Copy the value into the byte slice.
-	copy(entry.Value, value)
-
-	// Set the entry in the cache.
 	c.entries.Store(key, entry)
 }
 
@@ -76,7 +75,6 @@ func (c *Cache) Get(key string) ([]byte, bool) {
 	// Copy the value from the byte slice.
 	value := make([]byte, len(entry.(CacheEntry).Value))
 	copy(value, entry.(CacheEntry).Value)
-
 	return value, true
 }
 

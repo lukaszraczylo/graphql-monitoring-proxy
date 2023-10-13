@@ -27,7 +27,7 @@ func (suite *Tests) Test_cacheLookup() {
 		{
 			name: "test_existent",
 			args: args{
-				hash: "00000000000000000000000000000000000001",
+				hash: "00000000000000000000000000000000001337",
 			},
 			want: []byte("it's fine."),
 			addCache: struct {
@@ -40,7 +40,7 @@ func (suite *Tests) Test_cacheLookup() {
 	for _, tt := range tests {
 		suite.T().Run(tt.name, func(t *testing.T) {
 			if tt.addCache.data != nil {
-				cfg.Cache.CacheClient.Set(tt.args.hash, tt.addCache.data, time.Duration(1)*time.Second)
+				cfg.Cache.CacheClient.Set(tt.args.hash, tt.addCache.data, time.Duration(90*time.Second))
 			}
 			got := cacheLookup(tt.args.hash)
 			assert.Equal(tt.want, got, "Unexpected cache lookup result")
