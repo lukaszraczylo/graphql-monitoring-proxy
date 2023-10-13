@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/akyoto/cache"
 	graphql "github.com/lukaszraczylo/go-simple-graphql"
+	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 	"github.com/valyala/fasthttp"
@@ -36,7 +36,7 @@ type config struct {
 	Cache struct {
 		CacheEnable bool
 		CacheTTL    int
-		CacheClient *cache.Cache
+		CacheClient *libpack_cache.Cache
 	}
 
 	Security struct {

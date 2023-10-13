@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/akyoto/cache"
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/gookit/goutil/strutil"
+	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 )
 
 func calculateHash(c *fiber.Ctx) string {
@@ -14,19 +14,14 @@ func calculateHash(c *fiber.Ctx) string {
 }
 
 func enableCache() {
-	var err error
-	cfg.Cache.CacheClient = cache.New(time.Duration(cfg.Cache.CacheTTL) * time.Second * 2)
-	if err != nil {
-		cfg.Logger.Critical("Can't create cache client", map[string]interface{}{"error": err.Error()})
-		panic(err)
-	}
+	cfg.Cache.CacheClient = libpack_cache.New(time.Duration(cfg.Cache.CacheTTL) * time.Second * 2)
 }
 
 func cacheLookup(hash string) []byte {
 	if cfg.Cache.CacheClient != nil {
 		obj, found := cfg.Cache.CacheClient.Get(hash)
 		if found {
-			return obj.([]byte)
+			return obj
 		}
 	}
 	return nil

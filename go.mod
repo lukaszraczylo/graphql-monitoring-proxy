@@ -4,10 +4,9 @@ go 1.21
 
 require (
 	github.com/VictoriaMetrics/metrics v1.24.0
-	github.com/akyoto/cache v1.0.6
 	github.com/buger/jsonparser v1.1.1
 	github.com/gofiber/fiber/v2 v2.49.2
-	github.com/gookit/goutil v0.6.12
+	github.com/gookit/goutil v0.6.13
 	github.com/graphql-go/graphql v0.8.1
 	github.com/json-iterator/go v1.1.12
 	github.com/lukaszraczylo/ask v0.0.0-20230927103145-2ff1123b4415
@@ -19,6 +18,7 @@ require (
 )
 
 require (
+	github.com/akyoto/cache v1.0.6 // indirect
 	github.com/andybalholm/brotli v1.0.5 // indirect
 	github.com/avast/retry-go/v4 v4.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
