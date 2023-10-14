@@ -42,7 +42,7 @@ I wanted to monitor the queries and responses of our graphql endpoint. Still, we
 | `HOST_GRAPHQL`            | The host to proxy the graphql endpoint   | `http://localhost/` |
 | `JWT_USER_CLAIM_PATH`     | Path to the user claim in the JWT token  | ``                         |
 | `JWT_ROLE_CLAIM_PATH`     | Path to the role claim in the JWT token  | ``                         |
-| `JWT_ROLE_FROM_HEADER`    | Header name to extract the role from     | ``                         |
+| `ROLE_FROM_HEADER`        | Header name to extract the role from     | ``                         |
 | `ROLE_RATE_LIMIT`         | Enable request rate limiting based on role| `false`                   |
 | `ENABLE_GLOBAL_CACHE`     | Enable the cache                        | `false`                    |
 | `CACHE_TTL`               | The cache TTL                           | `60`                       |
