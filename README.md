@@ -48,6 +48,7 @@ I wanted to monitor the queries and responses of our graphql endpoint. Still, we
 | `CACHE_TTL`               | The cache TTL                           | `60`                       |
 | `LOG_LEVEL`               | The log level                           | `info`                     |
 | `BLOCK_SCHEMA_INTROSPECTION`| Blocks the schema introspection       | `false`                    |
+| `ALLOWED_INTROSPECTION`  | Allow only certain queries in introspection | ``                  |
 | `ENABLE_ACCESS_LOG`       | Enable the access log                   | `false`                    |
 | `READ_ONLY_MODE`          | Enable the read only mode               | `false`                    |
 | `ALLOWED_URLS`              | Allow access only to certain URLs       | `/v1/graphql,/v1/version`  |
@@ -107,6 +108,15 @@ You can enable the read-only mode by setting the `READ_ONLY_MODE` environment va
 
 You can allow access only to certain URLs by setting the `ALLOWED_URLS` environment variable to a comma-separated list of URLs. If enabled - other URLs will return `403 Forbidden` error and request will **not** reach the proxied service.
 
+### Blocking introspection
+
+You can block the schema introspection by setting the `BLOCK_SCHEMA_INTROSPECTION` environment variable to `true` - which will block all the queries with introspection parts, like:
+
+`__schema`, `__type`, `__typename`, `__directive`, `__directivelocation`, `__field`, `__inputvalue`, `__enumvalue`, `__typekind`, `__fieldtype`, `__inputobjecttype`, `__enumtype`, `__uniontype`, `__scalars`, `__objects`, `__interfaces`, `__unions`, `__enums`, `__inputobjects`, `__directives`
+
+If you'd like to keep blocking of the schema introspection on but allow one or more of from the list of above for any reason, you can use the `ALLOWED_INTROSPECTION` environment variable to specify the list of allowed queries.
+
+`ALLOWED_INTROSPECTION="__typename,__type"`
 
 ### Monitoring endpoint
 

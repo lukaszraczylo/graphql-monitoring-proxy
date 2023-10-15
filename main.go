@@ -30,6 +30,13 @@ func parseConfig() {
 	c.Cache.CacheEnable = envutil.GetBool("ENABLE_GLOBAL_CACHE", false)
 	c.Cache.CacheTTL = envutil.GetInt("CACHE_TTL", 60)
 	c.Security.BlockIntrospection = envutil.GetBool("BLOCK_SCHEMA_INTROSPECTION", false)
+	c.Security.IntrospectionAllowed = func() []string {
+		urls := envutil.Getenv("ALLOWED_INTROSPECTION", "")
+		if urls == "" {
+			return nil
+		}
+		return strings.Split(urls, ",")
+	}()
 	c.Logger = libpack_logging.NewLogger()
 	c.Client.GQLClient = graphql.NewConnection()
 	c.Client.GQLClient.SetEndpoint(c.Server.HostGraphQL)

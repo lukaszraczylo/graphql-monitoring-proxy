@@ -96,7 +96,15 @@ func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cache
 			if cfg.Security.BlockIntrospection {
 				for _, s := range oper.SelectionSet.Selections {
 					for _, s2 := range s.GetSelectionSet().Selections {
-						if _, exists := retrospectionQuerySet[s2.(*ast.Field).Name.Value]; exists {
+						if _, exists := retrospectionQuerySet[strings.ToLower(s2.(*ast.Field).Name.Value)]; exists {
+							if len(cfg.Security.IntrospectionAllowed) > 0 {
+								for _, introspectionQueryAllowed := range cfg.Security.IntrospectionAllowed {
+									if strings.EqualFold(strings.ToLower(introspectionQueryAllowed), strings.ToLower(s2.(*ast.Field).Name.Value)) {
+										cfg.Logger.Debug("Introspection query allowed, passing through", m)
+										return
+									}
+								}
+							}
 							cfg.Logger.Warning("Introspection query blocked", m)
 							cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 							c.Status(403).SendString("Introspection queries are not allowed")

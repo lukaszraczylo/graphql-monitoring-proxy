@@ -40,6 +40,7 @@ type config struct {
 	}
 
 	Security struct {
-		BlockIntrospection bool
+		BlockIntrospection   bool
+		IntrospectionAllowed []string
 	}
 }
