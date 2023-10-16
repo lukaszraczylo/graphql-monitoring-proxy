@@ -17,6 +17,7 @@ I wanted to monitor the queries and responses of our graphql endpoint. Still, we
 * `:8080/*` - the graphql passthrough endpoint
 * `:9393/metrics` - the prometheus metrics endpoint
 * `:8080/healthz` - the healthcheck endpoint
+* `:8080/livez` - the liveness probe endpoint
 
 ### Features
 

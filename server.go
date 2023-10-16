@@ -25,6 +25,8 @@ func StartHTTPProxy() {
 	server.Get("/*", proxyTheRequest)
 
 	server.Get("/healthz", healthCheck)
+	server.Get("/livez", healthCheck)
+
 	err := server.Listen(fmt.Sprintf(":%d", cfg.Server.PortGraphQL))
 	if err != nil {
 		cfg.Logger.Critical("Can't start the service", map[string]interface{}{"error": err.Error()})
