@@ -5,26 +5,25 @@ go 1.21
 require (
 	github.com/VictoriaMetrics/metrics v1.24.0
 	github.com/buger/jsonparser v1.1.1
-	github.com/gofiber/fiber/v2 v2.49.2
-	github.com/gookit/goutil v0.6.13
+	github.com/gofiber/fiber/v2 v2.50.0
+	github.com/gookit/goutil v0.6.14
 	github.com/graphql-go/graphql v0.8.1
 	github.com/json-iterator/go v1.1.12
 	github.com/lukaszraczylo/ask v0.0.0-20230927103145-2ff1123b4415
 	github.com/lukaszraczylo/go-ratecounter v0.1.8
-	github.com/lukaszraczylo/go-simple-graphql v1.1.32
+	github.com/lukaszraczylo/go-simple-graphql v1.1.34
 	github.com/rs/zerolog v1.31.0
 	github.com/stretchr/testify v1.8.4
 	github.com/valyala/fasthttp v1.50.0
 )
 
 require (
-	github.com/akyoto/cache v1.0.6 // indirect
-	github.com/andybalholm/brotli v1.0.5 // indirect
+	github.com/andybalholm/brotli v1.0.6 // indirect
 	github.com/avast/retry-go/v4 v4.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/google/uuid v1.3.1 // indirect
 	github.com/gookit/color v1.5.4 // indirect
-	github.com/klauspost/compress v1.17.0 // indirect
+	github.com/klauspost/compress v1.17.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
