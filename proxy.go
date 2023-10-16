@@ -33,7 +33,7 @@ func proxyTheRequest(c *fiber.Ctx) error {
 		c.Status(403).SendString("Request blocked - not allowed URL")
 		return nil
 	}
-	c.Request().Header.DisableNormalizing()
+	// c.Request().Header.DisableNormalizing()
 	c.Request().Header.Add("X-Real-IP", c.IP())
 	c.Request().Header.Add(fiber.HeaderXForwardedFor, string(c.Request().Header.Peek("X-Forwarded-For")))
 
