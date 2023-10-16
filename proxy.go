@@ -33,20 +33,20 @@ func proxyTheRequest(c *fiber.Ctx) error {
 		c.Status(403).SendString("Request blocked - not allowed URL")
 		return nil
 	}
-
+	c.Request().Header.DisableNormalizing()
 	c.Request().Header.Add("X-Real-IP", c.IP())
 	c.Request().Header.Add(fiber.HeaderXForwardedFor, string(c.Request().Header.Peek("X-Forwarded-For")))
 
 	proxy.WithClient(cfg.Client.FastProxyClient)
 
-	cfg.Logger.Debug("Proxying the request", map[string]interface{}{"path": c.Path(), "body": string(c.Request().Body())})
+	cfg.Logger.Debug("Proxying the request", map[string]interface{}{"path": c.Path(), "body": string(c.Request().Body()), "headers": c.GetReqHeaders()})
 	err := proxy.DoRedirects(c, cfg.Server.HostGraphQL+c.Path(), 3)
 	if err != nil {
 		cfg.Logger.Error("Can't proxy the request", map[string]interface{}{"error": err.Error()})
 		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 		return err
 	}
-	cfg.Logger.Debug("Received proxied response", map[string]interface{}{"path": c.Path(), "response_body": string(c.Response().Body()), "response_code": c.Response().StatusCode()})
+	cfg.Logger.Debug("Received proxied response", map[string]interface{}{"path": c.Path(), "response_body": string(c.Response().Body()), "response_code": c.Response().StatusCode(), "headers": c.GetRespHeaders()})
 
 	if c.Response().StatusCode() != 200 {
 		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
