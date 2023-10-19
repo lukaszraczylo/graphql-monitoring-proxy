@@ -50,9 +50,13 @@ func parseConfig() {
 		return strings.Split(urls, ",")
 	}()
 	c.Client.FastProxyClient = createFasthttpClient()
+	c.Server.EnableApi = envutil.GetBool("ENABLE_API", false)
+	c.Server.ApiPort = envutil.GetInt("API_PORT", 9090)
+	c.Api.BannedUsersFile = envutil.Getenv("BANNED_USERS_FILE", "/go/src/app/banned_users.json")
 	cfg = &c
 	enableCache() // takes close to no resources, but can be used with dynamic query cache
 	loadRatelimitConfig()
+	enableApi()
 }
 
 func main() {

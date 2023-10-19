@@ -10,6 +10,7 @@ import (
 	"github.com/VictoriaMetrics/metrics"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gookit/goutil/envutil"
+	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
@@ -33,8 +34,7 @@ func NewMonitoring() *MetricsSetup {
 func (ms *MetricsSetup) startPrometheusEndpoint() {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
-		Prefork:               true,
-		AppName:               "GraphQL Monitoring Proxy",
+		AppName:               fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
 	})
 	app.Get("/metrics", ms.metricsEndpoint)
 	err := app.Listen(fmt.Sprintf(":%d", envutil.GetInt("MONITORING_PORT", 9393)))

@@ -6,6 +6,7 @@ require (
 	github.com/VictoriaMetrics/metrics v1.24.0
 	github.com/buger/jsonparser v1.1.1
 	github.com/gofiber/fiber/v2 v2.50.0
+	github.com/gofrs/flock v0.8.1
 	github.com/gookit/goutil v0.6.14
 	github.com/graphql-go/graphql v0.8.1
 	github.com/json-iterator/go v1.1.12
@@ -26,7 +27,7 @@ require (
 	github.com/klauspost/compress v1.17.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.19 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect

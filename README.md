@@ -8,6 +8,23 @@ This project is in active use by [telegram-bot.app](https://telegram-bot.app), a
 
 You can find the example of the Kubernetes manifest in the [example deployment](static/kubernetes-deployment.yaml) file.
 
+- [graphql monitoring proxy](#graphql-monitoring-proxy)
+  - [Why this project exists](#why-this-project-exists)
+  - [Endpoints](#endpoints)
+  - [Features](#features)
+  - [Configuration](#configuration)
+  - [Speed](#speed)
+    - [Caching](#caching)
+  - [Security](#security)
+    - [Role-based rate limiting](#role-based-rate-limiting)
+    - [Read-only mode](#read-only-mode)
+    - [Allowing access to listed URLs](#allowing-access-to-listed-urls)
+    - [Blocking introspection](#blocking-introspection)
+  - [API endpoints](#api-endpoints)
+    - [Ban or unban the user](#ban-or-unban-the-user)
+  - [Monitoring endpoint](#monitoring-endpoint)
+
+
 ### Why this project exists
 
 I wanted to monitor the queries and responses of our graphql endpoint. Still, we didn't want to pay the price of the graphql server itself ( and I will not point fingers at a particular well-known project), as monitoring and basic security features should be a standard, free functionality.
@@ -18,6 +35,7 @@ I wanted to monitor the queries and responses of our graphql endpoint. Still, we
 * `:9393/metrics` - the prometheus metrics endpoint
 * `:8080/healthz` - the healthcheck endpoint
 * `:8080/livez` - the liveness probe endpoint
+* `:9090/api/*` - the monitoring proxy API endpoint
 
 ### Features
 
@@ -32,6 +50,7 @@ I wanted to monitor the queries and responses of our graphql endpoint. Still, we
 | security   | Rate limiting queries based on user role                              |
 | security   | Blocking mutations in read-only mode                                  |
 | security   | Allow access only to listed URLs                                      |
+| security   | Ban / unban specific user from accessing the application              |
 
 
 ### Configuration
@@ -53,9 +72,13 @@ I wanted to monitor the queries and responses of our graphql endpoint. Still, we
 | `ENABLE_ACCESS_LOG`       | Enable the access log                   | `false`                    |
 | `READ_ONLY_MODE`          | Enable the read only mode               | `false`                    |
 | `ALLOWED_URLS`              | Allow access only to certain URLs       | `/v1/graphql,/v1/version`  |
+| `ENABLE_API`              | Enable the monitoring API               | `false`                    |
+| `API_PORT`                | The port to expose the monitoring API   | `9090`                     |
+| `BANNED_USERS_FILE`       | The path to the file with banned users  | `/go/src/app/banned_users.json`   |
 
+### Speed
 
-### Caching
+#### Caching
 
 The cache engine is enabled in the background by default, using no additional resources.
 You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` environment variable to `true` - which will enable the cache for all queries without introspection. You can leave the global cache disabled and enable the cache for specific queries by adding the `@cached` directive to the query.
@@ -63,7 +86,9 @@ You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` environm
 In the case of the `@cached` you can add additional parameters to the directive which will set the cache for specific queries to the provided time.
 For example, `query MyCachedQuery @cached(ttl: 90) ....` will set the cache for the query to 90 seconds.
 
-### Role-based rate limiting
+### Security
+
+#### Role-based rate limiting
 
 You can rate limit requests using the `ROLE_RATE_LIMIT` environment variable. If enabled, the proxy will rate limit the requests based on the role claim in the JWT token. You can then provide the JSON file in the following format to specify the limits.
 The default interval is `second`, but you can use other values as well. If you want to disable the rate limiting for a specific role, you can set the `req` to `0`.
@@ -101,15 +126,15 @@ Remember to include the `-` role, which is used for unauthenticated users or whe
 If rate limit has been reached - the proxy will return `429 Too Many Requests` error.
 
 
-### Read-only mode
+#### Read-only mode
 
 You can enable the read-only mode by setting the `READ_ONLY_MODE` environment variable to `true` - which will block all the `mutation` queries.
 
-### Allowing access to listed URLs
+#### Allowing access to listed URLs
 
 You can allow access only to certain URLs by setting the `ALLOWED_URLS` environment variable to a comma-separated list of URLs. If enabled - other URLs will return `403 Forbidden` error and request will **not** reach the proxied service.
 
-### Blocking introspection
+#### Blocking introspection
 
 You can block the schema introspection by setting the `BLOCK_SCHEMA_INTROSPECTION` environment variable to `true` - which will block all the queries with introspection parts, like:
 
@@ -118,6 +143,35 @@ You can block the schema introspection by setting the `BLOCK_SCHEMA_INTROSPECTIO
 If you'd like to keep blocking of the schema introspection on but allow one or more of from the list of above for any reason, you can use the `ALLOWED_INTROSPECTION` environment variable to specify the list of allowed queries.
 
 `ALLOWED_INTROSPECTION="__typename,__type"`
+
+### API endpoints
+
+#### Ban or unban the user
+
+Your monitoring system can detect user misbehaving, for example trying to extract / scrap the data. To prevent user from doing so you can use the simple API to ban the user from accessing the application.
+
+To do so - you need to enable the api by setting env variable `ENABLE_API=true` which will expose the API on the port `API_PORT=9090`. Nedless to say - keep it secure and don't expose it outside of your cluster.
+
+ Then you can use the following endpoints:
+
+* `POST /api/user-ban` - ban the user from accessing the application
+* `POST /api/user-unban` - unban the user from accessing the application
+
+Both endpoints require the `user_id` parameter to be present in the request body and allow you to provide the reason for the ban.
+
+Example request:
+
+```bash
+curl -X POST \
+  http://localhost:9090/api/user-ban \
+  -H 'Content-Type: application/json' \
+  -d '{
+      "user_id": "1337",
+      "reason": "Scraping data"
+    }'
+```
+
+Ban details will be stored in the `banned_users.json` file, which you can mount as a file or configmap to the `/go/src/app/banned_users.json` path ( or use `BANNED_USERS_FILE` environment variable to specify the path to the file). The file operation is important if you have multiple instances of the proxy running, as it will allow you to ban the user from accessing the application on all instances.
 
 ### Monitoring endpoint
 
