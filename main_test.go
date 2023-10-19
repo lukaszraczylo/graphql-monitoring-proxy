@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"testing"
 
 	assertions "github.com/stretchr/testify/assert"
@@ -21,14 +20,13 @@ func (suite *Tests) SetupTest() {
 }
 
 func (suite *Tests) BeforeTest(suiteName, testName string) {
-	fmt.Println("BeforeTest")
-	cfg = &config{}
-	parseConfig()
-	StartMonitoringServer()
 }
 
 // func (suite *Tests) AfterTest(suiteName, testName string) {)
 
 func TestSuite(t *testing.T) {
+	cfg = &config{}
+	parseConfig()
+	StartMonitoringServer()
 	suite.Run(t, new(Tests))
 }
