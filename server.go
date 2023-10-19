@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 
 	jsoniter "github.com/json-iterator/go"
+	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
 
@@ -15,7 +16,10 @@ var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // StartHTTPProxy starts the HTTP and points it to the GraphQL server.
 func StartHTTPProxy() {
-	server := fiber.New()
+	server := fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+		AppName:               fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
+	})
 
 	server.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
@@ -67,6 +71,10 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	authorization := c.Request().Header.Peek("Authorization")
 	if authorization != nil && (len(cfg.Client.JWTUserClaimPath) > 0 || len(cfg.Client.JWTRoleClaimPath) > 0) {
 		extractedUserID, extractedRoleName = extractClaimsFromJWTHeader(string(authorization))
+	}
+
+	if checkIfUserIsBanned(c, extractedUserID) {
+		return nil
 	}
 
 	if len(cfg.Client.RoleFromHeader) > 0 {

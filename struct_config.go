@@ -21,6 +21,8 @@ type config struct {
 		AccessLog      bool
 		ReadOnlyMode   bool
 		AllowURLs      []string
+		EnableApi      bool
+		ApiPort        int
 	}
 
 	Client struct {
@@ -37,6 +39,10 @@ type config struct {
 		CacheEnable bool
 		CacheTTL    int
 		CacheClient *libpack_cache.Cache
+	}
+
+	Api struct {
+		BannedUsersFile string
 	}
 
 	Security struct {
