@@ -38,8 +38,9 @@ func parseConfig() {
 		return strings.Split(urls, ",")
 	}()
 	c.Logger = libpack_logging.NewLogger()
+	c.Server.HealthcheckGraphQL = envutil.Getenv("HEALTHCHECK_GRAPHQL_URL", "")
 	c.Client.GQLClient = graphql.NewConnection()
-	c.Client.GQLClient.SetEndpoint(c.Server.HostGraphQL)
+	c.Client.GQLClient.SetEndpoint(c.Server.HealthcheckGraphQL)
 	c.Server.AccessLog = envutil.GetBool("ENABLE_ACCESS_LOG", false)
 	c.Server.ReadOnlyMode = envutil.GetBool("READ_ONLY_MODE", false)
 	c.Server.AllowURLs = func() []string {

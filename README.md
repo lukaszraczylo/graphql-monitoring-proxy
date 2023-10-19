@@ -22,7 +22,9 @@ You can find the example of the Kubernetes manifest in the [example deployment](
     - [Blocking introspection](#blocking-introspection)
   - [API endpoints](#api-endpoints)
     - [Ban or unban the user](#ban-or-unban-the-user)
-  - [Monitoring endpoint](#monitoring-endpoint)
+  - [General](#general)
+    - [Healthcheck](#healthcheck)
+    - [Monitoring endpoint](#monitoring-endpoint)
 
 
 ### Why this project exists
@@ -60,6 +62,7 @@ I wanted to monitor the queries and responses of our graphql endpoint. Still, we
 | `MONITORING_PORT`         | The port to expose the metrics endpoint  | `9393`                     |
 | `PORT_GRAPHQL`            | The port to expose the graphql endpoint  | `8080`                     |
 | `HOST_GRAPHQL`            | The host to proxy the graphql endpoint   | `http://localhost/` |
+| `HEALTHCHECK_GRAPHQL_URL` | The URL to check the health of the graphql endpoint | `` |
 | `JWT_USER_CLAIM_PATH`     | Path to the user claim in the JWT token  | ``                         |
 | `JWT_ROLE_CLAIM_PATH`     | Path to the role claim in the JWT token  | ``                         |
 | `ROLE_FROM_HEADER`        | Header name to extract the role from     | ``                         |
@@ -173,7 +176,13 @@ curl -X POST \
 
 Ban details will be stored in the `banned_users.json` file, which you can mount as a file or configmap to the `/go/src/app/banned_users.json` path ( or use `BANNED_USERS_FILE` environment variable to specify the path to the file). The file operation is important if you have multiple instances of the proxy running, as it will allow you to ban the user from accessing the application on all instances.
 
-### Monitoring endpoint
+### General
+
+#### Healthcheck
+
+If you'd like the `/healthz` endpoint to perform actual check for the connectivity to the graphql endpoint - set the `HEALTHCHECK_GRAPHQL_URL` environment variable to the exact URL of the graphql endpoint. The query executed will be `query { __typename }` and if the response is not `200 OK` - the healthcheck will fail.
+
+#### Monitoring endpoint
 
 Example metrics produced by the proxy:
 

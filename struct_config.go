@@ -15,14 +15,15 @@ type config struct {
 
 	// Server holds the configuration of the server _ONLY_.
 	Server struct {
-		PortGraphQL    int
-		PortMonitoring int
-		HostGraphQL    string
-		AccessLog      bool
-		ReadOnlyMode   bool
-		AllowURLs      []string
-		EnableApi      bool
-		ApiPort        int
+		PortGraphQL        int
+		PortMonitoring     int
+		HostGraphQL        string
+		HealthcheckGraphQL string
+		AccessLog          bool
+		ReadOnlyMode       bool
+		AllowURLs          []string
+		EnableApi          bool
+		ApiPort            int
 	}
 
 	Client struct {

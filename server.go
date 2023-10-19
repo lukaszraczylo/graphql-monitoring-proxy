@@ -25,12 +25,13 @@ func StartHTTPProxy() {
 		AllowOrigins: "*",
 	}))
 
-	server.Post("/*", processGraphQLRequest)
-	server.Get("/*", proxyTheRequest)
-
 	server.Get("/healthz", healthCheck)
 	server.Get("/livez", healthCheck)
 
+	server.Post("/*", processGraphQLRequest)
+	server.Get("/*", proxyTheRequest)
+
+	cfg.Logger.Info("GraphQL query proxy started", map[string]interface{}{"port": cfg.Server.PortGraphQL})
 	err := server.Listen(fmt.Sprintf(":%d", cfg.Server.PortGraphQL))
 	if err != nil {
 		cfg.Logger.Critical("Can't start the service", map[string]interface{}{"error": err.Error()})
@@ -50,14 +51,20 @@ func checkAllowedURLs(c *fiber.Ctx) bool {
 }
 
 func healthCheck(c *fiber.Ctx) error {
-	// query := `{ __typename }`
-	// _, err := cfg.Client.GQLClient.Query(query, nil, nil)
-	// if err != nil {
-	// 	cfg.Logger.Error("Can't reach the GraphQL server", map[string]interface{}{"error": err.Error()})
-	// 	cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
-	// 	return c.SendStatus(500)
-	// }
-	return c.SendStatus(200)
+	if len(cfg.Server.HealthcheckGraphQL) > 0 {
+		cfg.Logger.Debug("Health check enabled", map[string]interface{}{"url": cfg.Server.HealthcheckGraphQL})
+		query := `{ __typename }`
+		_, err := cfg.Client.GQLClient.Query(query, nil, nil)
+		if err != nil {
+			cfg.Logger.Error("Can't reach the GraphQL server", map[string]interface{}{"error": err.Error()})
+			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+			c.Status(500).SendString("Can't reach the GraphQL server with {__typename} query")
+			return err
+		}
+	}
+	cfg.Logger.Debug("Health check returning OK")
+	c.Status(200).SendString("Health check OK")
+	return nil
 }
 
 func processGraphQLRequest(c *fiber.Ctx) error {
