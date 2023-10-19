@@ -180,7 +180,7 @@ Ban details will be stored in the `banned_users.json` file, which you can mount 
 
 #### Healthcheck
 
-If you'd like the `/healthz` endpoint to perform actual check for the connectivity to the graphql endpoint - set the `HEALTHCHECK_GRAPHQL_URL` environment variable to the exact URL of the graphql endpoint. The query executed will be `query { __typename }` and if the response is not `200 OK` - the healthcheck will fail.
+If you'd like the `/healthz` endpoint to perform actual check for the connectivity to the graphql endpoint - set the `HEALTHCHECK_GRAPHQL_URL` environment variable to the exact URL of the graphql endpoint. The query executed will be `query { __typename }` and if the response is not `200 OK` - the healthcheck will fail. Remember that the endpoint is a full URL which you'd like to check, so it should include the protocol, host and path - for example `http://localhost:8080/v1/graphql` and it's NOT the same as value of `HOST_GRAPHQL` environment variable which should provide only the host, without path, ending with slash.
 
 #### Monitoring endpoint
 
