@@ -15,7 +15,11 @@ var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // StartHTTPProxy starts the HTTP and points it to the GraphQL server.
 func StartHTTPProxy() {
-	server := fiber.New()
+	server := fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+		Prefork:               true,
+		AppName:               "GraphQL Monitoring Proxy",
+	})
 
 	server.Use(cors.New(cors.Config{
 		AllowOrigins: "*",

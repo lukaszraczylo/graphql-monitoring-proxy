@@ -31,7 +31,11 @@ func NewMonitoring() *MetricsSetup {
 }
 
 func (ms *MetricsSetup) startPrometheusEndpoint() {
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+		Prefork:               true,
+		AppName:               "GraphQL Monitoring Proxy",
+	})
 	app.Get("/metrics", ms.metricsEndpoint)
 	err := app.Listen(fmt.Sprintf(":%d", envutil.GetInt("MONITORING_PORT", 9393)))
 	if err != nil {
@@ -46,7 +50,6 @@ func (ms *MetricsSetup) metricsEndpoint(c *fiber.Ctx) error {
 
 func (ms *MetricsSetup) AddMetricsPrefix(prefix string) {
 	ms.metrics_prefix = prefix
-	return
 }
 
 func (ms *MetricsSetup) ListActiveMetrics() []string {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"time"
 
 	fiber "github.com/gofiber/fiber/v2"
@@ -10,7 +9,7 @@ import (
 )
 
 func calculateHash(c *fiber.Ctx) string {
-	return strutil.Md5(fmt.Sprintf("%s", c.Body()))
+	return strutil.Md5(c.Body())
 }
 
 func enableCache() {
