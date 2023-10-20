@@ -1,6 +1,9 @@
 package libpack_cache
 
 import (
+	"bytes"
+	"compress/gzip"
+	"io"
 	"sync"
 	"time"
 )
@@ -46,15 +49,20 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 	defer c.Unlock()
 	expiresAt := time.Now().Add(ttl)
 
-	// Get a byte slice from the pool and ensure it's properly sized.
-	b := c.bytePool.Get().([]byte)
-	if cap(b) < len(value) {
-		b = make([]byte, len(value))
-	} else {
-		b = b[:len(value)]
+	compressedValue, err := c.compress(value)
+	if err != nil {
+		return
 	}
 
-	copy(b, value)
+	// Get a byte slice from the pool and ensure it's properly sized.
+	b := c.bytePool.Get().([]byte)
+	if cap(b) < len(compressedValue) {
+		b = make([]byte, len(compressedValue))
+	} else {
+		b = b[:len(compressedValue)]
+	}
+
+	copy(b, compressedValue)
 
 	entry := CacheEntry{
 		Value:     b,
@@ -71,10 +79,12 @@ func (c *Cache) Get(key string) ([]byte, bool) {
 	if !ok || entry.(CacheEntry).ExpiresAt.Before(time.Now()) {
 		return nil, false
 	}
+	compressedValue := entry.(CacheEntry).Value
+	value, err := c.decompress(compressedValue)
+	if err != nil {
+		return nil, false
+	}
 
-	// Copy the value from the byte slice.
-	value := make([]byte, len(entry.(CacheEntry).Value))
-	copy(value, entry.(CacheEntry).Value)
 	return value, true
 }
 
@@ -109,4 +119,27 @@ func (c *Cache) CleanExpiredEntries() {
 		// Return true to continue iterating over the map.
 		return true
 	})
+}
+
+func (c *Cache) compress(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	w := gzip.NewWriter(&buf)
+	_, err := w.Write(data)
+	if err != nil {
+		return nil, err
+	}
+	err = w.Close()
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (c *Cache) decompress(data []byte) ([]byte, error) {
+	r, err := gzip.NewReader(bytes.NewBuffer(data))
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return io.ReadAll(r)
 }
