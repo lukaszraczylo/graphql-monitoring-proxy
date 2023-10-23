@@ -6,10 +6,10 @@ This project is in active use by [telegram-bot.app](https://telegram-bot.app), a
 
 ![Example of monitoring dashboard](static/monitoring-at-glance.png?raw=true)
 
-You can find the example of the Kubernetes manifest in the [example deployment](static/kubernetes-deployment.yaml) file.
-
 - [graphql monitoring proxy](#graphql-monitoring-proxy)
   - [Why this project exists](#why-this-project-exists)
+  - [How to deploy](#how-to-deploy)
+    - [Note on websocket support](#note-on-websocket-support)
   - [Endpoints](#endpoints)
   - [Features](#features)
   - [Configuration](#configuration)
@@ -26,10 +26,54 @@ You can find the example of the Kubernetes manifest in the [example deployment](
     - [Healthcheck](#healthcheck)
     - [Monitoring endpoint](#monitoring-endpoint)
 
-
 ### Why this project exists
 
 I wanted to monitor the queries and responses of our graphql endpoint. Still, we didn't want to pay the price of the graphql server itself ( and I will not point fingers at a particular well-known project), as monitoring and basic security features should be a standard, free functionality.
+
+### How to deploy
+
+You can find the example of the Kubernetes manifest in the [example standalone deployment](static/kubernetes-deployment.yaml) or [example combined deployment](static/kubernetes-single-deployment.yaml) files. Observed advantage of multideployment is that it allows the network requests to travel via localhost, without leaving the deployment which brings quite significant network performance boost.
+
+#### Note on websocket support
+
+Proxy in its current version 0.5.30 does not support websockets. If you need to proxy the websocket requests - you can use following trick whilst setting up the proxy. As I'm a big fan of Traefik - there's an example which works with the mentioned above combined deployment.
+
+<details>
+  <summary>Click to show working Traefik Ingress Route example.</summary>
+
+```yaml
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: hasura-internal
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    # NON WEBSOCKET CONNECTION
+    - kind: Rule
+      match: Host(`example.com`) && PathPrefix(`/v1/graphql`) && !HeadersRegexp(`Upgrade`, `websocket`)
+      services:
+      - name: hasura-w-proxy-internal
+        port: proxy
+      middlewares:
+        - name: compression
+          namespace: default
+
+    # WEBSOCKET CONNECTION
+    - kind: Rule
+      match: Host(`example.com`) && PathPrefix(`/v1/graphql`) && HeadersRegexp(`Upgrade`, `websocket`)
+      services:
+      - name: hasura-w-proxy-internal
+        port: hasura
+      middlewares:
+        - name: compression
+          namespace: default
+```
+
+In this case, both proxy and websockets will be available under the `/v1/graphql` path, and the websocket connection will be proxied directly to the hasura service, bypassing the proxy.
+
+</details>
 
 ### Endpoints
 
@@ -88,6 +132,8 @@ You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` environm
 
 In the case of the `@cached` you can add additional parameters to the directive which will set the cache for specific queries to the provided time.
 For example, `query MyCachedQuery @cached(ttl: 90) ....` will set the cache for the query to 90 seconds.
+
+Since version `0.5.30` the cache is gzipped in the memory, which should optimise the memory usage quite significantly.
 
 ### Security
 
