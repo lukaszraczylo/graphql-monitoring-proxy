@@ -50,7 +50,8 @@ func parseConfig() {
 		}
 		return strings.Split(urls, ",")
 	}()
-	c.Client.FastProxyClient = createFasthttpClient()
+	c.Client.ClientTimeout = envutil.GetInt("PROXIED_CLIENT_TIMEOUT", 120)
+	c.Client.FastProxyClient = createFasthttpClient(c.Client.ClientTimeout)
 	c.Server.EnableApi = envutil.GetBool("ENABLE_API", false)
 	c.Server.ApiPort = envutil.GetInt("API_PORT", 9090)
 	c.Api.BannedUsersFile = envutil.Getenv("BANNED_USERS_FILE", "/go/src/app/banned_users.json")

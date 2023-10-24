@@ -122,6 +122,7 @@ In this case, both proxy and websockets will be available under the `/v1/graphql
 | `ENABLE_API`              | Enable the monitoring API               | `false`                    |
 | `API_PORT`                | The port to expose the monitoring API   | `9090`                     |
 | `BANNED_USERS_FILE`       | The path to the file with banned users  | `/go/src/app/banned_users.json`   |
+| `PROXIED_CLIENT_TIMEOUT` | The timeout for the proxied client in seconds     | `120`                      |
 
 ### Speed
 

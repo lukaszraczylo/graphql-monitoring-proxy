@@ -11,7 +11,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func createFasthttpClient() *fasthttp.Client {
+func createFasthttpClient(timeout int) *fasthttp.Client {
 	return &fasthttp.Client{
 		Name:                     "graphql_proxy",
 		NoDefaultUserAgentHeader: true,
@@ -19,9 +19,9 @@ func createFasthttpClient() *fasthttp.Client {
 			InsecureSkipVerify: true,
 		},
 		MaxConnsPerHost:               100,
-		MaxIdleConnDuration:           2 * time.Minute,
-		ReadTimeout:                   time.Second * 10,
-		WriteTimeout:                  time.Second * 10,
+		MaxIdleConnDuration:           time.Duration(timeout*5) * time.Minute,
+		ReadTimeout:                   time.Second * time.Duration(timeout),
+		WriteTimeout:                  time.Second * time.Duration(timeout),
 		DisableHeaderNamesNormalizing: true,
 	}
 }

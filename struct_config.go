@@ -34,6 +34,7 @@ type config struct {
 		GQLClient        *graphql.BaseClient
 		FastProxyClient  *fasthttp.Client
 		proxy            string
+		ClientTimeout    int
 	}
 
 	Cache struct {
