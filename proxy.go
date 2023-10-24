@@ -18,13 +18,7 @@ func createFasthttpClient(timeout int) *fasthttp.Client {
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
-		MaxConnsPerHost: 100,
-		MaxIdleConnDuration: func() time.Duration {
-			if timeout%2 != 0 {
-				timeout++
-			}
-			return time.Duration(timeout/2) * time.Second
-		}(),
+		MaxConnsPerHost:               200,
 		ReadTimeout:                   time.Second * time.Duration(timeout),
 		WriteTimeout:                  time.Second * time.Duration(timeout),
 		DisableHeaderNamesNormalizing: true,
