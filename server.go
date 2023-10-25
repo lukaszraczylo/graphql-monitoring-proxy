@@ -6,6 +6,7 @@ import (
 
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/google/uuid"
 
 	jsoniter "github.com/json-iterator/go"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
@@ -25,6 +26,9 @@ func StartHTTPProxy() {
 		AllowOrigins: "*",
 	}))
 
+	// add middleware to check if the request is a GraphQL query
+	server.Use(AddRequestUUID)
+
 	server.Get("/healthz", healthCheck)
 	server.Get("/livez", healthCheck)
 
@@ -36,6 +40,11 @@ func StartHTTPProxy() {
 	if err != nil {
 		cfg.Logger.Critical("Can't start the service", map[string]interface{}{"error": err.Error()})
 	}
+}
+
+func AddRequestUUID(c *fiber.Ctx) error {
+	c.Locals("request_uuid", uuid.NewString())
+	return c.Next()
 }
 
 func checkAllowedURLs(c *fiber.Ctx) bool {
@@ -123,11 +132,11 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 		queryCacheHash = calculateHash(c)
 
 		if cachedResponse := cacheLookup(queryCacheHash); cachedResponse != nil {
-			cfg.Logger.Debug("Cache hit", map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID})
+			cfg.Logger.Debug("Cache hit", map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")})
 			c.Send(cachedResponse)
 			wasCached = true
 		} else {
-			cfg.Logger.Debug("Cache miss", map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID})
+			cfg.Logger.Debug("Cache miss", map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")})
 			proxyAndCacheTheRequest(c, queryCacheHash, cache_time)
 		}
 	} else {
@@ -165,13 +174,14 @@ func logAndMonitorRequest(c *fiber.Ctx, userID, opType, opName string, wasCached
 
 	if cfg.Server.AccessLog {
 		cfg.Logger.Info("Request processed", map[string]interface{}{
-			"ip":      c.IP(),
-			"fwd-ip":  string(c.Request().Header.Peek("X-Forwarded-For")),
-			"user_id": userID,
-			"op_type": opType,
-			"op_name": opName,
-			"time":    duration,
-			"cache":   wasCached,
+			"ip":           c.IP(),
+			"fwd-ip":       string(c.Request().Header.Peek("X-Forwarded-For")),
+			"user_id":      userID,
+			"op_type":      opType,
+			"op_name":      opName,
+			"time":         duration,
+			"cache":        wasCached,
+			"request_uuid": c.Locals("request_uuid"),
 		})
 	}
 
