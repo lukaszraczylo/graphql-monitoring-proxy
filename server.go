@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	fiber "github.com/gofiber/fiber/v2"
@@ -122,6 +123,15 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	if cache_time > 0 {
 		cfg.Logger.Debug("Cache time set via query", map[string]interface{}{"cache_time": cache_time})
 		cache_time = cfg.Cache.CacheTTL
+	}
+
+	if cache_time == 0 && !cacheFromQuery {
+		cacheQuery := c.Request().Header.Peek("X-Cache-Graphql-Query")
+		if cacheQuery != nil {
+			cache_time, _ = strconv.Atoi(string(cacheQuery))
+			cfg.Logger.Debug("Cache time set via header", map[string]interface{}{"cache_time": cache_time})
+			cacheFromQuery = true
+		}
 	}
 
 	wasCached := false

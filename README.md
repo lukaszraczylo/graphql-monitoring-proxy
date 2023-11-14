@@ -134,6 +134,8 @@ You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` environm
 In the case of the `@cached` you can add additional parameters to the directive which will set the cache for specific queries to the provided time.
 For example, `query MyCachedQuery @cached(ttl: 90) ....` will set the cache for the query to 90 seconds.
 
+You can also set cache for specific query by using `X-Cache-Graphql-Query` header, which will set the cache for the query to the provided time, for example `X-Cache-Graphql-Query: 90` will set the cache for the query to 90 seconds.
+
 Since version `0.5.30` the cache is gzipped in the memory, which should optimise the memory usage quite significantly.
 
 ### Security
