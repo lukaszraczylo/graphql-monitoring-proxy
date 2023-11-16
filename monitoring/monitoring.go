@@ -15,18 +15,22 @@ import (
 )
 
 type MetricsSetup struct {
-	metrics_prefix string
-	metrics_set    *metrics.Set
+	metrics_prefix     string
+	metrics_set        *metrics.Set
+	metrics_set_custom *metrics.Set
 }
 
 var (
-	log *logging.LogConfig
+	log                 *logging.LogConfig
+	purgeMetricsOnCrawl bool
 )
 
-func NewMonitoring() *MetricsSetup {
+func NewMonitoring(purgeOnCrawl bool) *MetricsSetup {
+	purgeMetricsOnCrawl = purgeOnCrawl
 	log = logging.NewLogger()
 	ms := &MetricsSetup{}
 	ms.metrics_set = metrics.NewSet()
+	ms.metrics_set_custom = metrics.NewSet()
 	go ms.startPrometheusEndpoint()
 	return ms
 }
@@ -45,6 +49,10 @@ func (ms *MetricsSetup) startPrometheusEndpoint() {
 
 func (ms *MetricsSetup) metricsEndpoint(c *fiber.Ctx) error {
 	ms.metrics_set.WritePrometheus(c.Response().BodyWriter())
+	ms.metrics_set_custom.WritePrometheus(c.Response().BodyWriter())
+	if purgeMetricsOnCrawl {
+		ms.PurgeMetrics()
+	}
 	return nil
 }
 
@@ -61,7 +69,7 @@ func (ms *MetricsSetup) RegisterMetricsGauge(metric_name string, labels map[stri
 		log.Critical("RegisterMetricsGauge() error", map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name})
 		return nil
 	}
-	return ms.metrics_set.GetOrCreateGauge(ms.get_metrics_name(metric_name, labels), func() float64 {
+	return ms.metrics_set_custom.GetOrCreateGauge(ms.get_metrics_name(metric_name, labels), func() float64 {
 		// get current value of the gauge and add val to it
 		return val
 	})
@@ -72,7 +80,10 @@ func (ms *MetricsSetup) RegisterMetricsCounter(metric_name string, labels map[st
 		log.Critical("RegisterMetricsCounter() error", map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name})
 		return nil
 	}
-	return ms.metrics_set.GetOrCreateCounter(ms.get_metrics_name(metric_name, labels))
+	if metric_name == MetricsSucceeded || metric_name == MetricsFailed || metric_name == MetricsSkipped {
+		return ms.metrics_set.GetOrCreateCounter(ms.get_metrics_name(metric_name, labels))
+	}
+	return ms.metrics_set_custom.GetOrCreateCounter(ms.get_metrics_name(metric_name, labels))
 }
 
 func (ms *MetricsSetup) RegisterFloatCounter(metric_name string, labels map[string]string) *metrics.FloatCounter {
@@ -80,7 +91,7 @@ func (ms *MetricsSetup) RegisterFloatCounter(metric_name string, labels map[stri
 		log.Critical("RegisterFloatCounter() error", map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name})
 		return nil
 	}
-	return ms.metrics_set.GetOrCreateFloatCounter(ms.get_metrics_name(metric_name, labels))
+	return ms.metrics_set_custom.GetOrCreateFloatCounter(ms.get_metrics_name(metric_name, labels))
 }
 
 func (ms *MetricsSetup) RegisterMetricsSummary(metric_name string, labels map[string]string) *metrics.Summary {
@@ -88,7 +99,7 @@ func (ms *MetricsSetup) RegisterMetricsSummary(metric_name string, labels map[st
 		log.Critical("RegisterMetricsSummary() error", map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name})
 		return nil
 	}
-	return ms.metrics_set.GetOrCreateSummary(ms.get_metrics_name(metric_name, labels))
+	return ms.metrics_set_custom.GetOrCreateSummary(ms.get_metrics_name(metric_name, labels))
 }
 
 func (ms *MetricsSetup) RegisterMetricsHistogram(metric_name string, labels map[string]string) *metrics.Histogram {
@@ -96,7 +107,7 @@ func (ms *MetricsSetup) RegisterMetricsHistogram(metric_name string, labels map[
 		log.Critical("RegisterMetricsHistogram() error", map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name})
 		return nil
 	}
-	return ms.metrics_set.GetOrCreateHistogram(ms.get_metrics_name(metric_name, labels))
+	return ms.metrics_set_custom.GetOrCreateHistogram(ms.get_metrics_name(metric_name, labels))
 }
 
 func (ms *MetricsSetup) Increment(metric_name string, labels map[string]string) {
@@ -124,9 +135,9 @@ func (ms *MetricsSetup) UpdateSummary(metric_name string, labels map[string]stri
 }
 
 func (ms *MetricsSetup) RemoveMetrics(metric_name string, labels map[string]string) {
-	ms.metrics_set.UnregisterMetric(ms.get_metrics_name(metric_name, labels))
+	ms.metrics_set_custom.UnregisterMetric(ms.get_metrics_name(metric_name, labels))
 }
 
 func (ms *MetricsSetup) PurgeMetrics() {
-	ms.metrics_set.UnregisterAllMetrics()
+	ms.metrics_set_custom.UnregisterAllMetrics()
 }

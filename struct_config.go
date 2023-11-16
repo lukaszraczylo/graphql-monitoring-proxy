@@ -24,6 +24,7 @@ type config struct {
 		AllowURLs          []string
 		EnableApi          bool
 		ApiPort            int
+		PurgeOnCrawl       bool
 	}
 
 	Client struct {
