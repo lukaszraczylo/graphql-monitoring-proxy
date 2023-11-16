@@ -2,16 +2,22 @@ package libpack_monitoring
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 )
 
 func (ms *MetricsSetup) get_metrics_name(name string, labels map[string]string) (complete_name string) {
+	var err error
 	if labels == nil {
 		labels = make(map[string]string)
 	}
 	labels["microservice"] = libpack_config.PKG_NAME
+	labels["pod"], err = os.Hostname()
+	if err != nil {
+		labels["pod"] = "unknown"
+	}
 
 	if ms.metrics_prefix != "" {
 		complete_name = ms.metrics_prefix + "_" + name
