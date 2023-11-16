@@ -23,6 +23,7 @@ This project is in active use by [telegram-bot.app](https://telegram-bot.app), a
   - [API endpoints](#api-endpoints)
     - [Ban or unban the user](#ban-or-unban-the-user)
   - [General](#general)
+    - [Metrics which matter](#metrics-which-matter)
     - [Healthcheck](#healthcheck)
     - [Monitoring endpoint](#monitoring-endpoint)
 
@@ -123,6 +124,7 @@ In this case, both proxy and websockets will be available under the `/v1/graphql
 | `API_PORT`                | The port to expose the monitoring API   | `9090`                     |
 | `BANNED_USERS_FILE`       | The path to the file with banned users  | `/go/src/app/banned_users.json`   |
 | `PROXIED_CLIENT_TIMEOUT` | The timeout for the proxied client in seconds     | `120`                      |
+| `PURGE_METRICS_ON_CRAWL` | Purge metrics on each /metrics crawl    | `false`                      |
 
 ### Speed
 
@@ -226,6 +228,12 @@ curl -X POST \
 Ban details will be stored in the `banned_users.json` file, which you can mount as a file or configmap to the `/go/src/app/banned_users.json` path ( or use `BANNED_USERS_FILE` environment variable to specify the path to the file). The file operation is important if you have multiple instances of the proxy running, as it will allow you to ban the user from accessing the application on all instances.
 
 ### General
+
+#### Metrics which matter
+
+You can always enable `PURGE_METRICS_ON_CRAWL` environment variable to purge the metrics on each `/metrics` crawl. This will allow you to see only the current metrics, without potential leftovers from the previous crawls. This is useful if you want to monitor the metrics in real-time and / or limit the amount of data ingested into the monitoring system. When enabled you will most likely need to update your monitoring queries.
+
+With the `PURGE_METRICS_ON_CRAWL` enabled, the `graphql_proxy_requests_failed`, `graphql_proxy_requests_skipped` and `graphql_proxy_requests_succesful` metrics will remain between resets.
 
 #### Healthcheck
 
