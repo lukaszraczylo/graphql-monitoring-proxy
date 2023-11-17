@@ -23,7 +23,6 @@ type MetricsSetup struct {
 var (
 	log                 *logging.LogConfig
 	purgeMetricsOnCrawl bool
-	purgeMetricsEvery   int
 )
 
 func NewMonitoring(purgeOnCrawl bool, purgeEvery int) *MetricsSetup {
@@ -34,8 +33,8 @@ func NewMonitoring(purgeOnCrawl bool, purgeEvery int) *MetricsSetup {
 	ms.metrics_set_custom = metrics.NewSet()
 	go ms.startPrometheusEndpoint()
 
-	if purgeMetricsEvery > 0 {
-		ticker := time.NewTicker(time.Duration(purgeMetricsEvery) * time.Second)
+	if purgeEvery > 0 {
+		ticker := time.NewTicker(time.Duration(purgeEvery) * time.Second)
 		go func() {
 			for range ticker.C {
 				ms.PurgeMetrics()
