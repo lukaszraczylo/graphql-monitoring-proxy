@@ -25,6 +25,7 @@ type config struct {
 		EnableApi          bool
 		ApiPort            int
 		PurgeOnCrawl       bool
+		PurgeEvery         int
 	}
 
 	Client struct {

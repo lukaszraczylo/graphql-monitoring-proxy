@@ -5,7 +5,7 @@ import (
 )
 
 func StartMonitoringServer() {
-	cfg.Monitoring = libpack_monitoring.NewMonitoring(cfg.Server.PurgeOnCrawl)
+	cfg.Monitoring = libpack_monitoring.NewMonitoring(cfg.Server.PurgeOnCrawl, cfg.Server.PurgeEvery)
 	cfg.Monitoring.AddMetricsPrefix("graphql_proxy")
 	cfg.Monitoring.RegisterDefaultMetrics()
 }

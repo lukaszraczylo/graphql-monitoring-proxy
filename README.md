@@ -125,6 +125,7 @@ In this case, both proxy and websockets will be available under the `/v1/graphql
 | `BANNED_USERS_FILE`       | The path to the file with banned users  | `/go/src/app/banned_users.json`   |
 | `PROXIED_CLIENT_TIMEOUT` | The timeout for the proxied client in seconds     | `120`                      |
 | `PURGE_METRICS_ON_CRAWL` | Purge metrics on each /metrics crawl    | `false`                      |
+| `PURGE_METRICS_ON_TIMER` | Purge metrics every x seconds. `0` - disabled | `0`                      |
 
 ### Speed
 
@@ -234,6 +235,8 @@ Ban details will be stored in the `banned_users.json` file, which you can mount 
 You can always enable `PURGE_METRICS_ON_CRAWL` environment variable to purge the metrics on each `/metrics` crawl. This will allow you to see only the current metrics, without potential leftovers from the previous crawls. This is useful if you want to monitor the metrics in real-time and / or limit the amount of data ingested into the monitoring system. When enabled you will most likely need to update your monitoring queries.
 
 With the `PURGE_METRICS_ON_CRAWL` enabled, the `graphql_proxy_requests_failed`, `graphql_proxy_requests_skipped` and `graphql_proxy_requests_succesful` metrics will remain between resets.
+
+If you prefer more control over the metrics purging - you can enable `PURGE_METRICS_ON_TIMER` environment variable and set the interval in seconds. This will allow you to purge the metrics on a regular basis, for example every 90 seconds. It could be better solution if you have multiple crawlers checking the metrics endpoints and you want to avoid the situation when metrics are purged by for example healthcheck.
 
 #### Healthcheck
 

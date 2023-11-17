@@ -56,6 +56,7 @@ func parseConfig() {
 	c.Server.ApiPort = envutil.GetInt("API_PORT", 9090)
 	c.Api.BannedUsersFile = envutil.Getenv("BANNED_USERS_FILE", "/go/src/app/banned_users.json")
 	c.Server.PurgeOnCrawl = envutil.GetBool("PURGE_METRICS_ON_CRAWL", false)
+	c.Server.PurgeEvery = envutil.GetInt("PURGE_METRICS_ON_TIMER", 0)
 	cfg = &c
 	enableCache() // takes close to no resources, but can be used with dynamic query cache
 	loadRatelimitConfig()
