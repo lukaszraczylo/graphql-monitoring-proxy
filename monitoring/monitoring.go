@@ -23,10 +23,12 @@ type MetricsSetup struct {
 var (
 	log                 *logging.LogConfig
 	purgeMetricsOnCrawl bool
+	purgeMetricsEvery   int
 )
 
 func NewMonitoring(purgeOnCrawl bool, purgeEvery int) *MetricsSetup {
 	purgeMetricsOnCrawl = purgeOnCrawl
+	purgeMetricsEvery = purgeEvery
 	log = logging.NewLogger()
 	ms := &MetricsSetup{}
 	ms.metrics_set = metrics.NewSet()
