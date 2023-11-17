@@ -94,6 +94,10 @@ func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cache
 				}
 			}
 			if cfg.Security.BlockIntrospection {
+				for _, retrospection_query := range retrospection_queries {
+					retrospectionQuerySet[strings.ToLower(retrospection_query)] = struct{}{}
+				}
+
 				for _, s := range oper.SelectionSet.Selections {
 					for _, s2 := range s.GetSelectionSet().Selections {
 						if _, exists := retrospectionQuerySet[strings.ToLower(s2.(*ast.Field).Name.Value)]; exists {
