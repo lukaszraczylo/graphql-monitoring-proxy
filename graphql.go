@@ -34,7 +34,13 @@ var retrospection_queries = []string{
 }
 
 // Saving the introspection queries as a map O(1) operation instead of O(n) for a slice.
-var retrospectionQuerySet = make(map[string]struct{}, len(retrospection_queries))
+var retrospectionQuerySet = func() map[string]struct{} {
+	rsqs := make(map[string]struct{}, len(retrospection_queries))
+	for _, query := range retrospection_queries {
+		rsqs[strings.ToLower(query)] = struct{}{}
+	}
+	return rsqs
+}()
 
 func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cacheRequest bool, cache_time int, should_block bool, should_ignore bool) {
 	should_ignore = true
@@ -94,9 +100,6 @@ func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cache
 				}
 			}
 			if cfg.Security.BlockIntrospection {
-				for _, retrospection_query := range retrospection_queries {
-					retrospectionQuerySet[strings.ToLower(retrospection_query)] = struct{}{}
-				}
 
 				for _, s := range oper.SelectionSet.Selections {
 					for _, s2 := range s.GetSelectionSet().Selections {
