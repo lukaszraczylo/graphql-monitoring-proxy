@@ -35,6 +35,9 @@ var retrospection_queries = []string{
 
 // Saving the introspection queries as a map O(1) operation instead of O(n) for a slice.
 var retrospectionQuerySet = make(map[string]struct{}, len(retrospection_queries))
+for _, query := range retrospection_queries {
+	retrospectionQuerySet[query] = struct{}{}
+}
 
 func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cacheRequest bool, cache_time int, should_block bool, should_ignore bool) {
 	should_ignore = true
