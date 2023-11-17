@@ -3,6 +3,7 @@ package libpack_monitoring
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
@@ -25,9 +26,14 @@ func (ms *MetricsSetup) get_metrics_name(name string, labels map[string]string) 
 		complete_name = name
 	}
 	if labels != nil {
+		keys := make([]string, 0, len(labels))
+		for k := range labels {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
 		complete_name += "{"
-		for k, v := range labels {
-			complete_name += k + "=\"" + v + "\","
+		for _, k := range keys {
+			complete_name += k + "=\"" + labels[k] + "\","
 		}
 		complete_name = strings.TrimSuffix(complete_name, ",")
 		complete_name += "}"
