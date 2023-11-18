@@ -11,15 +11,9 @@ import (
 
 var cfg *config
 
-func init() {
-	for _, query := range retrospection_queries {
-		retrospectionQuerySet[query] = struct{}{}
-	}
-}
-
 func parseConfig() {
 	libpack_config.PKG_NAME = "graphql_proxy"
-	var c config
+	c := config{}
 	c.Server.PortGraphQL = envutil.GetInt("PORT_GRAPHQL", 8080)
 	c.Server.PortMonitoring = envutil.GetInt("MONITORING_PORT", 9393)
 	c.Server.HostGraphQL = envutil.Getenv("HOST_GRAPHQL", "http://localhost/")
@@ -61,6 +55,7 @@ func parseConfig() {
 	enableCache() // takes close to no resources, but can be used with dynamic query cache
 	loadRatelimitConfig()
 	enableApi()
+	prepareQueriesAndExemptions()
 }
 
 func main() {
