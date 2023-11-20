@@ -49,15 +49,11 @@ func AddRequestUUID(c *fiber.Ctx) error {
 }
 
 func checkAllowedURLs(c *fiber.Ctx) bool {
-	if len(cfg.Server.AllowURLs) == 0 {
+	if len(allowedUrls) == 0 {
 		return true
 	}
-	for _, allowedURL := range cfg.Server.AllowURLs {
-		if c.Path() == allowedURL {
-			return true
-		}
-	}
-	return false
+	_, ok := allowedUrls[c.Path()]
+	return ok
 }
 
 func healthCheck(c *fiber.Ctx) error {
@@ -116,21 +112,20 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	}
 
 	if should_ignore {
-		cfg.Logger.Debug("Request passed as-is - not a GraphQL")
+		cfg.Logger.Debug("Request passed as-is - probably not a GraphQL")
 		return proxyTheRequest(c)
 	}
 
 	if cache_time > 0 {
 		cfg.Logger.Debug("Cache time set via query", map[string]interface{}{"cache_time": cache_time})
-		cache_time = cfg.Cache.CacheTTL
-	}
-
-	if cache_time == 0 && !cacheFromQuery {
+	} else {
+		// If not set via query, try setting via header
 		cacheQuery := c.Request().Header.Peek("X-Cache-Graphql-Query")
 		if cacheQuery != nil {
 			cache_time, _ = strconv.Atoi(string(cacheQuery))
 			cfg.Logger.Debug("Cache time set via header", map[string]interface{}{"cache_time": cache_time})
-			cacheFromQuery = true
+		} else {
+			cache_time = cfg.Cache.CacheTTL
 		}
 	}
 
@@ -156,7 +151,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	timeTaken := time.Since(startTime)
 
 	// Logging & Monitoring
-	logAndMonitorRequest(c, extractedUserID, opType, opName, wasCached, timeTaken, startTime)
+	go logAndMonitorRequest(c, extractedUserID, opType, opName, wasCached, timeTaken, startTime)
 
 	return nil
 }

@@ -38,6 +38,7 @@ var introspection_queries = []string{
 
 var introspectionQuerySet = map[string]struct{}{}
 var introspectionAllowedQueries = map[string]struct{}{}
+var allowedUrls = map[string]struct{}{}
 
 func prepareQueriesAndExemptions() {
 	introspectionQuerySet = map[string]struct{}{}
@@ -53,6 +54,15 @@ func prepareQueriesAndExemptions() {
 	introspectionAllowedQueries = func() map[string]struct{} {
 		rsqs := make(map[string]struct{}, len(cfg.Security.IntrospectionAllowed))
 		for _, query := range cfg.Security.IntrospectionAllowed {
+			rsqs[strings.ToLower(query)] = struct{}{}
+		}
+		return rsqs
+	}()
+
+	allowedUrls = map[string]struct{}{}
+	allowedUrls = func() map[string]struct{} {
+		rsqs := make(map[string]struct{}, len(cfg.Server.AllowURLs))
+		for _, query := range cfg.Server.AllowURLs {
 			rsqs[strings.ToLower(query)] = struct{}{}
 		}
 		return rsqs

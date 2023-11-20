@@ -243,6 +243,20 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				returnCode:    200,
 			},
 		},
+
+		{
+			name: "test invalid query",
+			suppliedQuery: queries{
+				body: "{\"query\":\"query MyQuery tg_users(where: {handle: {_eq: \\\"tozuo\\\"}}) { id __typename } \"}",
+			},
+			wantResults: results{
+				is_cached:     false,
+				should_block:  false,
+				should_ignore: true,
+				op_name:       "",
+				op_type:       "",
+			},
+		},
 	}
 
 	for _, tt := range tests {
