@@ -37,6 +37,7 @@ func proxyTheRequest(c *fiber.Ctx) error {
 	c.Request().Header.DisableNormalizing()
 	c.Request().Header.Add("X-Real-IP", c.IP())
 	c.Request().Header.Add(fiber.HeaderXForwardedFor, string(c.Request().Header.Peek("X-Forwarded-For")))
+	c.Request().Header.Del(fiber.HeaderAcceptEncoding)
 
 	proxy.WithClient(cfg.Client.FastProxyClient)
 
