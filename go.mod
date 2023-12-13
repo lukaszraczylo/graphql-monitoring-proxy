@@ -13,7 +13,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/lukaszraczylo/ask v0.0.0-20230927103145-2ff1123b4415
 	github.com/lukaszraczylo/go-ratecounter v0.1.8
-	github.com/lukaszraczylo/go-simple-graphql v1.2.6
+	github.com/lukaszraczylo/go-simple-graphql v1.2.7
 	github.com/rs/zerolog v1.31.0
 	github.com/stretchr/testify v1.8.4
 	github.com/valyala/fasthttp v1.51.0
