@@ -9,15 +9,15 @@ import (
 )
 
 type CacheEntry struct {
-	Value     []byte
 	ExpiresAt time.Time
+	Value     []byte
 }
 
 type Cache struct {
-	sync.RWMutex
+	bytePool  sync.Pool
 	entries   sync.Map
 	globalTTL time.Duration
-	bytePool  sync.Pool
+	sync.RWMutex
 }
 
 func New(globalTTL time.Duration) *Cache {

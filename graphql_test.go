@@ -11,18 +11,18 @@ import (
 func (suite *Tests) Test_parseGraphQLQuery() {
 
 	type results struct {
-		is_cached     bool
-		cached_ttl    int
-		should_block  bool
-		should_ignore bool
 		op_name       string
 		op_type       string
+		cached_ttl    int
 		returnCode    int
+		is_cached     bool
+		should_block  bool
+		should_ignore bool
 	}
 
 	type queries struct {
-		body    string
 		headers map[string]string
+		body    string
 	}
 
 	tests := []struct {

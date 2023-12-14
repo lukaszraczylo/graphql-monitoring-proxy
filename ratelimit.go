@@ -8,9 +8,9 @@ import (
 )
 
 type RateLimitConfig struct {
-	Req               int    `json:"req"`
-	Interval          string `json:"interval"`
 	RateCounterTicker *goratecounter.RateCounter
+	Interval          string `json:"interval"`
+	Req               int    `json:"req"`
 }
 
 var rateLimits map[string]RateLimitConfig

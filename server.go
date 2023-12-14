@@ -21,9 +21,9 @@ func StartHTTPProxy() {
 	server := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 		AppName:               fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
-		IdleTimeout:           time.Second * 60,
-		ReadTimeout:           time.Second * 60,
-		WriteTimeout:          time.Second * 60,
+		IdleTimeout:           time.Duration(cfg.Client.ClientTimeout) * time.Second * 2,
+		ReadTimeout:           time.Duration(cfg.Client.ClientTimeout) * time.Second * 2,
+		WriteTimeout:          time.Duration(cfg.Client.ClientTimeout) * time.Second * 2,
 	})
 
 	server.Use(cors.New(cors.Config{
@@ -154,7 +154,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	timeTaken := time.Since(startTime)
 
 	// Logging & Monitoring
-	go logAndMonitorRequest(c, extractedUserID, opType, opName, wasCached, timeTaken, startTime)
+	logAndMonitorRequest(c, extractedUserID, opType, opName, wasCached, timeTaken, startTime)
 
 	return nil
 }
