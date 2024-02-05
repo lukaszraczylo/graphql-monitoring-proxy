@@ -102,6 +102,10 @@ In this case, both proxy and websockets will be available under the `/v1/graphql
 
 ### Configuration
 
+All the environment variables **should** be prefixed with `GMP_` to avoid conflicts with other applications.
+If `GMP_` prefixed environment variable is present - it will take precedence over the non-prefixed one.
+You can still use the non-prefixed environment variables in the spirit of the backward compatibility, but it's not recommended.
+
 | Parameter                 | Description                              | Default Value              |
 |---------------------------|------------------------------------------|----------------------------|
 | `MONITORING_PORT`         | The port to expose the metrics endpoint  | `9393`                     |
