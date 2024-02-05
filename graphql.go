@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/goccy/go-json"
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/graphql-go/graphql/language/ast"
 	"github.com/graphql-go/graphql/language/parser"

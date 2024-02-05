@@ -4,6 +4,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/goccy/go-json"
+
 	goratecounter "github.com/lukaszraczylo/go-ratecounter"
 )
 

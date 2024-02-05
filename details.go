@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/goccy/go-json"
 	"github.com/lukaszraczylo/ask"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )

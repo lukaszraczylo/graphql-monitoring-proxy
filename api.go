@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/goccy/go-json"
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/gofrs/flock"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
