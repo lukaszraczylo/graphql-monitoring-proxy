@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/gofiber/fiber/v2/middleware/proxy"
 	"github.com/gookit/goutil/envutil"
 	graphql "github.com/lukaszraczylo/go-simple-graphql"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
@@ -66,6 +67,7 @@ func parseConfig() {
 	}()
 	c.Client.ClientTimeout = getDetailsFromEnv("PROXIED_CLIENT_TIMEOUT", 120)
 	c.Client.FastProxyClient = createFasthttpClient(c.Client.ClientTimeout)
+	proxy.WithClient(c.Client.FastProxyClient) // setting the global proxy client here instead of per request
 	c.Server.EnableApi = getDetailsFromEnv("ENABLE_API", false)
 	c.Server.ApiPort = getDetailsFromEnv("API_PORT", 9090)
 	c.Api.BannedUsersFile = getDetailsFromEnv("BANNED_USERS_FILE", "/go/src/app/banned_users.json")
