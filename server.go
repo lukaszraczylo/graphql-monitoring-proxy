@@ -5,16 +5,14 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/goccy/go-json"
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/google/uuid"
 
-	jsoniter "github.com/json-iterator/go"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // StartHTTPProxy starts the HTTP and points it to the GraphQL server.
 func StartHTTPProxy() {
@@ -24,6 +22,8 @@ func StartHTTPProxy() {
 		IdleTimeout:           time.Duration(cfg.Client.ClientTimeout) * time.Second * 2,
 		ReadTimeout:           time.Duration(cfg.Client.ClientTimeout) * time.Second * 2,
 		WriteTimeout:          time.Duration(cfg.Client.ClientTimeout) * time.Second * 2,
+		JSONEncoder:           json.Marshal,
+		JSONDecoder:           json.Unmarshal,
 	})
 
 	server.Use(cors.New(cors.Config{
