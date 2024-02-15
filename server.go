@@ -111,6 +111,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 
 	opType, opName, cacheFromQuery, cache_time, shouldBlock, should_ignore := parseGraphQLQuery(c)
 	if shouldBlock {
+		c.Status(403).SendString("Request blocked")
 		return nil
 	}
 
