@@ -90,6 +90,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	}
 
 	if checkIfUserIsBanned(c, extractedUserID) {
+		c.Status(403).SendString("User is banned")
 		return nil
 	}
 
@@ -109,35 +110,35 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 		}
 	}
 
-	opType, opName, cacheFromQuery, cache_time, shouldBlock, should_ignore := parseGraphQLQuery(c)
-	if shouldBlock {
+	parsedResult := parseGraphQLQuery(c)
+	if parsedResult.shouldBlock {
 		c.Status(403).SendString("Request blocked")
 		return nil
 	}
 
-	if should_ignore {
+	if parsedResult.shouldIgnore {
 		cfg.Logger.Debug("Request passed as-is - probably not a GraphQL")
 		return proxyTheRequest(c)
 	}
 
-	if cache_time > 0 {
-		cfg.Logger.Debug("Cache time set via query", map[string]interface{}{"cache_time": cache_time})
+	if parsedResult.cacheTime > 0 {
+		cfg.Logger.Debug("Cache time set via query", map[string]interface{}{"cacheTime": parsedResult.cacheTime})
 	} else {
 		// If not set via query, try setting via header
 		cacheQuery := c.Request().Header.Peek("X-Cache-Graphql-Query")
 		if cacheQuery != nil {
-			cache_time, _ = strconv.Atoi(string(cacheQuery))
-			cfg.Logger.Debug("Cache time set via header", map[string]interface{}{"cache_time": cache_time})
+			parsedResult.cacheTime, _ = strconv.Atoi(string(cacheQuery))
+			cfg.Logger.Debug("Cache time set via header", map[string]interface{}{"cacheTime": parsedResult.cacheTime})
 		} else {
-			cache_time = cfg.Cache.CacheTTL
+			parsedResult.cacheTime = cfg.Cache.CacheTTL
 		}
 	}
 
 	wasCached := false
 
 	// Handling Cache Logic
-	if cacheFromQuery || cfg.Cache.CacheEnable {
-		cfg.Logger.Debug("Cache enabled", map[string]interface{}{"via_query": cacheFromQuery, "via_env": cfg.Cache.CacheEnable})
+	if parsedResult.cacheRequest || cfg.Cache.CacheEnable {
+		cfg.Logger.Debug("Cache enabled", map[string]interface{}{"via_query": parsedResult.cacheRequest, "via_env": cfg.Cache.CacheEnable})
 		queryCacheHash = calculateHash(c)
 
 		if cachedResponse := cacheLookup(queryCacheHash); cachedResponse != nil {
@@ -146,7 +147,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 			wasCached = true
 		} else {
 			cfg.Logger.Debug("Cache miss", map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")})
-			proxyAndCacheTheRequest(c, queryCacheHash, cache_time)
+			proxyAndCacheTheRequest(c, queryCacheHash, parsedResult.cacheTime)
 		}
 	} else {
 		proxyTheRequest(c)
@@ -155,13 +156,13 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	timeTaken := time.Since(startTime)
 
 	// Logging & Monitoring
-	logAndMonitorRequest(c, extractedUserID, opType, opName, wasCached, timeTaken, startTime)
+	logAndMonitorRequest(c, extractedUserID, parsedResult.operationType, parsedResult.operationName, wasCached, timeTaken, startTime)
 
 	return nil
 }
 
 // Additional helper function to avoid code repetition
-func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cache_time int) {
+func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int) {
 	err := proxyTheRequest(c)
 	if err != nil {
 		cfg.Logger.Error("Can't proxy the request", map[string]interface{}{"error": err.Error()})
@@ -169,7 +170,7 @@ func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cache_time int
 		c.Status(500).SendString("Can't proxy the request - try again later")
 		return
 	}
-	cfg.Cache.CacheClient.Set(queryCacheHash, c.Response().Body(), time.Duration(cache_time)*time.Second)
+	cfg.Cache.CacheClient.Set(queryCacheHash, c.Response().Body(), time.Duration(cacheTime)*time.Second)
 	c.Send(c.Response().Body())
 }
 

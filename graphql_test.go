@@ -11,13 +11,13 @@ import (
 func (suite *Tests) Test_parseGraphQLQuery() {
 
 	type results struct {
-		op_name       string
-		op_type       string
-		cached_ttl    int
-		returnCode    int
-		is_cached     bool
-		should_block  bool
-		should_ignore bool
+		op_name      string
+		op_type      string
+		cached_ttl   int
+		returnCode   int
+		is_cached    bool
+		shouldBlock  bool
+		shouldIgnore bool
 	}
 
 	type queries struct {
@@ -38,11 +38,11 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				headers: map[string]string{},
 			},
 			wantResults: results{
-				is_cached:     false,
-				should_block:  false,
-				should_ignore: true,
-				op_name:       "",
-				op_type:       "",
+				is_cached:    false,
+				shouldBlock:  false,
+				shouldIgnore: true,
+				op_name:      "",
+				op_type:      "",
 			},
 		},
 
@@ -53,11 +53,11 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				headers: map[string]string{},
 			},
 			wantResults: results{
-				is_cached:     false,
-				should_block:  false,
-				should_ignore: true,
-				op_name:       "",
-				op_type:       "",
+				is_cached:    false,
+				shouldBlock:  false,
+				shouldIgnore: true,
+				op_name:      "",
+				op_type:      "",
 			},
 		},
 
@@ -68,11 +68,11 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				headers: map[string]string{},
 			},
 			wantResults: results{
-				is_cached:     false,
-				should_block:  false,
-				should_ignore: true,
-				op_name:       "",
-				op_type:       "",
+				is_cached:    false,
+				shouldBlock:  false,
+				shouldIgnore: true,
+				op_name:      "",
+				op_type:      "",
 			},
 		},
 
@@ -82,11 +82,11 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				body: "{\"query\":\"query MyQuery { tg_users(where: {handle: {_eq: \\\"tozuo\\\"}}) { id __typename } }\"}",
 			},
 			wantResults: results{
-				is_cached:     false,
-				should_block:  false,
-				should_ignore: false,
-				op_name:       "MyQuery",
-				op_type:       "query",
+				is_cached:    false,
+				shouldBlock:  false,
+				shouldIgnore: false,
+				op_name:      "MyQuery",
+				op_type:      "query",
 			},
 		},
 
@@ -96,11 +96,11 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				body: "{\"query\":\"query MyQuery @cached { tg_users(where: {handle: {_eq: \\\"tozuo\\\"}}) { id __typename } }\", \"variables\": {\"id\": \"1\"}}",
 			},
 			wantResults: results{
-				is_cached:     true,
-				should_block:  false,
-				should_ignore: false,
-				op_name:       "MyQuery",
-				op_type:       "query",
+				is_cached:    true,
+				shouldBlock:  false,
+				shouldIgnore: false,
+				op_name:      "MyQuery",
+				op_type:      "query",
 			},
 		},
 
@@ -110,12 +110,12 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				body: "{\"query\":\"query MyQuery @cached(ttl: 60) { tg_users(where: {handle: {_eq: \\\"tozuo\\\"}}) { id __typename } }\", \"variables\": {\"id\": \"1\"}}",
 			},
 			wantResults: results{
-				is_cached:     true,
-				cached_ttl:    60,
-				should_block:  false,
-				should_ignore: false,
-				op_name:       "MyQuery",
-				op_type:       "query",
+				is_cached:    true,
+				cached_ttl:   60,
+				shouldBlock:  false,
+				shouldIgnore: false,
+				op_name:      "MyQuery",
+				op_type:      "query",
 			},
 		},
 
@@ -125,12 +125,12 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				body: "{\"query\":\"query MyQuery @cached(ttl: nope) { tg_users(where: {handle: {_eq: \\\"tozuo\\\"}}) { id __typename } }\", \"variables\": {\"id\": \"1\"}}",
 			},
 			wantResults: results{
-				is_cached:     true,
-				cached_ttl:    0,
-				should_block:  false,
-				should_ignore: false,
-				op_name:       "MyQuery",
-				op_type:       "query",
+				is_cached:    true,
+				cached_ttl:   0,
+				shouldBlock:  false,
+				shouldIgnore: false,
+				op_name:      "MyQuery",
+				op_type:      "query",
 			},
 		},
 
@@ -140,11 +140,11 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				body: "{\"query\":\"mutation MyMutation { tg_users(where: {handle: {_eq: \\\"tozuo\\\"}}) { id __typename } }\"}",
 			},
 			wantResults: results{
-				is_cached:     false,
-				should_block:  false,
-				should_ignore: false,
-				op_name:       "MyMutation",
-				op_type:       "mutation",
+				is_cached:    false,
+				shouldBlock:  false,
+				shouldIgnore: false,
+				op_name:      "MyMutation",
+				op_type:      "mutation",
 			},
 		},
 
@@ -158,12 +158,12 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				body: "{\"query\":\"mutation MyMutation { tg_users(where: {handle: {_eq: \\\"tozuo\\\"}}) { id __typename } }\"}",
 			},
 			wantResults: results{
-				is_cached:     false,
-				should_block:  true,
-				should_ignore: false,
-				op_name:       "MyMutation",
-				op_type:       "mutation",
-				returnCode:    403,
+				is_cached:    false,
+				shouldBlock:  true,
+				shouldIgnore: false,
+				op_name:      "MyMutation",
+				op_type:      "mutation",
+				returnCode:   403,
 			},
 		},
 
@@ -173,11 +173,11 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				body: "{\"query\":\"mutation MyMutation { tg_users(where: {handle: {_eq: \\\"tozuo\\\"}}) { id __schema } }\"}",
 			},
 			wantResults: results{
-				is_cached:     false,
-				should_block:  false,
-				should_ignore: false,
-				op_name:       "MyMutation",
-				op_type:       "mutation",
+				is_cached:    false,
+				shouldBlock:  false,
+				shouldIgnore: false,
+				op_name:      "MyMutation",
+				op_type:      "mutation",
 			},
 		},
 
@@ -191,12 +191,12 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				body: "{\"query\":\"query MyIntroQuery { tg_users(where: {handle: {_eq: \\\"tozuo\\\"}}) { id __schema } }\"}",
 			},
 			wantResults: results{
-				is_cached:     false,
-				should_block:  true,
-				should_ignore: false,
-				op_name:       "MyIntroQuery",
-				op_type:       "query",
-				returnCode:    403,
+				is_cached:    false,
+				shouldBlock:  true,
+				shouldIgnore: false,
+				op_name:      "MyIntroQuery",
+				op_type:      "query",
+				returnCode:   403,
 			},
 		},
 
@@ -213,12 +213,12 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				body: "{\"query\":\"{__schema {queryType {fields {name description}}}}\"}",
 			},
 			wantResults: results{
-				is_cached:     false,
-				should_block:  true,
-				should_ignore: false,
-				op_name:       "undefined",
-				op_type:       "query",
-				returnCode:    403,
+				is_cached:    false,
+				shouldBlock:  true,
+				shouldIgnore: false,
+				op_name:      "undefined",
+				op_type:      "query",
+				returnCode:   403,
 			},
 		},
 
@@ -235,12 +235,12 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				body: "{\"query\":\"{__schema {queryType {fields {name description}}}}\"}",
 			},
 			wantResults: results{
-				is_cached:     false,
-				should_block:  false,
-				should_ignore: false,
-				op_name:       "undefined",
-				op_type:       "query",
-				returnCode:    200,
+				is_cached:    false,
+				shouldBlock:  false,
+				shouldIgnore: false,
+				op_name:      "undefined",
+				op_type:      "query",
+				returnCode:   200,
 			},
 		},
 
@@ -250,11 +250,11 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				body: "{\"query\":\"query MyQuery tg_users(where: {handle: {_eq: \\\"tozuo\\\"}}) { id __typename } \"}",
 			},
 			wantResults: results{
-				is_cached:     false,
-				should_block:  false,
-				should_ignore: true,
-				op_name:       "",
-				op_type:       "",
+				is_cached:    false,
+				shouldBlock:  false,
+				shouldIgnore: true,
+				op_name:      "",
+				op_type:      "",
 			},
 		},
 	}
@@ -298,14 +298,13 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				cfg = &config{}
 			}()
 
-			opType, opName, cacheFromQuery, cached_ttl, shouldBlock, should_ignore := parseGraphQLQuery(ctx)
-
-			assert.Equal(tt.wantResults.op_type, opType, "Unexpected operation type", tt.name)
-			assert.Equal(tt.wantResults.op_name, opName, "Unexpected operation name", tt.name)
-			assert.Equal(tt.wantResults.is_cached, cacheFromQuery, "Unexpected cache value", tt.name)
-			assert.Equal(tt.wantResults.cached_ttl, cached_ttl, "Unexpected cache TTL value", tt.name)
-			assert.Equal(tt.wantResults.should_block, shouldBlock, "Unexpected block value", tt.name)
-			assert.Equal(tt.wantResults.should_ignore, should_ignore, "Unexpected ignore value", tt.name)
+			parseResult := parseGraphQLQuery(ctx)
+			assert.Equal(tt.wantResults.op_type, parseResult.operationType, "Unexpected operation type", tt.name)
+			assert.Equal(tt.wantResults.op_name, parseResult.operationName, "Unexpected operation name", tt.name)
+			assert.Equal(tt.wantResults.is_cached, parseResult.cacheRequest, "Unexpected cache value", tt.name)
+			assert.Equal(tt.wantResults.cached_ttl, parseResult.cacheTime, "Unexpected cache TTL value", tt.name)
+			assert.Equal(tt.wantResults.shouldBlock, parseResult.shouldBlock, "Unexpected block value", tt.name)
+			assert.Equal(tt.wantResults.shouldIgnore, parseResult.shouldIgnore, "Unexpected ignore value", tt.name)
 
 			if tt.wantResults.returnCode > 0 {
 				assert.Equal(tt.wantResults.returnCode, ctx.Response().StatusCode(), "Unexpected return code", tt.name)
