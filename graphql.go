@@ -134,6 +134,9 @@ func parseGraphQLQuery(c *fiber.Ctx) (operationType, operationName string, cache
 								return
 							}
 						}
+						if arg.Name.Value == "refresh" {
+							cacheRequest = arg.Value.GetValue().(bool)
+						}
 					}
 				}
 			}
