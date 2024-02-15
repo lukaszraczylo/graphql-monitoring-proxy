@@ -23,3 +23,7 @@ func cacheLookup(hash string) []byte {
 	}
 	return nil
 }
+
+func cacheDelete(hash string) {
+	cfg.Cache.CacheClient.Delete(hash)
+}

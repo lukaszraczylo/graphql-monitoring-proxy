@@ -120,6 +120,21 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 		},
 
 		{
+			name: "test valid query with op name, force refreshed cache",
+			suppliedQuery: queries{
+				body: "{\"query\":\"query MyQuery @cached(refresh: true) { tg_users(where: {handle: {_eq: \\\"tozuo\\\"}}) { id __typename } }\", \"variables\": {\"id\": \"1\"}}",
+			},
+			wantResults: results{
+				is_cached:    true,
+				cached_ttl:   0,
+				shouldBlock:  false,
+				shouldIgnore: false,
+				op_name:      "MyQuery",
+				op_type:      "query",
+			},
+		},
+
+		{
 			name: "test valid query with op name, cache and INVALID ttl",
 			suppliedQuery: queries{
 				body: "{\"query\":\"query MyQuery @cached(ttl: nope) { tg_users(where: {handle: {_eq: \\\"tozuo\\\"}}) { id __typename } }\", \"variables\": {\"id\": \"1\"}}",

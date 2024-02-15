@@ -136,6 +136,11 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 
 	wasCached := false
 
+	if parsedResult.cacheRefresh {
+		cfg.Logger.Debug("Cache refresh requested via query", map[string]interface{}{"user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")})
+		cacheDelete(calculateHash(c))
+	}
+
 	// Handling Cache Logic
 	if parsedResult.cacheRequest || cfg.Cache.CacheEnable {
 		cfg.Logger.Debug("Cache enabled", map[string]interface{}{"via_query": parsedResult.cacheRequest, "via_env": cfg.Cache.CacheEnable})

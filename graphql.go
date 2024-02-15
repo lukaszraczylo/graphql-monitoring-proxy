@@ -75,6 +75,7 @@ type parseGraphQLQueryResult struct {
 	operationName string
 	cacheRequest  bool
 	cacheTime     int
+	cacheRefresh  bool
 	shouldBlock   bool
 	shouldIgnore  bool
 }
@@ -144,7 +145,7 @@ func parseGraphQLQuery(c *fiber.Ctx) (res *parseGraphQLQueryResult) {
 							}
 						}
 						if arg.Name.Value == "refresh" {
-							res.cacheRequest = arg.Value.GetValue().(bool)
+							res.cacheRefresh = arg.Value.GetValue().(bool)
 						}
 					}
 				}
