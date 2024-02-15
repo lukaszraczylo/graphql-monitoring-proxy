@@ -143,6 +143,17 @@ For example, `query MyCachedQuery @cached(ttl: 90) ....` will set the cache for 
 
 You can also set cache for specific query by using `X-Cache-Graphql-Query` header, which will set the cache for the query to the provided time, for example `X-Cache-Graphql-Query: 90` will set the cache for the query to 90 seconds.
 
+You can also force refresh of the cache by using `@cached(refresh: true)` directive in the query, for example:
+
+```
+query MyProducts @cached(refresh: true) {
+  products {
+    id
+    name
+  }
+}
+```
+
 Since version `0.5.30` the cache is gzipped in the memory, which should optimise the memory usage quite significantly.
 
 ### Security
