@@ -41,33 +41,19 @@ var introspectionQuerySet = map[string]struct{}{}
 var introspectionAllowedQueries = map[string]struct{}{}
 var allowedUrls = map[string]struct{}{}
 
+// Utility function to convert a slice of strings to a map for O(1) lookups.
+func sliceToMap(slice []string) map[string]struct{} {
+	resultMap := make(map[string]struct{}, len(slice))
+	for _, item := range slice {
+		resultMap[strings.ToLower(item)] = struct{}{}
+	}
+	return resultMap
+}
+
 func prepareQueriesAndExemptions() {
-	introspectionQuerySet = map[string]struct{}{}
-	introspectionQuerySet = func() map[string]struct{} {
-		rsqs := make(map[string]struct{}, len(introspection_queries))
-		for _, query := range introspection_queries {
-			rsqs[strings.ToLower(query)] = struct{}{}
-		}
-		return rsqs
-	}()
-
-	introspectionAllowedQueries = map[string]struct{}{}
-	introspectionAllowedQueries = func() map[string]struct{} {
-		rsqs := make(map[string]struct{}, len(cfg.Security.IntrospectionAllowed))
-		for _, query := range cfg.Security.IntrospectionAllowed {
-			rsqs[strings.ToLower(query)] = struct{}{}
-		}
-		return rsqs
-	}()
-
-	allowedUrls = map[string]struct{}{}
-	allowedUrls = func() map[string]struct{} {
-		rsqs := make(map[string]struct{}, len(cfg.Server.AllowURLs))
-		for _, query := range cfg.Server.AllowURLs {
-			rsqs[strings.ToLower(query)] = struct{}{}
-		}
-		return rsqs
-	}()
+	introspectionQuerySet = sliceToMap(introspection_queries)
+	introspectionAllowedQueries = sliceToMap(cfg.Security.IntrospectionAllowed)
+	allowedUrls = sliceToMap(cfg.Server.AllowURLs)
 }
 
 type parseGraphQLQueryResult struct {
