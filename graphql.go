@@ -73,8 +73,8 @@ func prepareQueriesAndExemptions() {
 type parseGraphQLQueryResult struct {
 	operationType string
 	operationName string
-	cacheRequest  bool
 	cacheTime     int
+	cacheRequest  bool
 	cacheRefresh  bool
 	shouldBlock   bool
 	shouldIgnore  bool

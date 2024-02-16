@@ -48,10 +48,10 @@ func TestSuite(t *testing.T) {
 
 func (suite *Tests) Test_envVariableSetting() {
 	tests := []struct {
-		name         string
-		envKey       string
 		defaultValue any
 		expected     any
+		name         string
+		envKey       string
 	}{
 		{
 			name:         "test_string",
