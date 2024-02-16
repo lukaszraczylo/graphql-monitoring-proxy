@@ -18,25 +18,27 @@ type MetricsSetup struct {
 	metrics_set        *metrics.Set
 	metrics_set_custom *metrics.Set
 	metrics_prefix     string
+	ic                 *InitConfig
 }
 
 var (
-	log                 *logging.LogConfig
-	purgeMetricsOnCrawl bool
-	purgeMetricsEvery   int
+	log *logging.LogConfig
 )
 
-func NewMonitoring(purgeOnCrawl bool, purgeEvery int) *MetricsSetup {
-	purgeMetricsOnCrawl = purgeOnCrawl
-	purgeMetricsEvery = purgeEvery
+type InitConfig struct {
+	PurgeOnCrawl bool
+	PurgeEvery   int
+}
+
+func NewMonitoring(ic *InitConfig) *MetricsSetup {
 	log = logging.NewLogger()
-	ms := &MetricsSetup{}
+	ms := &MetricsSetup{ic: ic}
 	ms.metrics_set = metrics.NewSet()
 	ms.metrics_set_custom = metrics.NewSet()
 	go ms.startPrometheusEndpoint()
 
-	if purgeEvery > 0 {
-		ticker := time.NewTicker(time.Duration(purgeEvery) * time.Second)
+	if ic.PurgeEvery > 0 {
+		ticker := time.NewTicker(time.Duration(ic.PurgeEvery) * time.Second)
 		go func() {
 			for range ticker.C {
 				ms.PurgeMetrics()
@@ -63,7 +65,7 @@ func (ms *MetricsSetup) metricsEndpoint(c *fiber.Ctx) error {
 	ms.metrics_set.WritePrometheus(c.Response().BodyWriter())
 	ms.metrics_set_custom.WritePrometheus(c.Response().BodyWriter())
 
-	if purgeMetricsOnCrawl && purgeMetricsEvery == 0 {
+	if ms.ic.PurgeOnCrawl && ms.ic.PurgeEvery == 0 {
 		ms.PurgeMetrics()
 	}
 	return nil
