@@ -17,8 +17,8 @@ import (
 type MetricsSetup struct {
 	metrics_set        *metrics.Set
 	metrics_set_custom *metrics.Set
-	metrics_prefix     string
 	ic                 *InitConfig
+	metrics_prefix     string
 }
 
 var (
