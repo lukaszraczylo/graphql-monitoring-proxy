@@ -6,7 +6,7 @@ require (
 	github.com/VictoriaMetrics/metrics v1.31.0
 	github.com/buger/jsonparser v1.1.1
 	github.com/goccy/go-json v0.10.2
-	github.com/gofiber/fiber/v2 v2.52.0
+	github.com/gofiber/fiber/v2 v2.52.1
 	github.com/gofrs/flock v0.8.1
 	github.com/google/uuid v1.6.0
 	github.com/gookit/goutil v0.6.15
