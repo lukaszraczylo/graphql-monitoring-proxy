@@ -183,7 +183,7 @@ func (suite *LoggingTestSuite) TestLogConfig_AllHandlers() {
 	}
 
 	for _, tt := range tests {
-		suite.T().Run(tt.name, func(t *testing.T) {
+		suite.Run(tt.name, func() {
 			if tt.envMinLogLevel != "" {
 				os.Setenv("LOG_LEVEL", tt.envMinLogLevel)
 				defer os.Unsetenv("LOG_LEVEL")
@@ -274,7 +274,7 @@ func (suite *LoggingTestSuite) TestFullMessage() {
 	}
 
 	for _, tt := range tests {
-		suite.T().Run(tt.name, func(t *testing.T) {
+		suite.Run(tt.name, func() {
 			if tt.envMinLogLevel != "" {
 				os.Setenv("LOG_LEVEL", tt.envMinLogLevel)
 				defer os.Unsetenv("LOG_LEVEL")

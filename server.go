@@ -148,6 +148,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 
 		if cachedResponse := cacheLookup(queryCacheHash); cachedResponse != nil {
 			cfg.Logger.Debug("Cache hit", map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")})
+			c.Request().Header.Add("X-Cache-Hit", "true")
 			c.Send(cachedResponse)
 			wasCached = true
 		} else {
@@ -201,10 +202,10 @@ func logAndMonitorRequest(c *fiber.Ctx, userID, opType, opName string, wasCached
 	}
 
 	cfg.Monitoring.Increment(libpack_monitoring.MetricsSucceeded, nil)
-	cfg.Monitoring.Increment("executed_query", labels)
+	cfg.Monitoring.Increment(libpack_monitoring.MetricsExecutedQuery, labels)
 
 	if !wasCached {
-		cfg.Monitoring.UpdateDuration("timed_query", labels, startTime)
-		cfg.Monitoring.Update("timed_query", labels, float64(duration.Milliseconds()))
+		cfg.Monitoring.UpdateDuration(libpack_monitoring.MetricsTimedQuery, labels, startTime)
+		cfg.Monitoring.Update(libpack_monitoring.MetricsTimedQuery, labels, float64(duration.Milliseconds()))
 	}
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"os"
 	"strings"
 
@@ -85,4 +86,8 @@ func main() {
 	parseConfig()
 	StartMonitoringServer()
 	StartHTTPProxy()
+}
+
+func ifNotInTest() bool {
+	return flag.Lookup("test.v") == nil
 }

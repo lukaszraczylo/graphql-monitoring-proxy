@@ -59,10 +59,16 @@ func (lw *LogConfig) log(w io.Writer, level zerolog.Level, message string, v map
 }
 
 func (lw *LogConfig) Debug(message string, v ...map[string]interface{}) {
+	if !lw.logger.Debug().Enabled() {
+		return
+	}
 	lw.log(os.Stdout, zerolog.DebugLevel, message, mergeMaps(v))
 }
 
 func (lw *LogConfig) Info(message string, v ...map[string]interface{}) {
+	if !lw.logger.Info().Enabled() {
+		return
+	}
 	lw.log(os.Stdout, zerolog.InfoLevel, message, mergeMaps(v))
 }
 

@@ -4,12 +4,16 @@ import (
 	"os"
 	"testing"
 
+	"github.com/goccy/go-json"
+	"github.com/gofiber/fiber/v2"
+	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	assertions "github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
 type Tests struct {
 	suite.Suite
+	app *fiber.App
 }
 
 var (
@@ -21,6 +25,16 @@ func (suite *Tests) BeforeTest(suiteName, testName string) {
 
 func (suite *Tests) SetupTest() {
 	assert = assertions.New(suite.T())
+	suite.app = fiber.New(
+		fiber.Config{
+			DisableStartupMessage: true,
+			JSONEncoder:           json.Marshal,
+			JSONDecoder:           json.Unmarshal,
+		},
+	)
+	parseConfig()
+	StartMonitoringServer()
+	cfg.Logger = libpack_logging.NewLogger()
 	// Setup environment variables here if needed
 	os.Setenv("GMP_TEST_STRING", "testValue")
 	os.Setenv("GMP_TEST_INT", "123")
@@ -48,10 +62,10 @@ func TestSuite(t *testing.T) {
 
 func (suite *Tests) Test_envVariableSetting() {
 	tests := []struct {
-		name         string
-		envKey       string
 		defaultValue any
 		expected     any
+		name         string
+		envKey       string
 	}{
 		{
 			name:         "test_string",
@@ -86,7 +100,7 @@ func (suite *Tests) Test_envVariableSetting() {
 	}
 
 	for _, tt := range tests {
-		suite.T().Run(tt.name, func(t *testing.T) {
+		suite.Run(tt.name, func() {
 			result := getDetailsFromEnv(tt.envKey, tt.defaultValue)
 			assert.Equal(tt.expected, result)
 		})

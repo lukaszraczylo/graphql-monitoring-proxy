@@ -1,10 +1,6 @@
 package main
 
 import (
-	"testing"
-
-	fiber "github.com/gofiber/fiber/v2"
-	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	"github.com/valyala/fasthttp"
 )
 
@@ -166,6 +162,7 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 		{
 			name: "test mutation query with config: read only",
 			suppliedSettings: func() *config {
+				parseConfig()
 				cfg.Server.ReadOnlyMode = true
 				return cfg
 			}(),
@@ -199,6 +196,7 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 		{
 			name: "test simple query with introspection __schema config: block introspection",
 			suppliedSettings: func() *config {
+				parseConfig()
 				cfg.Security.BlockIntrospection = true
 				return cfg
 			}(),
@@ -221,7 +219,6 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				parseConfig()
 				cfg.Security.BlockIntrospection = true
 				cfg.Security.IntrospectionAllowed = []string{}
-				prepareQueriesAndExemptions()
 				return cfg
 			}(),
 			suppliedQuery: queries{
@@ -243,7 +240,6 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				parseConfig()
 				cfg.Security.BlockIntrospection = true
 				cfg.Security.IntrospectionAllowed = []string{"__schema"}
-				prepareQueriesAndExemptions()
 				return cfg
 			}(),
 			suppliedQuery: queries{
@@ -275,15 +271,9 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 	}
 
 	for _, tt := range tests {
-		suite.T().Run(tt.name, func(t *testing.T) {
+		suite.Run(tt.name, func() {
 			cfg = &config{}
-			cfg.Logger = libpack_logging.NewLogger()
-			defer func() {
-				cfg = &config{}
-			}()
-
-			app := fiber.New()
-
+			parseConfig()
 			ctx_headers := func() *fasthttp.RequestHeader {
 				h := fasthttp.RequestHeader{}
 				for k, v := range tt.suppliedQuery.headers {
@@ -298,28 +288,29 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 
 			ctx_request.AppendBody([]byte(tt.suppliedQuery.body))
 
-			ctx := app.AcquireCtx(&fasthttp.RequestCtx{
+			ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{
 				Request: ctx_request,
 			})
 
-			defer app.ReleaseCtx(ctx)
+			// defer func() {
+			// 	cfg = &config{}
+			// 	parseConfig()
+			// 	suite.app.ReleaseCtx(ctx)
+			// }()
+
 			assert.NotNil(ctx, "Fiber context is nil")
 
 			if tt.suppliedSettings != nil {
 				cfg = tt.suppliedSettings
 			}
-
-			defer func() {
-				cfg = &config{}
-			}()
-
+			prepareQueriesAndExemptions()
 			parseResult := parseGraphQLQuery(ctx)
-			assert.Equal(tt.wantResults.op_type, parseResult.operationType, "Unexpected operation type", tt.name)
-			assert.Equal(tt.wantResults.op_name, parseResult.operationName, "Unexpected operation name", tt.name)
-			assert.Equal(tt.wantResults.is_cached, parseResult.cacheRequest, "Unexpected cache value", tt.name)
-			assert.Equal(tt.wantResults.cached_ttl, parseResult.cacheTime, "Unexpected cache TTL value", tt.name)
-			assert.Equal(tt.wantResults.shouldBlock, parseResult.shouldBlock, "Unexpected block value", tt.name)
-			assert.Equal(tt.wantResults.shouldIgnore, parseResult.shouldIgnore, "Unexpected ignore value", tt.name)
+			assert.Equal(tt.wantResults.op_type, parseResult.operationType, "Unexpected operation type "+tt.name)
+			assert.Equal(tt.wantResults.op_name, parseResult.operationName, "Unexpected operation name "+tt.name)
+			assert.Equal(tt.wantResults.is_cached, parseResult.cacheRequest, "Unexpected cache value "+tt.name)
+			assert.Equal(tt.wantResults.cached_ttl, parseResult.cacheTime, "Unexpected cache TTL value "+tt.name)
+			assert.Equal(tt.wantResults.shouldBlock, parseResult.shouldBlock, "Unexpected block value "+tt.name)
+			assert.Equal(tt.wantResults.shouldIgnore, parseResult.shouldIgnore, "Unexpected ignore value "+tt.name)
 
 			if tt.wantResults.returnCode > 0 {
 				assert.Equal(tt.wantResults.returnCode, ctx.Response().StatusCode(), "Unexpected return code", tt.name)

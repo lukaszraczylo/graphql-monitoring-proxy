@@ -31,7 +31,9 @@ func createFasthttpClient(timeout int) *fasthttp.Client {
 func proxyTheRequest(c *fiber.Ctx) error {
 	if !checkAllowedURLs(c) {
 		cfg.Logger.Error("Request blocked", map[string]interface{}{"path": c.Path()})
-		cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
+		if ifNotInTest() {
+			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
+		}
 		c.Status(403).SendString("Request blocked - not allowed URL")
 		return nil
 	}
@@ -44,11 +46,13 @@ func proxyTheRequest(c *fiber.Ctx) error {
 
 	err := retry.Do(
 		func() error {
-			err := proxy.DoRedirects(c, cfg.Server.HostGraphQL+c.Path(), 3, cfg.Client.FastProxyClient)
-			if err != nil {
-				cfg.Logger.Error("Can't proxy the request", map[string]interface{}{"error": err.Error()})
-				cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
-				return err
+			errInt := proxy.DoRedirects(c, cfg.Server.HostGraphQL+c.Path(), 3, cfg.Client.FastProxyClient)
+			if errInt != nil {
+				cfg.Logger.Error("Can't proxy the request", map[string]interface{}{"error": errInt.Error()})
+				if ifNotInTest() {
+					cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+				}
+				return errInt
 			}
 			return nil
 		},
@@ -69,7 +73,9 @@ func proxyTheRequest(c *fiber.Ctx) error {
 	cfg.Logger.Debug("Received proxied response", map[string]interface{}{"path": c.Path(), "response_body": string(c.Response().Body()), "response_code": c.Response().StatusCode(), "headers": c.GetRespHeaders(), "request_uuid": c.Locals("request_uuid")})
 
 	if c.Response().StatusCode() != 200 {
-		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+		if ifNotInTest() {
+			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+		}
 		return fmt.Errorf("Received non-200 response from the GraphQL server: %d", c.Response().StatusCode())
 	}
 

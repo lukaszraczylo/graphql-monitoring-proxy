@@ -13,7 +13,7 @@ func calculateHash(c *fiber.Ctx) string {
 }
 
 func enableCache() {
-	cfg.Cache.CacheClient = libpack_cache.New(time.Duration(cfg.Cache.CacheTTL) * time.Second * 100)
+	cfg.Cache.CacheClient = libpack_cache.New(time.Duration(cfg.Cache.CacheTTL) * time.Second)
 }
 
 func cacheLookup(hash string) []byte {
