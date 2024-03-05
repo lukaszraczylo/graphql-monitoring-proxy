@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/tls"
-	"flag"
 	"fmt"
 	"time"
 
@@ -32,7 +31,7 @@ func createFasthttpClient(timeout int) *fasthttp.Client {
 func proxyTheRequest(c *fiber.Ctx) error {
 	if !checkAllowedURLs(c) {
 		cfg.Logger.Error("Request blocked", map[string]interface{}{"path": c.Path()})
-		if flag.Lookup("test.v") == nil {
+		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 		}
 		c.Status(403).SendString("Request blocked - not allowed URL")
@@ -50,7 +49,7 @@ func proxyTheRequest(c *fiber.Ctx) error {
 			errInt := proxy.DoRedirects(c, cfg.Server.HostGraphQL+c.Path(), 3, cfg.Client.FastProxyClient)
 			if errInt != nil {
 				cfg.Logger.Error("Can't proxy the request", map[string]interface{}{"error": errInt.Error()})
-				if flag.Lookup("test.v") == nil {
+				if ifNotInTest() {
 					cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 				}
 				return errInt
@@ -74,7 +73,7 @@ func proxyTheRequest(c *fiber.Ctx) error {
 	cfg.Logger.Debug("Received proxied response", map[string]interface{}{"path": c.Path(), "response_body": string(c.Response().Body()), "response_code": c.Response().StatusCode(), "headers": c.GetRespHeaders(), "request_uuid": c.Locals("request_uuid")})
 
 	if c.Response().StatusCode() != 200 {
-		if flag.Lookup("test.v") == nil {
+		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 		}
 		return fmt.Errorf("Received non-200 response from the GraphQL server: %d", c.Response().StatusCode())

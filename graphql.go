@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"strconv"
 	"strings"
 
@@ -72,7 +71,7 @@ func parseGraphQLQuery(c *fiber.Ctx) (res *parseGraphQLQueryResult) {
 	err := json.Unmarshal(c.Body(), &m)
 	if err != nil {
 		cfg.Logger.Debug("Can't unmarshal the request", map[string]interface{}{"error": err.Error(), "body": string(c.Body())})
-		if flag.Lookup("test.v") == nil {
+		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 		}
 		return
@@ -81,7 +80,7 @@ func parseGraphQLQuery(c *fiber.Ctx) (res *parseGraphQLQueryResult) {
 	query, ok := m["query"].(string)
 	if !ok {
 		cfg.Logger.Error("Can't find the query", map[string]interface{}{"query": query, "m_val": m})
-		if flag.Lookup("test.v") == nil {
+		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 		}
 		return
@@ -90,7 +89,7 @@ func parseGraphQLQuery(c *fiber.Ctx) (res *parseGraphQLQueryResult) {
 	p, err := parser.Parse(parser.ParseParams{Source: query})
 	if err != nil {
 		cfg.Logger.Error("Can't parse the query", map[string]interface{}{"query": query, "m_val": m})
-		if flag.Lookup("test.v") == nil {
+		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 		}
 		return
@@ -108,7 +107,7 @@ func parseGraphQLQuery(c *fiber.Ctx) (res *parseGraphQLQueryResult) {
 
 			if strings.ToLower(res.operationType) == "mutation" && cfg.Server.ReadOnlyMode {
 				cfg.Logger.Warning("Mutation blocked", m)
-				if flag.Lookup("test.v") == nil {
+				if ifNotInTest() {
 					cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 				}
 				c.Status(403).SendString("The server is in read-only mode")
@@ -124,7 +123,7 @@ func parseGraphQLQuery(c *fiber.Ctx) (res *parseGraphQLQueryResult) {
 							res.cacheTime, err = strconv.Atoi(arg.Value.GetValue().(string))
 							if err != nil {
 								cfg.Logger.Error("Can't parse the ttl, using global", map[string]interface{}{"bad_ttl": arg.Value.GetValue().(string)})
-								if flag.Lookup("test.v") == nil {
+								if ifNotInTest() {
 									cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 								}
 								return
@@ -186,7 +185,7 @@ func checkIfContainsIntrospection(c *fiber.Ctx, whatever string) (shouldBlock bo
 		}
 	}
 	if shouldBlock {
-		if flag.Lookup("test.v") == nil {
+		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 		}
 		c.Status(403).SendString("Introspection queries are not allowed")
