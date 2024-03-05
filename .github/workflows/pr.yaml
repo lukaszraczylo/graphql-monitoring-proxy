@@ -1,0 +1,82 @@
+name: Run tests on PR
+
+on:
+  pull_request:
+    branches:
+      - "main"
+  push:
+    paths-ignore:
+      - "**/**.md"
+      - "**/**.yaml"
+      - "static/**"
+    branches:
+      - "!main"
+
+env:
+  GO_VERSION: ">=1.21"
+
+jobs:
+  jobs:
+    # This job is responsible for preparation of the build
+    # environment variables.
+    prepare:
+      name: Preparing build context
+      runs-on: ubuntu-latest
+
+      steps:
+        - name: Checkout repo
+          uses: actions/checkout@v4
+
+        - name: Install Go
+          uses: actions/setup-go@v5
+          id: cache
+          with:
+            go-version: ${{env.GO_VERSION}}
+            cache-dependency-path: "**/*.sum"
+
+        - name: Go get dependencies
+          if: steps.cache.outputs.cache-hit != 'true'
+          run: |
+            go get ./...
+
+    # This job is responsible for running tests and linting the codebase
+    test:
+      name: "Unit testing"
+      # needs: [prepare]
+      runs-on: ubuntu-latest
+      # container: github/super-linter:v4
+      needs: [prepare]
+
+      services:
+        # Label used to access the service container
+        redis:
+          # Docker Hub image
+          image: redis
+          # Set health checks to wait until redis has started
+          options: >-
+            --health-cmd "redis-cli ping"
+            --health-interval 10s
+            --health-timeout 5s
+            --health-retries 5
+
+      steps:
+        - name: Checkout repository
+          uses: actions/checkout@v4
+
+        - name: Install Go
+          uses: actions/setup-go@v5
+          with:
+            go-version: ${{env.GO_VERSION}}
+            cache-dependency-path: "**/*.sum"
+
+        - name: Install dependencies
+          run: |
+            go mod tidy
+
+        - name: Run unit tests
+          env:
+            REDIS_HOST: redis
+            REDIS_PORT: 6379
+          run: |
+            export REDIS_SERVER="$REDIS_HOST:$REDIS_PORT"
+            CI_RUN=${CI} make test
