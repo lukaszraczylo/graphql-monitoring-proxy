@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/avast/retry-go/v4"
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/proxy"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
@@ -48,12 +49,35 @@ func proxyTheRequest(c *fiber.Ctx) error {
 	cfg.Logger.Info("OK")
 
 	cfg.Logger.Debug("Proxying the request", map[string]interface{}{"path": c.Path(), "body": string(c.Request().Body()), "headers": c.GetReqHeaders(), "request_uuid": c.Locals("request_uuid")})
+<<<<<<< HEAD
 	err := proxy.DoRedirects(c, cfg.Server.HostGraphQL+c.Path(), 3, cfg.Client.FastProxyClient)
+=======
+
+	err := retry.Do(
+		func() error {
+			err := proxy.DoRedirects(c, cfg.Server.HostGraphQL+c.Path(), 3, cfg.Client.FastProxyClient)
+			if err != nil {
+				cfg.Logger.Error("Can't proxy the request", map[string]interface{}{"error": err.Error()})
+				cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+				return err
+			}
+			return nil
+		},
+		retry.OnRetry(func(n uint, err error) {
+			cfg.Logger.Warning("Retrying the request", map[string]interface{}{"path": c.Path(), "error": err.Error()})
+		}),
+		retry.Attempts(uint(3)),
+		retry.DelayType(retry.BackOffDelay),
+		retry.Delay(time.Duration(250*time.Millisecond)),
+		retry.LastErrorOnly(true),
+	)
+
+>>>>>>> origin/main
 	if err != nil {
-		cfg.Logger.Error("Can't proxy the request", map[string]interface{}{"error": err.Error()})
-		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+		cfg.Logger.Warning("Can't proxy the request", map[string]interface{}{"error": err.Error()})
 		return err
 	}
+
 	cfg.Logger.Debug("Received proxied response", map[string]interface{}{"path": c.Path(), "response_body": string(c.Response().Body()), "response_code": c.Response().StatusCode(), "headers": c.GetRespHeaders(), "request_uuid": c.Locals("request_uuid")})
 
 	if c.Response().StatusCode() != 200 {
