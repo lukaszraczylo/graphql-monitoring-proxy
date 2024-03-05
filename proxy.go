@@ -40,18 +40,7 @@ func proxyTheRequest(c *fiber.Ctx) error {
 	c.Request().Header.Add(fiber.HeaderXForwardedFor, string(c.Request().Header.Peek("X-Forwarded-For")))
 	c.Request().Header.Del(fiber.HeaderAcceptEncoding)
 
-	fmt.Println("----+=")
-	fmt.Println(c.Locals("request_uuid"))
-	fmt.Println(string(c.Request().Body()))
-	fmt.Println(c.Path())
-	fmt.Println(c.GetReqHeaders())
-	fmt.Println("----+=")
-	cfg.Logger.Info("OK")
-
 	cfg.Logger.Debug("Proxying the request", map[string]interface{}{"path": c.Path(), "body": string(c.Request().Body()), "headers": c.GetReqHeaders(), "request_uuid": c.Locals("request_uuid")})
-<<<<<<< HEAD
-	err := proxy.DoRedirects(c, cfg.Server.HostGraphQL+c.Path(), 3, cfg.Client.FastProxyClient)
-=======
 
 	err := retry.Do(
 		func() error {
@@ -72,7 +61,6 @@ func proxyTheRequest(c *fiber.Ctx) error {
 		retry.LastErrorOnly(true),
 	)
 
->>>>>>> origin/main
 	if err != nil {
 		cfg.Logger.Warning("Can't proxy the request", map[string]interface{}{"error": err.Error()})
 		return err

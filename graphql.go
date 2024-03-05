@@ -170,8 +170,11 @@ func checkSelections(c *fiber.Ctx, selections []ast.Selection) bool {
 func checkIfContainsIntrospection(c *fiber.Ctx, whatever string) (shouldBlock bool) {
 	whateverLower := strings.ToLower(whatever)
 	got_exemption := false
+
+	// If the query is an introspection query, we need to check if it's allowed.
 	if _, exists := introspectionQuerySet[whateverLower]; exists {
 		if len(cfg.Security.IntrospectionAllowed) > 0 {
+
 			if _, allowed_exists := introspectionAllowedQueries[whateverLower]; allowed_exists {
 				cfg.Logger.Debug("Introspection query allowed, passing through", map[string]interface{}{"query": whatever})
 				got_exemption = true

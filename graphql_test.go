@@ -219,7 +219,6 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				parseConfig()
 				cfg.Security.BlockIntrospection = true
 				cfg.Security.IntrospectionAllowed = []string{}
-				prepareQueriesAndExemptions()
 				return cfg
 			}(),
 			suppliedQuery: queries{
@@ -241,7 +240,6 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				parseConfig()
 				cfg.Security.BlockIntrospection = true
 				cfg.Security.IntrospectionAllowed = []string{"__schema"}
-				prepareQueriesAndExemptions()
 				return cfg
 			}(),
 			suppliedQuery: queries{
@@ -274,6 +272,8 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
+			cfg = &config{}
+			parseConfig()
 			ctx_headers := func() *fasthttp.RequestHeader {
 				h := fasthttp.RequestHeader{}
 				for k, v := range tt.suppliedQuery.headers {
@@ -292,25 +292,25 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 				Request: ctx_request,
 			})
 
-			defer suite.app.ReleaseCtx(ctx)
+			// defer func() {
+			// 	cfg = &config{}
+			// 	parseConfig()
+			// 	suite.app.ReleaseCtx(ctx)
+			// }()
+
 			assert.NotNil(ctx, "Fiber context is nil")
 
 			if tt.suppliedSettings != nil {
 				cfg = tt.suppliedSettings
 			}
-
-			defer func() {
-				cfg = &config{}
-				parseConfig()
-			}()
-
+			prepareQueriesAndExemptions()
 			parseResult := parseGraphQLQuery(ctx)
-			assert.Equal(tt.wantResults.op_type, parseResult.operationType, "Unexpected operation type", tt.name)
-			assert.Equal(tt.wantResults.op_name, parseResult.operationName, "Unexpected operation name", tt.name)
-			assert.Equal(tt.wantResults.is_cached, parseResult.cacheRequest, "Unexpected cache value", tt.name)
-			assert.Equal(tt.wantResults.cached_ttl, parseResult.cacheTime, "Unexpected cache TTL value", tt.name)
-			assert.Equal(tt.wantResults.shouldBlock, parseResult.shouldBlock, "Unexpected block value", tt.name)
-			assert.Equal(tt.wantResults.shouldIgnore, parseResult.shouldIgnore, "Unexpected ignore value", tt.name)
+			assert.Equal(tt.wantResults.op_type, parseResult.operationType, "Unexpected operation type "+tt.name)
+			assert.Equal(tt.wantResults.op_name, parseResult.operationName, "Unexpected operation name "+tt.name)
+			assert.Equal(tt.wantResults.is_cached, parseResult.cacheRequest, "Unexpected cache value "+tt.name)
+			assert.Equal(tt.wantResults.cached_ttl, parseResult.cacheTime, "Unexpected cache TTL value "+tt.name)
+			assert.Equal(tt.wantResults.shouldBlock, parseResult.shouldBlock, "Unexpected block value "+tt.name)
+			assert.Equal(tt.wantResults.shouldIgnore, parseResult.shouldIgnore, "Unexpected ignore value "+tt.name)
 
 			if tt.wantResults.returnCode > 0 {
 				assert.Equal(tt.wantResults.returnCode, ctx.Response().StatusCode(), "Unexpected return code", tt.name)
