@@ -1,10 +1,6 @@
 package main
 
 import (
-	"testing"
-
-	fiber "github.com/gofiber/fiber/v2"
-	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	"github.com/valyala/fasthttp"
 )
 
@@ -166,6 +162,7 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 		{
 			name: "test mutation query with config: read only",
 			suppliedSettings: func() *config {
+				parseConfig()
 				cfg.Server.ReadOnlyMode = true
 				return cfg
 			}(),
@@ -199,6 +196,7 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 		{
 			name: "test simple query with introspection __schema config: block introspection",
 			suppliedSettings: func() *config {
+				parseConfig()
 				cfg.Security.BlockIntrospection = true
 				return cfg
 			}(),
@@ -275,15 +273,7 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 	}
 
 	for _, tt := range tests {
-		suite.T().Run(tt.name, func(t *testing.T) {
-			cfg = &config{}
-			cfg.Logger = libpack_logging.NewLogger()
-			defer func() {
-				cfg = &config{}
-			}()
-
-			app := fiber.New()
-
+		suite.Run(tt.name, func() {
 			ctx_headers := func() *fasthttp.RequestHeader {
 				h := fasthttp.RequestHeader{}
 				for k, v := range tt.suppliedQuery.headers {
@@ -298,11 +288,11 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 
 			ctx_request.AppendBody([]byte(tt.suppliedQuery.body))
 
-			ctx := app.AcquireCtx(&fasthttp.RequestCtx{
+			ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{
 				Request: ctx_request,
 			})
 
-			defer app.ReleaseCtx(ctx)
+			defer suite.app.ReleaseCtx(ctx)
 			assert.NotNil(ctx, "Fiber context is nil")
 
 			if tt.suppliedSettings != nil {
@@ -311,6 +301,7 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 
 			defer func() {
 				cfg = &config{}
+				parseConfig()
 			}()
 
 			parseResult := parseGraphQLQuery(ctx)

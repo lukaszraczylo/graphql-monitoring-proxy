@@ -148,6 +148,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 
 		if cachedResponse := cacheLookup(queryCacheHash); cachedResponse != nil {
 			cfg.Logger.Debug("Cache hit", map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")})
+			c.Request().Header.Add("X-Cache-Hit", "true")
 			c.Send(cachedResponse)
 			wasCached = true
 		} else {

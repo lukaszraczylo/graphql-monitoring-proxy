@@ -4,6 +4,7 @@
 package libpack_monitoring
 
 import (
+	"flag"
 	"fmt"
 	"time"
 
@@ -35,15 +36,19 @@ func NewMonitoring(ic *InitConfig) *MetricsSetup {
 	ms := &MetricsSetup{ic: ic}
 	ms.metrics_set = metrics.NewSet()
 	ms.metrics_set_custom = metrics.NewSet()
-	go ms.startPrometheusEndpoint()
+	// if not testing, start the prometheus endpoint
 
-	if ic.PurgeEvery > 0 {
-		ticker := time.NewTicker(time.Duration(ic.PurgeEvery) * time.Second)
-		go func() {
-			for range ticker.C {
-				ms.PurgeMetrics()
-			}
-		}()
+	if flag.Lookup("test.v") == nil {
+		go ms.startPrometheusEndpoint()
+
+		if ic.PurgeEvery > 0 {
+			ticker := time.NewTicker(time.Duration(ic.PurgeEvery) * time.Second)
+			go func() {
+				for range ticker.C {
+					ms.PurgeMetrics()
+				}
+			}()
+		}
 	}
 
 	return ms

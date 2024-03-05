@@ -1,7 +1,6 @@
 package main
 
 import (
-	"testing"
 	"time"
 )
 
@@ -38,7 +37,7 @@ func (suite *Tests) Test_cacheLookup() {
 		},
 	}
 	for _, tt := range tests {
-		suite.T().Run(tt.name, func(t *testing.T) {
+		suite.Run(tt.name, func() {
 			if tt.addCache.data != nil {
 				cfg.Cache.CacheClient.Set(tt.args.hash, tt.addCache.data, time.Duration(90*time.Second))
 			}
