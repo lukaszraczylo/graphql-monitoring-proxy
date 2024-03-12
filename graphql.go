@@ -56,13 +56,14 @@ func prepareQueriesAndExemptions() {
 }
 
 type parseGraphQLQueryResult struct {
-	operationType string
-	operationName string
-	cacheTime     int
-	cacheRequest  bool
-	cacheRefresh  bool
-	shouldBlock   bool
-	shouldIgnore  bool
+	operationType  string
+	operationName  string
+	activeEndpoint string
+	cacheTime      int
+	cacheRequest   bool
+	cacheRefresh   bool
+	shouldBlock    bool
+	shouldIgnore   bool
 }
 
 func parseGraphQLQuery(c *fiber.Ctx) (res *parseGraphQLQueryResult) {
@@ -70,7 +71,7 @@ func parseGraphQLQuery(c *fiber.Ctx) (res *parseGraphQLQueryResult) {
 	m := make(map[string]interface{})
 	err := json.Unmarshal(c.Body(), &m)
 	if err != nil {
-		cfg.Logger.Debug("Can't unmarshal the request", map[string]interface{}{"error": err.Error(), "body": string(c.Body())})
+		cfg.Logger.Error("Can't unmarshal the request", map[string]interface{}{"error": err.Error(), "body": string(c.Body())})
 		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 		}
@@ -97,15 +98,23 @@ func parseGraphQLQuery(c *fiber.Ctx) (res *parseGraphQLQueryResult) {
 
 	res.shouldIgnore = false
 	res.operationName = "undefined"
+	res.activeEndpoint = cfg.Server.HostGraphQL
+
 	for _, d := range p.Definitions {
 		if oper, ok := d.(*ast.OperationDefinition); ok {
-			res.operationType = oper.Operation
+			res.operationType = strings.ToLower(oper.Operation)
 
 			if oper.Name != nil {
 				res.operationName = oper.Name.Value
 			}
 
-			if strings.ToLower(res.operationType) == "mutation" && cfg.Server.ReadOnlyMode {
+			// If the query is a mutation then direct it to the RW endpoint,
+			// otherwise direct it to the RO endpoint if it's set.
+			if cfg.Server.HostGraphQLReadOnly != "" && res.operationType != "mutation" {
+				res.activeEndpoint = cfg.Server.HostGraphQLReadOnly
+			}
+
+			if res.operationType == "mutation" && cfg.Server.ReadOnlyMode {
 				cfg.Logger.Warning("Mutation blocked", m)
 				if ifNotInTest() {
 					cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)

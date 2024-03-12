@@ -13,33 +13,44 @@ func (suite *Tests) Test_proxyTheRequest() {
 
 	tests := []struct {
 		name    string
-		query   string
+		body    string
 		host    string
+		hostRO  string
 		path    string
 		headers map[string]string
 		wantErr bool
 	}{
 		{
-			name: "test_empty",
-			query: `query {
-				__type(name: "Query") {
-					name
-				}
-			}`,
+			name:    "test_empty",
+			body:    `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
 			host:    "https://telegram-bot.app/",
 			path:    "/v1/graphql",
 			headers: supplied_headers,
 			wantErr: false,
 		},
 		{
-			name: "test_wrong_url",
-			query: `query {
-				__type(name: "Query") {
-					name
-				}
-			}`,
+			name:    "test_wrong_url",
+			body:    `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
 			host:    "https://google.com/",
 			path:    "/v1/wrongURL",
+			headers: supplied_headers,
+			wantErr: true,
+		},
+		{
+			name:    "Test read only mode",
+			body:    `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
+			host:    "https://google.com/",
+			hostRO:  "https://telegram-bot.app/",
+			path:    "/v1/graphql",
+			headers: supplied_headers,
+			wantErr: false,
+		},
+		{
+			name:    "Test read only mode wrong host",
+			body:    `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
+			host:    "https://telegram-bot.app/",
+			hostRO:  "https://google.com/",
+			path:    "/v1/graphql",
 			headers: supplied_headers,
 			wantErr: true,
 		},
@@ -52,6 +63,10 @@ func (suite *Tests) Test_proxyTheRequest() {
 			parseConfig()
 			cfg.Server.HostGraphQL = tt.host
 
+			if tt.hostRO != "" {
+				cfg.Server.HostGraphQLReadOnly = tt.hostRO
+			}
+
 			ctx_headers := func() *fasthttp.RequestHeader {
 				h := fasthttp.RequestHeader{}
 				for k, v := range tt.headers {
@@ -63,15 +78,15 @@ func (suite *Tests) Test_proxyTheRequest() {
 			ctx_request := fasthttp.Request{
 				Header: *ctx_headers,
 			}
+			ctx_request.SetBody([]byte(tt.body))
 			ctx_request.SetRequestURI(tt.path)
 			ctx_request.Header.SetMethod("POST")
-
 			ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{
 				Request: ctx_request,
 			})
-
+			res := parseGraphQLQuery(ctx)
 			assert.NotNil(ctx, "Fiber context is nil", tt.name)
-			err := proxyTheRequest(ctx)
+			err := proxyTheRequest(ctx, res.activeEndpoint)
 			if tt.wantErr {
 				assert.NotNil(err, "Error is nil", tt.name)
 			} else {

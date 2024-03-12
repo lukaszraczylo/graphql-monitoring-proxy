@@ -33,16 +33,17 @@ type config struct {
 		BlockIntrospection   bool
 	}
 	Server struct {
-		HostGraphQL        string
-		HealthcheckGraphQL string
-		AllowURLs          []string
-		PortGraphQL        int
-		PortMonitoring     int
-		ApiPort            int
-		PurgeEvery         int
-		AccessLog          bool
-		ReadOnlyMode       bool
-		EnableApi          bool
-		PurgeOnCrawl       bool
+		HostGraphQL         string
+		HostGraphQLReadOnly string
+		HealthcheckGraphQL  string
+		AllowURLs           []string
+		PortGraphQL         int
+		PortMonitoring      int
+		ApiPort             int
+		PurgeEvery          int
+		AccessLog           bool
+		ReadOnlyMode        bool
+		EnableApi           bool
+		PurgeOnCrawl        bool
 	}
 }

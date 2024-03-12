@@ -1,0 +1,162 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hasura-w-proxy-internal
+  labels:
+    app: hasura-w-proxy-internal
+    type: support
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hasura-w-proxy-internal
+      type: support
+  template:
+    metadata:
+      labels:
+        app: hasura-w-proxy-internal
+        type: support
+    spec:
+      securityContext:
+        runAsUser: 65534 # nobody
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/worker
+                    operator: Exists
+      containers:
+        - name: hasura
+          image: hasura/graphql-engine:v2.33.1-ce
+          ports:
+            - name: hasura-internal
+              containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 30
+          resources:
+            limits:
+              cpu: "1"
+              memory: "640Mi"
+            requests:
+              cpu: "0.75"
+              memory: "512Mi"
+          env:
+            - name: HASURA_GRAPHQL_DATABASE_URL
+              value: postgres://postgres:xxx@yyy:5432/postgres
+            - name: HASURA_GRAPHQL_ENABLE_CONSOLE
+              value: "true"
+            - name: HASURA_GRAPHQL_DEV_MODE
+              value: "true"
+            - name: HASURA_GRAPHQL_ENABLE_TELEMETRY
+              value: "false"
+            - name: HASURA_GRAPHQL_EXPERIMENTAL_FEATURES
+              value: "inherited_roles"
+            - name: HASURA_GRAPHQL_PG_CONNECTIONS
+              value: "20"
+            - name: HASURA_GRAPHQL_LOG_LEVEL
+              value: "error"
+
+        - name: hasura-ro
+          image: hasura/graphql-engine:v2.33.1-ce
+          ports:
+            - name: hasura-internal-ro
+              containerPort: 8088
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8088
+            initialDelaySeconds: 30
+          resources:
+            limits:
+              cpu: "1"
+              memory: "640Mi"
+            requests:
+              cpu: "0.75"
+              memory: "512Mi"
+          env:
+            - name: HASURA_GRAPHQL_DATABASE_URL
+              value: postgres://postgres:xxx@yyy.read-only:5432/postgres
+            - name: HASURA_GRAPHQL_ENABLE_CONSOLE
+              value: "true"
+            - name: HASURA_GRAPHQL_DEV_MODE
+              value: "true"
+            - name: HASURA_GRAPHQL_ENABLE_TELEMETRY
+              value: "false"
+            - name: HASURA_GRAPHQL_EXPERIMENTAL_FEATURES
+              value: "inherited_roles"
+            - name: HASURA_GRAPHQL_PG_CONNECTIONS
+              value: "20"
+            - name: HASURA_GRAPHQL_LOG_LEVEL
+              value: "error"
+            - name: HASURA_PORT
+              value: "8088"
+
+        - name: graphql-proxy
+          image: ghcr.io/lukaszraczylo/graphql-monitoring-proxy:latest
+          imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: "1"
+              memory: "640Mi"
+            requests:
+              cpu: "0.75"
+              memory: "128Mi"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+          ports:
+            - name: web
+              containerPort: 8181
+            - name: monitoring
+              containerPort: 9393
+          env:
+            - name: PORT_GRAPHQL
+              value: "8181"
+            - name: MONITORING_PORT
+              value: "9393"
+            - name: HOST_GRAPHQL
+              value: http://localhost:8080/
+            - name: HOST_GRAPHQL_READONLY
+              value: http://localhost:8088/
+            - name: ENABLE_GLOBAL_CACHE
+              value: "true"
+            - name: CACHE_TTL
+              value: "10"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hasura-w-proxy-internal
+  labels:
+    app: hasura-w-proxy-internal
+    type: support
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9393"
+    prometheus.io/path: "/metrics"
+spec:
+  ports:
+    - name: hasura
+      port: 8080
+      targetPort: 8080
+    - name: hasura-ro
+      port: 8088
+      targetPort: 8088
+    - name: proxy
+      port: 8181
+      targetPort: 8181
+    - name: monitoring
+      port: 9393
+      targetPort: 9393
+  selector:
+    app: hasura-w-proxy-internal
+    type: support
+  type: ClusterIP
