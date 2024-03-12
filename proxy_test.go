@@ -12,12 +12,12 @@ func (suite *Tests) Test_proxyTheRequest() {
 	}
 
 	tests := []struct {
+		headers map[string]string
 		name    string
 		body    string
 		host    string
 		hostRO  string
 		path    string
-		headers map[string]string
 		wantErr bool
 	}{
 		{
