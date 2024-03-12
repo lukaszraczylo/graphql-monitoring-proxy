@@ -28,7 +28,7 @@ func createFasthttpClient(timeout int) *fasthttp.Client {
 	}
 }
 
-func proxyTheRequest(c *fiber.Ctx) error {
+func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 	if !checkAllowedURLs(c) {
 		cfg.Logger.Error("Request blocked", map[string]interface{}{"path": c.Path()})
 		if ifNotInTest() {
@@ -46,7 +46,7 @@ func proxyTheRequest(c *fiber.Ctx) error {
 
 	err := retry.Do(
 		func() error {
-			errInt := proxy.DoRedirects(c, cfg.Server.HostGraphQL+c.Path(), 3, cfg.Client.FastProxyClient)
+			errInt := proxy.DoRedirects(c, currentEndpoint+c.Path(), 3, cfg.Client.FastProxyClient)
 			if errInt != nil {
 				cfg.Logger.Error("Can't proxy the request", map[string]interface{}{"error": errInt.Error()})
 				if ifNotInTest() {

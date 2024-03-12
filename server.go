@@ -37,13 +37,17 @@ func StartHTTPProxy() {
 	server.Get("/livez", healthCheck)
 
 	server.Post("/*", processGraphQLRequest)
-	server.Get("/*", proxyTheRequest)
+	server.Get("/*", proxyTheRequestToDefault)
 
 	cfg.Logger.Info("GraphQL query proxy started", map[string]interface{}{"port": cfg.Server.PortGraphQL})
 	err := server.Listen(fmt.Sprintf(":%d", cfg.Server.PortGraphQL))
 	if err != nil {
 		cfg.Logger.Critical("Can't start the service", map[string]interface{}{"error": err.Error()})
 	}
+}
+
+func proxyTheRequestToDefault(c *fiber.Ctx) error {
+	return proxyTheRequest(c, cfg.Server.HostGraphQL)
 }
 
 func AddRequestUUID(c *fiber.Ctx) error {
@@ -118,7 +122,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 
 	if parsedResult.shouldIgnore {
 		cfg.Logger.Debug("Request passed as-is - probably not a GraphQL")
-		return proxyTheRequest(c)
+		return proxyTheRequest(c, parsedResult.activeEndpoint)
 	}
 
 	if parsedResult.cacheTime > 0 {
@@ -153,10 +157,10 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 			wasCached = true
 		} else {
 			cfg.Logger.Debug("Cache miss", map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")})
-			proxyAndCacheTheRequest(c, queryCacheHash, parsedResult.cacheTime)
+			proxyAndCacheTheRequest(c, queryCacheHash, parsedResult.cacheTime, parsedResult.activeEndpoint)
 		}
 	} else {
-		proxyTheRequest(c)
+		proxyTheRequest(c, parsedResult.activeEndpoint)
 	}
 
 	timeTaken := time.Since(startTime)
@@ -168,8 +172,8 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 }
 
 // Additional helper function to avoid code repetition
-func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int) {
-	err := proxyTheRequest(c)
+func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int, currentEndpoint string) {
+	err := proxyTheRequest(c, currentEndpoint)
 	if err != nil {
 		cfg.Logger.Error("Can't proxy the request", map[string]interface{}{"error": err.Error()})
 		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)

@@ -39,6 +39,7 @@ func parseConfig() {
 	c.Server.PortGraphQL = getDetailsFromEnv("PORT_GRAPHQL", 8080)
 	c.Server.PortMonitoring = getDetailsFromEnv("MONITORING_PORT", 9393)
 	c.Server.HostGraphQL = getDetailsFromEnv("HOST_GRAPHQL", "http://localhost/")
+	c.Server.HostGraphQLReadOnly = getDetailsFromEnv("HOST_GRAPHQL_READONLY", "")
 	c.Client.JWTUserClaimPath = getDetailsFromEnv("JWT_USER_CLAIM_PATH", "")
 	c.Client.JWTRoleClaimPath = getDetailsFromEnv("JWT_ROLE_CLAIM_PATH", "")
 	c.Client.RoleFromHeader = getDetailsFromEnv("ROLE_FROM_HEADER", "")

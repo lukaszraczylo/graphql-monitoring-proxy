@@ -15,6 +15,7 @@ This project is in active use by [telegram-bot.app](https://telegram-bot.app), a
   - [Configuration](#configuration)
   - [Speed](#speed)
     - [Caching](#caching)
+    - [Read-only endpoint](#read-only-endpoint)
   - [Security](#security)
     - [Role-based rate limiting](#role-based-rate-limiting)
     - [Read-only mode](#read-only-mode)
@@ -93,6 +94,7 @@ In this case, both proxy and websockets will be available under the `/v1/graphql
 | monitor    | Extracting the query name and type and adding it as a label to metrics|
 | monitor    | Calculating the query duration and adding it to the metrics           |
 | speed      | Caching the queries, together with per-query cache and TTL            |
+| speed      | Support for READ ONLY graphql endpoint                                |
 | security   | Blocking schema introspection                                         |
 | security   | Rate limiting queries based on user role                              |
 | security   | Blocking mutations in read-only mode                                  |
@@ -111,6 +113,7 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `MONITORING_PORT`         | The port to expose the metrics endpoint  | `9393`                     |
 | `PORT_GRAPHQL`            | The port to expose the graphql endpoint  | `8080`                     |
 | `HOST_GRAPHQL`            | The host to proxy the graphql endpoint   | `http://localhost/` |
+| `HOST_GRAPHQL_READONLY`   | The host to proxy the read-only graphql endpoint | ``               |
 | `HEALTHCHECK_GRAPHQL_URL` | The URL to check the health of the graphql endpoint | `` |
 | `JWT_USER_CLAIM_PATH`     | Path to the user claim in the JWT token  | ``                         |
 | `JWT_ROLE_CLAIM_PATH`     | Path to the role claim in the JWT token  | ``                         |
@@ -155,6 +158,12 @@ query MyProducts @cached(refresh: true) {
 ```
 
 Since version `0.5.30` the cache is gzipped in the memory, which should optimise the memory usage quite significantly.
+
+#### Read-only endpoint
+
+You can now specify the read-only GraphQL endpoint by setting the `HOST_GRAPHQL_READONLY` environment variable. The default value is empty, preventing the proxy from using the read-only endpoint for the queries and directing all the requests to the main endpoint specified as `HOST_GRAPHQL`. If the `HOST_GRAPHQL_READONLY` is set, the proxy will use the read-only endpoint for the queries with the `query` type and the main endpoint for the `mutation` type queries. Format of the read-only endpoint is the same as `HOST_GRAPHQL` endpoint, for example `http://localhost:8080/`.
+
+You can check out the [example of combined deployment with RW and read-only hasura](static/kubernetes-single-deployment-with-ro.yaml).
 
 ### Security
 
