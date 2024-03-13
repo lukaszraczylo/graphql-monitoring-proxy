@@ -80,6 +80,9 @@ spec:
           env:
             - name: HASURA_GRAPHQL_DATABASE_URL
               value: postgres://postgres:xxx@yyy.read-only:5432/postgres
+              # POINT METADATA TO THE RW database (!!!)
+            - name: HASURA_GRAPHQL_METADATA_DATABASE_URL
+              value: postgres://postgres:xxx@yyy:5432/postgres
             - name: HASURA_GRAPHQL_ENABLE_CONSOLE
               value: "true"
             - name: HASURA_GRAPHQL_DEV_MODE
@@ -92,7 +95,7 @@ spec:
               value: "20"
             - name: HASURA_GRAPHQL_LOG_LEVEL
               value: "error"
-            - name: HASURA_PORT
+            - name: HASURA_GRAPHQL_SERVER_PORT
               value: "8088"
 
         - name: graphql-proxy
