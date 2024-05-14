@@ -75,7 +75,7 @@ func healthCheck(c *fiber.Ctx) error {
 			return err
 		}
 	}
-	cfg.Logger.Debug("Health check returning OK")
+	cfg.Logger.Debug("Health check returning OK", nil)
 	c.Status(200).SendString("Health check OK")
 	return nil
 }
@@ -121,7 +121,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	}
 
 	if parsedResult.shouldIgnore {
-		cfg.Logger.Debug("Request passed as-is - probably not a GraphQL")
+		cfg.Logger.Debug("Request passed as-is - probably not a GraphQL", nil)
 		return proxyTheRequest(c, parsedResult.activeEndpoint)
 	}
 

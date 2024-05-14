@@ -3,6 +3,7 @@ package libpack_logging
 import (
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/gookit/goutil/envutil"
@@ -13,7 +14,21 @@ type LogConfig struct {
 	logger zerolog.Logger
 }
 
-var baseLogger zerolog.Logger
+var (
+	baseLogger zerolog.Logger
+
+	eventPool = sync.Pool{
+		New: func() interface{} {
+			return new(zerolog.Event)
+		},
+	}
+
+	fieldMapPool = sync.Pool{
+		New: func() interface{} {
+			return make(map[string]interface{})
+		},
+	}
+)
 
 func init() {
 	zerolog.TimeFieldFormat = time.RFC3339
@@ -21,10 +36,9 @@ func init() {
 	zerolog.TimestampFieldName = "timestamp"
 	zerolog.LevelFieldName = "level"
 	zerolog.LevelFatalValue = "critical"
-	baseLogger = zerolog.New(os.Stdout).With().Timestamp().Logger()
-}
 
-func NewLogger() *LogConfig {
+	baseLogger = zerolog.New(os.Stdout).With().Timestamp().Logger()
+
 	switch logLevel := envutil.Getenv("LOG_LEVEL", "info"); logLevel {
 	case "debug":
 		baseLogger = baseLogger.Level(zerolog.DebugLevel)
@@ -35,62 +49,72 @@ func NewLogger() *LogConfig {
 	default:
 		baseLogger = baseLogger.Level(zerolog.InfoLevel)
 	}
+}
 
+func NewLogger() *LogConfig {
 	return &LogConfig{logger: baseLogger}
 }
 
-func (lw *LogConfig) log(w io.Writer, level zerolog.Level, message string, v map[string]interface{}) {
-	e := lw.logger.With().Logger()
-	e = e.Output(w)
-	event := e.WithLevel(level).CallerSkipFrame(3)
-	for k, val := range v {
+func (lw *LogConfig) log(w io.Writer, level zerolog.Level, message string, fields map[string]interface{}) {
+	logger := lw.logger.Output(w)
+	event := logger.WithLevel(level).CallerSkipFrame(3)
+
+	for k, val := range fields {
 		switch v := val.(type) {
 		case string:
-			event.Str(k, v)
+			event = event.Str(k, v)
 		case int:
-			event.Int(k, v)
+			event = event.Int(k, v)
 		case float64:
-			event.Float64(k, v)
+			event = event.Float64(k, v)
 		default:
-			event.Interface(k, val)
+			event = event.Interface(k, val)
 		}
 	}
+
 	event.Msg(message)
 }
 
-func (lw *LogConfig) Debug(message string, v ...map[string]interface{}) {
-	if !lw.logger.Debug().Enabled() {
-		return
+func (lw *LogConfig) logWithLevel(level zerolog.Level, message string, fields map[string]interface{}) {
+	if lw.logger.GetLevel() <= level {
+		w := os.Stdout
+		if level >= zerolog.ErrorLevel {
+			w = os.Stderr
+		}
+		lw.log(w, level, message, fields)
 	}
-	lw.log(os.Stdout, zerolog.DebugLevel, message, mergeMaps(v))
 }
 
-func (lw *LogConfig) Info(message string, v ...map[string]interface{}) {
-	if !lw.logger.Info().Enabled() {
-		return
-	}
-	lw.log(os.Stdout, zerolog.InfoLevel, message, mergeMaps(v))
+func (lw *LogConfig) Debug(message string, fields map[string]interface{}) {
+	lw.logWithLevel(zerolog.DebugLevel, message, fields)
 }
 
-func (lw *LogConfig) Warning(message string, v ...map[string]interface{}) {
-	lw.log(os.Stdout, zerolog.WarnLevel, message, mergeMaps(v))
+func (lw *LogConfig) Info(message string, fields map[string]interface{}) {
+	lw.logWithLevel(zerolog.InfoLevel, message, fields)
 }
 
-func (lw *LogConfig) Error(message string, v ...map[string]interface{}) {
-	lw.log(os.Stderr, zerolog.ErrorLevel, message, mergeMaps(v))
+func (lw *LogConfig) Warning(message string, fields map[string]interface{}) {
+	lw.logWithLevel(zerolog.WarnLevel, message, fields)
 }
 
-func (lw *LogConfig) Critical(message string, v ...map[string]interface{}) {
-	lw.log(os.Stderr, zerolog.FatalLevel, message, mergeMaps(v))
+func (lw *LogConfig) Error(message string, fields map[string]interface{}) {
+	lw.logWithLevel(zerolog.ErrorLevel, message, fields)
+}
+
+func (lw *LogConfig) Critical(message string, fields map[string]interface{}) {
+	lw.logWithLevel(zerolog.FatalLevel, message, fields)
 	os.Exit(1)
 }
 
-func mergeMaps(maps []map[string]interface{}) map[string]interface{} {
-	result := make(map[string]interface{})
-	for _, m := range maps {
-		for k, v := range m {
-			result[k] = v
-		}
+// Helper function to get a new fields map from the pool
+func getFieldsMap() map[string]interface{} {
+	return fieldMapPool.Get().(map[string]interface{})
+}
+
+// Helper function to put a used fields map back into the pool
+func putFieldsMap(fields map[string]interface{}) {
+	for k := range fields {
+		delete(fields, k)
 	}
-	return result
+	fieldMapPool.Put(fields)
 }

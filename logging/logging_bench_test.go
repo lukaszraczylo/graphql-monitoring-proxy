@@ -25,6 +25,7 @@ func BenchmarkInfoLog(b *testing.B) {
 	}()
 
 	testsLogger := NewLogger()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		testsLogger.Info("test", map[string]interface{}{"test": "test"})
 	}

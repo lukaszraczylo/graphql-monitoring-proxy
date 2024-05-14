@@ -14,23 +14,31 @@ type CacheEntry struct {
 }
 
 type Cache struct {
-	bytePool  sync.Pool
-	entries   sync.Map
-	globalTTL time.Duration
-	sync.RWMutex
+	entries        sync.Map
+	globalTTL      time.Duration
+	compressPool   sync.Pool
+	decompressPool sync.Pool
+	sync.RWMutex   // Reintroduced to provide lock methods
 }
 
 func New(globalTTL time.Duration) *Cache {
 	cache := &Cache{
 		globalTTL: globalTTL,
+		compressPool: sync.Pool{
+			New: func() interface{} {
+				w := gzip.NewWriter(nil)
+				return w
+			},
+		},
+		decompressPool: sync.Pool{
+			New: func() interface{} {
+				// Ensure that new is returning a new reader initialized with an empty byte buffer
+				r, _ := gzip.NewReader(bytes.NewReader([]byte{}))
+				return r
+			},
+		},
 	}
 
-	// Initialize the byte pool.
-	cache.bytePool.New = func() interface{} {
-		return make([]byte, 0)
-	}
-
-	// Start the cache cleanup.
 	go cache.cleanupRoutine(globalTTL)
 	return cache
 }
@@ -43,10 +51,10 @@ func (c *Cache) cleanupRoutine(globalTTL time.Duration) {
 		c.CleanExpiredEntries()
 	}
 }
-
 func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
-	c.Lock()
+	c.Lock() // use the lock
 	defer c.Unlock()
+
 	expiresAt := time.Now().Add(ttl)
 
 	compressedValue, err := c.compress(value)
@@ -54,25 +62,15 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 		return
 	}
 
-	// Get a byte slice from the pool and ensure it's properly sized.
-	b := c.bytePool.Get().([]byte)
-	if cap(b) < len(compressedValue) {
-		b = make([]byte, len(compressedValue))
-	} else {
-		b = b[:len(compressedValue)]
-	}
-
-	copy(b, compressedValue)
-
 	entry := CacheEntry{
-		Value:     b,
+		Value:     compressedValue,
 		ExpiresAt: expiresAt,
 	}
 	c.entries.Store(key, entry)
 }
 
 func (c *Cache) Get(key string) ([]byte, bool) {
-	c.RLock()
+	c.RLock() // use the read lock
 	defer c.RUnlock()
 
 	entry, ok := c.entries.Load(key)
@@ -92,15 +90,11 @@ func (c *Cache) Delete(key string) {
 	c.Lock()
 	defer c.Unlock()
 
-	entry, ok := c.entries.Load(key)
+	_, ok := c.entries.Load(key)
 	if !ok {
 		return
 	}
 
-	// Return the byte slice to the pool.
-	c.bytePool.Put(entry.(CacheEntry).Value)
-
-	// Delete the entry from the cache.
 	c.entries.Delete(key)
 }
 
@@ -109,37 +103,51 @@ func (c *Cache) CleanExpiredEntries() {
 	c.entries.Range(func(key, value interface{}) bool {
 		entry := value.(CacheEntry)
 		if entry.ExpiresAt.Before(now) {
-			// Return the byte slice to the pool.
-			c.bytePool.Put(entry.Value)
-
-			// Delete the entry from the cache.
 			c.entries.Delete(key)
 		}
-
-		// Return true to continue iterating over the map.
 		return true
 	})
 }
 
 func (c *Cache) compress(data []byte) ([]byte, error) {
+	w := c.compressPool.Get().(*gzip.Writer)
+	defer c.compressPool.Put(w)
+
 	var buf bytes.Buffer
-	w := gzip.NewWriter(&buf)
-	_, err := w.Write(data)
-	if err != nil {
+	w.Reset(&buf)
+	if _, err := w.Write(data); err != nil {
 		return nil, err
 	}
-	err = w.Close()
-	if err != nil {
+	if err := w.Close(); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
 }
 
 func (c *Cache) decompress(data []byte) ([]byte, error) {
-	r, err := gzip.NewReader(bytes.NewBuffer(data))
-	if err != nil {
-		return nil, err
+	r, ok := c.decompressPool.Get().(*gzip.Reader)
+	if !ok || r == nil {
+		// If r is nil or type assertion fails, create a new gzip.Reader
+		var err error
+		r, err = gzip.NewReader(bytes.NewReader(data))
+		if err != nil {
+			return nil, err // Handle the error if gzip.NewReader fails
+		}
+	} else {
+		// Reset the existing reader with new data
+		if err := r.Reset(bytes.NewReader(data)); err != nil {
+			return nil, err // Handle the error if Reset fails
+		}
 	}
 	defer r.Close()
-	return io.ReadAll(r)
+
+	// Ensure the reader is returned to the pool
+	defer c.decompressPool.Put(r)
+
+	// Read all the data from the reader
+	decompressedData, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err // Handle the error if reading fails
+	}
+	return decompressedData, nil
 }

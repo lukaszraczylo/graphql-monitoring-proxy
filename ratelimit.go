@@ -37,7 +37,7 @@ func loadRatelimitConfig() error {
 		cfg.Logger.Debug("Failed to load config", map[string]interface{}{"path": path, "error": err})
 	}
 
-	cfg.Logger.Error("Rate limit config not found")
+	cfg.Logger.Error("Rate limit config not found", map[string]interface{}{"paths": paths})
 	return os.ErrNotExist
 }
 
