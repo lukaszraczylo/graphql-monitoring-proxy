@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/gofiber/fiber/v2/middleware/proxy"
 	"github.com/gookit/goutil/envutil"
@@ -13,6 +14,7 @@ import (
 )
 
 var cfg *config
+var once sync.Once
 
 // function get value from the env where the value can be anything
 func getDetailsFromEnv[T any](key string, defaultValue T) T {
@@ -72,14 +74,16 @@ func parseConfig() {
 	proxy.WithClient(c.Client.FastProxyClient) // setting the global proxy client here instead of per request
 	c.Server.EnableApi = getDetailsFromEnv("ENABLE_API", false)
 	c.Server.ApiPort = getDetailsFromEnv("API_PORT", 9090)
-	c.Api.BannedUsersFile = getDetailsFromEnv("BANNED_USERS_FILE", "/app/banned_users.json")
+	c.Api.BannedUsersFile = getDetailsFromEnv("BANNED_USERS_FILE", "/go/src/app/banned_users.json")
 	c.Server.PurgeOnCrawl = getDetailsFromEnv("PURGE_METRICS_ON_CRAWL", false)
 	c.Server.PurgeEvery = getDetailsFromEnv("PURGE_METRICS_ON_TIMER", 0)
 	cfg = &c
 
 	enableCache() // takes close to no resources, but can be used with dynamic query cache
 	loadRatelimitConfig()
-	enableApi()
+	once.Do(func() {
+		go enableApi()
+	})
 	prepareQueriesAndExemptions()
 }
 
