@@ -236,6 +236,11 @@ To do so - you need to enable the api by setting env variable `ENABLE_API=true` 
 * `POST /api/user-ban` - ban the user from accessing the application
 * `POST /api/user-unban` - unban the user from accessing the application
 
+#### Cache operations
+
+* `POST /api/cache-clear` - clear the cache
+* `GET /api/cache-stats` - get the cache statistics ( hits, misses, size )
+
 Both endpoints require the `user_id` parameter to be present in the request body and allow you to provide the reason for the ban.
 
 Example request:

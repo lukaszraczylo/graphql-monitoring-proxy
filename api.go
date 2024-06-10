@@ -23,6 +23,8 @@ func enableApi() {
 		api := apiserver.Group("/api")
 		api.Post("/user-ban", apiBanUser)
 		api.Post("/user-unban", apiUnbanUser)
+		api.Post("/cache-clear", apiClearCache)
+		api.Get("/cache-stats", apiCacheStats)
 
 		go periodicallyReloadBannedUsers()
 		err := apiserver.Listen(fmt.Sprintf(":%d", cfg.Server.ApiPort))
@@ -48,6 +50,21 @@ func checkIfUserIsBanned(c *fiber.Ctx, userID string) bool {
 		c.Status(403).SendString("User is banned")
 	}
 	return found
+}
+
+func apiClearCache(c *fiber.Ctx) error {
+	cfg.Logger.Debug("Clearing cache via API", nil)
+	cfg.Cache.CacheClient.ClearCache()
+	cfg.Logger.Info("Cache cleared via API", nil)
+	c.Status(200).SendString("OK: cache cleared")
+	return nil
+}
+
+func apiCacheStats(c *fiber.Ctx) error {
+	stats := cfg.Cache.CacheClient.ShowStats()
+	cfg.Logger.Debug("Getting cache stats via API", map[string]interface{}{"stats": stats})
+	c.JSON(stats)
+	return nil
 }
 
 type apiBanUserRequest struct {
