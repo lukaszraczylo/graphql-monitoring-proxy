@@ -16,6 +16,7 @@ import (
 
 // StartHTTPProxy starts the HTTP and points it to the GraphQL server.
 func StartHTTPProxy() {
+	cfg.Logger.Debug("Starting the HTTP proxy", nil)
 	server := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 		AppName:               fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),

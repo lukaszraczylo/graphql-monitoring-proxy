@@ -79,7 +79,7 @@ func parseConfig() {
 
 	enableCache() // takes close to no resources, but can be used with dynamic query cache
 	loadRatelimitConfig()
-	enableApi()
+	go enableApi()
 	prepareQueriesAndExemptions()
 }
 
