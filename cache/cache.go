@@ -18,6 +18,8 @@ type Cache struct {
 	globalTTL      time.Duration
 	compressPool   sync.Pool
 	decompressPool sync.Pool
+	cacheHits      int
+	cacheMisses    int
 	sync.RWMutex   // Reintroduced to provide lock methods
 }
 
@@ -75,14 +77,16 @@ func (c *Cache) Get(key string) ([]byte, bool) {
 
 	entry, ok := c.entries.Load(key)
 	if !ok || entry.(CacheEntry).ExpiresAt.Before(time.Now()) {
+		c.cacheMisses++
 		return nil, false
 	}
 	compressedValue := entry.(CacheEntry).Value
 	value, err := c.decompress(compressedValue)
 	if err != nil {
+		c.cacheMisses++
 		return nil, false
 	}
-
+	c.cacheHits++
 	return value, true
 }
 
@@ -107,6 +111,34 @@ func (c *Cache) CleanExpiredEntries() {
 		}
 		return true
 	})
+}
+
+type CacheStats struct {
+	CachedQueries int `json:"cached_queries"`
+	CacheHits     int `json:"cache_hits"`
+	CacheMisses   int `json:"cache_misses"`
+}
+
+func (c *Cache) ShowStats() CacheStats {
+	c.RLock()
+	defer c.RUnlock()
+	var count int
+	c.entries.Range(func(_, _ interface{}) bool {
+		count++
+		return true
+	})
+	cs := CacheStats{
+		CachedQueries: count,
+		CacheHits:     c.cacheHits,
+		CacheMisses:   c.cacheMisses,
+	}
+	return cs
+}
+
+func (c *Cache) ClearCache() {
+	c.cacheHits = 0
+	c.cacheMisses = 0
+	c.entries = sync.Map{}
 }
 
 func (c *Cache) compress(data []byte) ([]byte, error) {

@@ -33,6 +33,7 @@ func (suite *Tests) SetupTest() {
 		},
 	)
 	parseConfig()
+	enableApi()
 	StartMonitoringServer()
 	cfg.Logger = libpack_logging.NewLogger()
 	// Setup environment variables here if needed

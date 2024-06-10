@@ -6,6 +6,7 @@ require (
 	github.com/VictoriaMetrics/metrics v1.33.1
 	github.com/avast/retry-go/v4 v4.6.0
 	github.com/goccy/go-json v0.10.2
+	github.com/gofiber/fiber v1.14.6
 	github.com/gofiber/fiber/v2 v2.52.4
 	github.com/gofrs/flock v0.8.1
 	github.com/google/uuid v1.6.0
@@ -22,7 +23,9 @@ require (
 require (
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/gofiber/utils v0.0.10 // indirect
 	github.com/gookit/color v1.5.4 // indirect
+	github.com/gorilla/schema v1.1.0 // indirect
 	github.com/klauspost/compress v1.17.8 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect

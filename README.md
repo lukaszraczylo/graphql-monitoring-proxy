@@ -23,6 +23,7 @@ This project is in active use by [telegram-bot.app](https://telegram-bot.app), a
     - [Blocking introspection](#blocking-introspection)
   - [API endpoints](#api-endpoints)
     - [Ban or unban the user](#ban-or-unban-the-user)
+    - [Cache operations](#cache-operations)
   - [General](#general)
     - [Metrics which matter](#metrics-which-matter)
     - [Healthcheck](#healthcheck)
@@ -235,6 +236,11 @@ To do so - you need to enable the api by setting env variable `ENABLE_API=true` 
 
 * `POST /api/user-ban` - ban the user from accessing the application
 * `POST /api/user-unban` - unban the user from accessing the application
+
+#### Cache operations
+
+* `POST /api/cache-clear` - clear the cache
+* `GET /api/cache-stats` - get the cache statistics ( hits, misses, size )
 
 Both endpoints require the `user_id` parameter to be present in the request body and allow you to provide the reason for the ban.
 
