@@ -23,6 +23,7 @@ This project is in active use by [telegram-bot.app](https://telegram-bot.app), a
     - [Blocking introspection](#blocking-introspection)
   - [API endpoints](#api-endpoints)
     - [Ban or unban the user](#ban-or-unban-the-user)
+    - [Cache operations](#cache-operations)
   - [General](#general)
     - [Metrics which matter](#metrics-which-matter)
     - [Healthcheck](#healthcheck)
