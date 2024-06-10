@@ -72,7 +72,7 @@ func parseConfig() {
 	proxy.WithClient(c.Client.FastProxyClient) // setting the global proxy client here instead of per request
 	c.Server.EnableApi = getDetailsFromEnv("ENABLE_API", false)
 	c.Server.ApiPort = getDetailsFromEnv("API_PORT", 9090)
-	c.Api.BannedUsersFile = getDetailsFromEnv("BANNED_USERS_FILE", "/go/src/app/banned_users.json")
+	c.Api.BannedUsersFile = getDetailsFromEnv("BANNED_USERS_FILE", "/app/banned_users.json")
 	c.Server.PurgeOnCrawl = getDetailsFromEnv("PURGE_METRICS_ON_CRAWL", false)
 	c.Server.PurgeEvery = getDetailsFromEnv("PURGE_METRICS_ON_TIMER", 0)
 	cfg = &c
