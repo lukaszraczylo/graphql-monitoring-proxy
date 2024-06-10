@@ -27,7 +27,7 @@ var ratelimit_intervals = map[string]time.Duration{
 }
 
 func loadRatelimitConfig() error {
-	paths := []string{"/app/ratelimit.json", "./ratelimit.json", "./static/default-ratelimit.json"}
+	paths := []string{"/go/src/app/ratelimit.json", "./ratelimit.json", "./static/default-ratelimit.json"}
 
 	for _, path := range paths {
 		err := loadConfigFromPath(path)
