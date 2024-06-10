@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/gofiber/fiber/v2/middleware/proxy"
 	"github.com/gookit/goutil/envutil"
@@ -13,6 +14,7 @@ import (
 )
 
 var cfg *config
+var once sync.Once
 
 // function get value from the env where the value can be anything
 func getDetailsFromEnv[T any](key string, defaultValue T) T {
@@ -79,7 +81,9 @@ func parseConfig() {
 
 	enableCache() // takes close to no resources, but can be used with dynamic query cache
 	loadRatelimitConfig()
-	go enableApi()
+	once.Do(func() {
+		go enableApi()
+	})
 	prepareQueriesAndExemptions()
 }
 
