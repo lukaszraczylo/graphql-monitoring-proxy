@@ -4,4 +4,5 @@ ARG TARGETARCH
 ARG TARGETOS
 ADD dist/bot-$TARGETOS-$TARGETARCH /go/src/app/graphql-proxy
 ADD static/default-ratelimit.json /app/ratelimit.json
+ADD static/default-banned_users.json /app/banned_users.json
 ENTRYPOINT ["/go/src/app/graphql-proxy"]
