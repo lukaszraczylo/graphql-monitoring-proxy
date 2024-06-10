@@ -152,11 +152,13 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 		queryCacheHash = calculateHash(c)
 
 		if cachedResponse := cacheLookup(queryCacheHash); cachedResponse != nil {
+			cfg.Monitoring.Increment(libpack_monitoring.MetricsCacheHit, nil)
 			cfg.Logger.Debug("Cache hit", map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")})
 			c.Request().Header.Add("X-Cache-Hit", "true")
 			c.Send(cachedResponse)
 			wasCached = true
 		} else {
+			cfg.Monitoring.Increment(libpack_monitoring.MetricsCacheMiss, nil)
 			cfg.Logger.Debug("Cache miss", map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")})
 			proxyAndCacheTheRequest(c, queryCacheHash, parsedResult.cacheTime, parsedResult.activeEndpoint)
 		}
@@ -182,6 +184,7 @@ func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int,
 		return
 	}
 	cfg.Cache.CacheClient.Set(queryCacheHash, c.Response().Body(), time.Duration(cacheTime)*time.Second)
+	cfg.Monitoring.Increment(libpack_monitoring.MetricsQueriesCached, nil)
 	c.Send(c.Response().Body())
 }
 

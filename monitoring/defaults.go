@@ -5,6 +5,9 @@ func (ms *MetricsSetup) RegisterDefaultMetrics() {
 	ms.RegisterMetricsCounter(MetricsFailed, nil)
 	ms.RegisterMetricsCounter(MetricsSkipped, nil)
 	ms.RegisterMetricsHistogram(MetricsDuration, nil)
+	ms.RegisterMetricsCounter(MetricsCacheHit, nil)
+	ms.RegisterMetricsCounter(MetricsCacheMiss, nil)
+	ms.RegisterMetricsCounter(MetricsQueriesCached, nil)
 }
 
 func (ms *MetricsSetup) RegisterGoMetrics() {
