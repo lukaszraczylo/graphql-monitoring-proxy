@@ -43,7 +43,7 @@ jobs:
     name: "Unit testing"
     # needs: [prepare]
     runs-on: ubuntu-latest
-    container: ubuntu-latest
+    container: ubuntu
     # container: github/super-linter:v4
     needs: [prepare]
 
