@@ -2,7 +2,6 @@ package main
 
 import (
 	graphql "github.com/lukaszraczylo/go-simple-graphql"
-	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 	"github.com/valyala/fasthttp"
@@ -11,9 +10,13 @@ import (
 // config is a struct that holds the configuration of the application.
 type config struct {
 	Cache struct {
-		CacheClient *libpack_cache.Cache
-		CacheTTL    int
-		CacheEnable bool
+		Client             CacheClient
+		CacheTTL           int
+		CacheEnable        bool
+		CacheRedisEnable   bool
+		CacheRedisURL      string
+		CacheRedisPassword string
+		CacheRedisDB       int
 	}
 	Logger     *libpack_logging.LogConfig
 	Monitoring *libpack_monitoring.MetricsSetup

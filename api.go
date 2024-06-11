@@ -54,16 +54,20 @@ func checkIfUserIsBanned(c *fiber.Ctx, userID string) bool {
 
 func apiClearCache(c *fiber.Ctx) error {
 	cfg.Logger.Debug("Clearing cache via API", nil)
-	cfg.Cache.CacheClient.ClearCache()
+	cacheClear()
 	cfg.Logger.Info("Cache cleared via API", nil)
 	c.Status(200).SendString("OK: cache cleared")
 	return nil
 }
 
 func apiCacheStats(c *fiber.Ctx) error {
-	stats := cfg.Cache.CacheClient.ShowStats()
+	stats := getCacheStats()
 	cfg.Logger.Debug("Getting cache stats via API", map[string]interface{}{"stats": stats})
-	c.JSON(stats)
+	err := c.JSON(stats)
+	if err != nil {
+		cfg.Logger.Error("Can't marshal cache stats", map[string]interface{}{"error": err.Error()})
+		return err
+	}
 	return nil
 }
 
@@ -126,6 +130,12 @@ func loadBannedUsers() {
 		_, err := os.Create(cfg.Api.BannedUsersFile)
 		if err != nil {
 			cfg.Logger.Error("Can't create the file", map[string]interface{}{"error": err.Error()})
+			return
+		}
+		// write empty json to the file
+		err = os.WriteFile(cfg.Api.BannedUsersFile, []byte("{}"), 0644)
+		if err != nil {
+			cfg.Logger.Error("Can't write to the file", map[string]interface{}{"error": err.Error()})
 			return
 		}
 	}

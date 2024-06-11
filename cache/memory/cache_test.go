@@ -110,36 +110,3 @@ func (suite *CacheTestSuite) Test_CacheExpire() {
 		})
 	}
 }
-
-func (suite *CacheTestSuite) Test_CacheStats() {
-	cache := New(30 * time.Second)
-	tests := []struct {
-		name        string
-		cache_value string
-		ttl         time.Duration
-	}{
-		{
-			name:        "test1",
-			cache_value: "test1-123",
-			ttl:         2 * time.Second,
-		},
-		{
-			name:        "test2",
-			cache_value: "test2-123",
-			ttl:         5 * time.Second,
-		},
-	}
-	for _, tt := range tests {
-		suite.T().Run(tt.name, func(t *testing.T) {
-			cache.Set(tt.name, []byte(tt.name), tt.ttl)
-			c, ok := cache.Get(tt.name)
-			suite.Equal(true, ok)
-			suite.Equal(tt.name, string(c))
-		})
-	}
-	cache.Get("non-existent-non-cached-key")
-	stats := cache.ShowStats()
-	suite.Equal(2, stats.CacheHits, "CacheHits")
-	suite.Equal(1, stats.CacheMisses, "CacheMisses")
-	suite.Equal(2, stats.CachedQueries, "CachedQueries")
-}

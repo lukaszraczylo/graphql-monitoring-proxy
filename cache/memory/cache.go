@@ -18,8 +18,6 @@ type Cache struct {
 	globalTTL      time.Duration
 	compressPool   sync.Pool
 	decompressPool sync.Pool
-	cacheHits      int
-	cacheMisses    int
 	sync.RWMutex   // Reintroduced to provide lock methods
 }
 
@@ -53,6 +51,7 @@ func (c *Cache) cleanupRoutine(globalTTL time.Duration) {
 		c.CleanExpiredEntries()
 	}
 }
+
 func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 	c.Lock() // use the lock
 	defer c.Unlock()
@@ -77,16 +76,13 @@ func (c *Cache) Get(key string) ([]byte, bool) {
 
 	entry, ok := c.entries.Load(key)
 	if !ok || entry.(CacheEntry).ExpiresAt.Before(time.Now()) {
-		c.cacheMisses++
 		return nil, false
 	}
 	compressedValue := entry.(CacheEntry).Value
 	value, err := c.decompress(compressedValue)
 	if err != nil {
-		c.cacheMisses++
 		return nil, false
 	}
-	c.cacheHits++
 	return value, true
 }
 
@@ -102,24 +98,11 @@ func (c *Cache) Delete(key string) {
 	c.entries.Delete(key)
 }
 
-func (c *Cache) CleanExpiredEntries() {
-	now := time.Now()
-	c.entries.Range(func(key, value interface{}) bool {
-		entry := value.(CacheEntry)
-		if entry.ExpiresAt.Before(now) {
-			c.entries.Delete(key)
-		}
-		return true
-	})
+func (c *Cache) Clear() {
+	c.entries = sync.Map{}
 }
 
-type CacheStats struct {
-	CachedQueries int `json:"cached_queries"`
-	CacheHits     int `json:"cache_hits"`
-	CacheMisses   int `json:"cache_misses"`
-}
-
-func (c *Cache) ShowStats() CacheStats {
+func (c *Cache) CountQueries() int {
 	c.RLock()
 	defer c.RUnlock()
 	var count int
@@ -127,18 +110,7 @@ func (c *Cache) ShowStats() CacheStats {
 		count++
 		return true
 	})
-	cs := CacheStats{
-		CachedQueries: count,
-		CacheHits:     c.cacheHits,
-		CacheMisses:   c.cacheMisses,
-	}
-	return cs
-}
-
-func (c *Cache) ClearCache() {
-	c.cacheHits = 0
-	c.cacheMisses = 0
-	c.entries = sync.Map{}
+	return count
 }
 
 func (c *Cache) compress(data []byte) ([]byte, error) {
@@ -182,4 +154,15 @@ func (c *Cache) decompress(data []byte) ([]byte, error) {
 		return nil, err // Handle the error if reading fails
 	}
 	return decompressedData, nil
+}
+
+func (c *Cache) CleanExpiredEntries() {
+	now := time.Now()
+	c.entries.Range(func(key, value interface{}) bool {
+		entry := value.(CacheEntry)
+		if entry.ExpiresAt.Before(now) {
+			c.entries.Delete(key)
+		}
+		return true
+	})
 }

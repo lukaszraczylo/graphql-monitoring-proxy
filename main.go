@@ -46,8 +46,14 @@ func parseConfig() {
 	c.Client.JWTRoleClaimPath = getDetailsFromEnv("JWT_ROLE_CLAIM_PATH", "")
 	c.Client.RoleFromHeader = getDetailsFromEnv("ROLE_FROM_HEADER", "")
 	c.Client.RoleRateLimit = getDetailsFromEnv("ROLE_RATE_LIMIT", false)
+	/* in-memory cache */
 	c.Cache.CacheEnable = getDetailsFromEnv("ENABLE_GLOBAL_CACHE", false)
 	c.Cache.CacheTTL = getDetailsFromEnv("CACHE_TTL", 60)
+	/* redis cache */
+	c.Cache.CacheRedisEnable = getDetailsFromEnv("ENABLE_REDIS_CACHE", false)
+	c.Cache.CacheRedisURL = getDetailsFromEnv("CACHE_REDIS_URL", "localhost:6379")
+	c.Cache.CacheRedisPassword = getDetailsFromEnv("CACHE_REDIS_PASSWORD", "")
+	c.Cache.CacheRedisDB = getDetailsFromEnv("CACHE_REDIS_DB", 0)
 	c.Security.BlockIntrospection = getDetailsFromEnv("BLOCK_SCHEMA_INTROSPECTION", false)
 	c.Security.IntrospectionAllowed = func() []string {
 		urls := getDetailsFromEnv("ALLOWED_INTROSPECTION", "")

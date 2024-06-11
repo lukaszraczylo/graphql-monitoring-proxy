@@ -3,9 +3,11 @@ package main
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/goccy/go-json"
 	"github.com/gofiber/fiber/v2"
+	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/memory"
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	assertions "github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -32,6 +34,10 @@ func (suite *Tests) SetupTest() {
 			JSONDecoder:           json.Unmarshal,
 		},
 	)
+	cacheStats = &CacheStats{}
+
+	// Initialize a simple in-memory cache client for testing purposes
+	cfg.Cache.Client = libpack_cache.New(5 * time.Minute)
 	parseConfig()
 	enableApi()
 	StartMonitoringServer()

@@ -122,6 +122,10 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `ROLE_RATE_LIMIT`         | Enable request rate limiting based on role| `false`                   |
 | `ENABLE_GLOBAL_CACHE`     | Enable the cache                        | `false`                    |
 | `CACHE_TTL`               | The cache TTL                           | `60`                       |
+| `ENABLE_REDIS_CACHE`      | Enable distributed Redis cache          | `false`                    |
+| `CACHE_REDIS_URL`         | URL to redis server / cluster endpoint  | `localhost:6379`           |
+| `CACHE_REDIS_PASSWORD`    | Redis connection password               | ``                         |
+| `CACHE_REDIS_DB`          | Redis DB id                             | `0`                        |
 | `LOG_LEVEL`               | The log level                           | `info`                     |
 | `BLOCK_SCHEMA_INTROSPECTION`| Blocks the schema introspection       | `false`                    |
 | `ALLOWED_INTROSPECTION`  | Allow only certain queries in introspection | ``                  |
@@ -140,7 +144,7 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 #### Caching
 
 The cache engine is enabled in the background by default, using no additional resources.
-You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` environment variable to `true` - which will enable the cache for all queries without introspection. You can leave the global cache disabled and enable the cache for specific queries by adding the `@cached` directive to the query.
+You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` or `ENABLE_REDIS_CACHE` environment variable to `true` - which will enable the cache for all queries without introspection. You can leave the global cache disabled and enable the cache for specific queries by adding the `@cached` directive to the query.
 
 In the case of the `@cached` you can add additional parameters to the directive which will set the cache for specific queries to the provided time.
 For example, `query MyCachedQuery @cached(ttl: 90) ....` will set the cache for the query to 90 seconds.
@@ -159,6 +163,7 @@ query MyProducts @cached(refresh: true) {
 ```
 
 Since version `0.5.30` the cache is gzipped in the memory, which should optimise the memory usage quite significantly.
+Since version `0.15.48` the you can also use the distributed Redis cache.
 
 #### Read-only endpoint
 
@@ -289,4 +294,7 @@ graphql_proxy_executed_query{user_id="-",op_type="query",op_name="checkIfSpamAIR
 graphql_proxy_requests_failed 324
 graphql_proxy_requests_skipped 0
 graphql_proxy_requests_succesful 454823
+graphql_proxy_cache_hit{microservice="graphql_proxy",pod="hasura-w-proxy-internal-6b5f4b4bbb-9xwfc"} 7
+graphql_proxy_cache_hit{pod="hasura-w-proxy-internal-6b5f4b4bbb-9xwfc",microservice="graphql_proxy"} 1
+graphql_proxy_cache_miss{microservice="graphql_proxy",pod="hasura-w-proxy-internal-6b5f4b4bbb-9xwfc"} 23
 ```
