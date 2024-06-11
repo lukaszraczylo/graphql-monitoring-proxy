@@ -33,6 +33,10 @@ func NewClient(redisClientConfig *RedisClientConfig) *RedisConfig {
 		}),
 		ctx: context.Background(),
 	}
+	_, err := c.client.Ping(c.ctx).Result()
+	if err != nil {
+		panic(err)
+	}
 	return c
 }
 

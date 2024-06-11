@@ -49,11 +49,9 @@ func (suite *Tests) Test_cacheLookupInmemory() {
 }
 
 func (suite *Tests) Test_cacheLookupRedis() {
-	redis_host := envutil.Getenv("REDIS_HOST", "localhost")
-	redis_port := envutil.Getenv("REDIS_PORT", "6379")
-
+	redis_server := envutil.Getenv("REDIS_SERVER", "localhost:6379")
 	cfg.Cache.Client = libpack_redis.NewClient(&libpack_redis.RedisClientConfig{
-		RedisServer:   redis_host + ":" + redis_port,
+		RedisServer:   redis_server,
 		RedisPassword: "",
 		RedisDB:       0,
 	})
