@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gookit/goutil/envutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -14,8 +15,10 @@ type RedisConfigSuite struct {
 }
 
 func (suite *RedisConfigSuite) SetupTest() {
+	redis_host := envutil.Getenv("REDIS_HOST", "localhost")
+	redis_port := envutil.Getenv("REDIS_PORT", "6379")
 	suite.redisConfig = NewClient(&RedisClientConfig{
-		RedisServer:   "localhost:6379",
+		RedisServer:   redis_host + ":" + redis_port,
 		RedisPassword: "",
 		RedisDB:       0,
 	})
