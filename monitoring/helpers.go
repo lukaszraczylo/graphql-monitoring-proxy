@@ -3,6 +3,7 @@ package libpack_monitoring
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -10,37 +11,53 @@ import (
 )
 
 func (ms *MetricsSetup) get_metrics_name(name string, labels map[string]string) (complete_name string) {
-	if labels == nil {
-		labels = make(map[string]string)
-	}
-
-	// Adding default labels
-	labels["microservice"] = libpack_config.PKG_NAME
-	if podName, err := os.Hostname(); err == nil {
-		labels["pod"] = podName
-	} else {
-		labels["pod"] = "unknown"
-	}
-
+	const unknownPodName = "unknown"
 	var sb strings.Builder
+
+	// Prepare default labels without initializing a new map
+	podName := unknownPodName
+	if hn, err := os.Hostname(); err == nil {
+		podName = hn
+	}
+	if labels == nil {
+		labels = map[string]string{
+			"microservice": libpack_config.PKG_NAME,
+			"pod":          podName,
+		}
+	} else {
+		if _, exists := labels["microservice"]; !exists {
+			labels["microservice"] = libpack_config.PKG_NAME
+		}
+		if _, exists := labels["pod"]; !exists {
+			labels["pod"] = podName
+		}
+	}
+
+	// Prefix handling
 	if ms.metrics_prefix != "" {
 		sb.WriteString(ms.metrics_prefix)
 		sb.WriteString("_")
 	}
 	sb.WriteString(name)
 
+	// Append labels if any
 	if len(labels) > 0 {
 		sb.WriteString("{")
-		first := true
-		for k, v := range labels {
-			if !first {
+
+		keys := make([]string, 0, len(labels))
+		for k := range labels {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		for i, k := range keys {
+			if i > 0 {
 				sb.WriteString(",")
 			}
 			sb.WriteString(k)
 			sb.WriteString("=\"")
-			sb.WriteString(v)
+			sb.WriteString(labels[k])
 			sb.WriteString("\"")
-			first = false
 		}
 		sb.WriteString("}")
 	}
@@ -82,9 +99,31 @@ func validate_metrics_name(name string) error {
 }
 
 func compile_metrics_with_labels(name string, labels map[string]string) string {
-	metric_name := name
+	var totalLength int
+	totalLength += len(name)
 	for k, v := range labels {
-		metric_name += "_" + k + "_" + v
+		totalLength += len(k) + len(v) + 2
 	}
-	return metric_name
+
+	var sb strings.Builder
+	sb.Grow(totalLength + 1)
+
+	sb.WriteString(name)
+
+	// Collect keys and sort them
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	// Append sorted key-value pairs to the builder
+	for _, k := range keys {
+		sb.WriteString("_")
+		sb.WriteString(k)
+		sb.WriteString("_")
+		sb.WriteString(labels[k])
+	}
+
+	return sb.String()
 }
