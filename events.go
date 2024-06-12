@@ -17,11 +17,13 @@ func enableHasuraEventCleaner() {
 
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
+		cfg.Logger.Info("Event cleaner enabled", map[string]interface{}{"interval_in_days": cfg.HasuraEventCleaner.ClearOlderThan})
 
 		go func() {
 			for {
 				select {
 				case <-ticker.C:
+					cfg.Logger.Info("Cleaning up old events", nil)
 					cleanEvents()
 				}
 			}
