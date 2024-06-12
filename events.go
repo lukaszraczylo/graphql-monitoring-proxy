@@ -45,12 +45,14 @@ func cleanEvents() {
 		fmt.Sprintf("DELETE FROM hdb_catalog.event_invocation_logs WHERE created_at < now() - interval '%d days';", cfg.HasuraEventCleaner.ClearOlderThan),
 		fmt.Sprintf("DELETE FROM hdb_catalog.event_log WHERE created_at < now() - interval '%d days';", cfg.HasuraEventCleaner.ClearOlderThan),
 		fmt.Sprintf("DELETE FROM hdb_catalog.hdb_action_log WHERE created_at < NOW() - INTERVAL '%d days';", cfg.HasuraEventCleaner.ClearOlderThan),
+		fmt.Sprintf("DELETE FROM hdb_catalog.hdb_cron_event_invocation_logs WHERE created_at < NOW() - INTERVAL '%d days';", cfg.HasuraEventCleaner.ClearOlderThan),
+		fmt.Sprintf("DELETE FROM hdb_catalog.hdb_scheduled_event_invocation_logs WHERE created_at < NOW() - INTERVAL '%d days';", cfg.HasuraEventCleaner.ClearOlderThan),
 	}
 
 	for _, query := range delQueries {
 		_, err := conn.Exec(context.Background(), query)
 		if err != nil {
-			cfg.Logger.Error("Failed to execute query", map[string]interface{}{"query": query, "error": err})
+			cfg.Logger.Debug("Failed to execute query", map[string]interface{}{"query": query, "error": err})
 		}
 	}
 }

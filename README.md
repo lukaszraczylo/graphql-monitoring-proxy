@@ -183,6 +183,14 @@ You can check out the [example of combined deployment with RW and read-only hasu
 
 When enabled via `HASURA_EVENT_CLEANER=true` - proxy needs to have a direct access to the database to execute simple delete queries on schedule. You can specify number of days the logs should be kept for using `HASURA_EVENT_CLEANER_OLDER_THAN`, for example `HASURA_EVENT_CLEANER_OLDER_THAN=14` will keep 14 days of event execution logs. Ticker managing the cleaner routine will be executed every hour.
 
+Following tables are being cleaned:
+- `hdb_catalog.event_invocation_logs`
+- `hdb_catalog.event_log`
+- `hdb_catalog.hdb_action_log`
+- `hdb_catalog.hdb_cron_event_invocation_logs`
+- `hdb_catalog.hdb_scheduled_event_invocation_logs`
+
+
 ### Security
 
 #### Role-based rate limiting
