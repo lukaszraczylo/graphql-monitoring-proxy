@@ -14,11 +14,11 @@ type CacheEntry struct {
 }
 
 type Cache struct {
-	entries        sync.Map
-	globalTTL      time.Duration
 	compressPool   sync.Pool
 	decompressPool sync.Pool
-	sync.RWMutex   // Reintroduced to provide lock methods
+	entries        sync.Map
+	globalTTL      time.Duration
+	sync.RWMutex
 }
 
 func New(globalTTL time.Duration) *Cache {

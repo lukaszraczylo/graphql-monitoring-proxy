@@ -9,15 +9,6 @@ import (
 
 // config is a struct that holds the configuration of the application.
 type config struct {
-	Cache struct {
-		Client             CacheClient
-		CacheTTL           int
-		CacheEnable        bool
-		CacheRedisEnable   bool
-		CacheRedisURL      string
-		CacheRedisPassword string
-		CacheRedisDB       int
-	}
 	Logger     *libpack_logging.LogConfig
 	Monitoring *libpack_monitoring.MetricsSetup
 	Api        struct{ BannedUsersFile string }
@@ -35,6 +26,20 @@ type config struct {
 		IntrospectionAllowed []string
 		BlockIntrospection   bool
 	}
+	HasuraEventCleaner struct {
+		EventMetadataDb string
+		ClearOlderThan  int
+		Enable          bool
+	}
+	Cache struct {
+		Client             CacheClient
+		CacheRedisURL      string
+		CacheRedisPassword string
+		CacheTTL           int
+		CacheRedisDB       int
+		CacheEnable        bool
+		CacheRedisEnable   bool
+	}
 	Server struct {
 		HostGraphQL         string
 		HostGraphQLReadOnly string
@@ -48,10 +53,5 @@ type config struct {
 		ReadOnlyMode        bool
 		EnableApi           bool
 		PurgeOnCrawl        bool
-	}
-	HasuraEventCleaner struct {
-		Enable          bool
-		ClearOlderThan  int // days to keep
-		EventMetadataDb string
 	}
 }
