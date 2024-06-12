@@ -76,6 +76,9 @@ func (lw *LogConfig) log(w io.Writer, level zerolog.Level, message string, field
 }
 
 func (lw *LogConfig) logWithLevel(level zerolog.Level, message string, fields map[string]interface{}) {
+	if lw.logger.GetLevel() > level {
+		return
+	}
 	if lw.logger.GetLevel() <= level {
 		w := os.Stdout
 		if level >= zerolog.ErrorLevel {
