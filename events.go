@@ -19,6 +19,10 @@ func enableHasuraEventCleaner() {
 		defer ticker.Stop()
 		cfg.Logger.Info("Event cleaner enabled", map[string]interface{}{"interval_in_days": cfg.HasuraEventCleaner.ClearOlderThan})
 
+		time.Sleep(60 * time.Second) // wait for everything to start and settle down
+		cfg.Logger.Info("Initial cleanup of old events", nil)
+		cleanEvents()
+
 		for {
 			select {
 			case <-ticker.C:
