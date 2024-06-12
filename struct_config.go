@@ -49,4 +49,9 @@ type config struct {
 		EnableApi           bool
 		PurgeOnCrawl        bool
 	}
+	HasuraEventCleaner struct {
+		Enable          bool
+		ClearOlderThan  int // days to keep
+		EventMetadataDb string
+	}
 }

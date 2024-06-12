@@ -101,6 +101,7 @@ In this case, both proxy and websockets will be available under the `/v1/graphql
 | security   | Blocking mutations in read-only mode                                  |
 | security   | Allow access only to listed URLs                                      |
 | security   | Ban / unban specific user from accessing the application              |
+| maintenance | Hasura event cleaner                                                 |
 
 
 ### Configuration
@@ -138,6 +139,9 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `PROXIED_CLIENT_TIMEOUT` | The timeout for the proxied client in seconds     | `120`                      |
 | `PURGE_METRICS_ON_CRAWL` | Purge metrics on each /metrics crawl    | `false`                      |
 | `PURGE_METRICS_ON_TIMER` | Purge metrics every x seconds. `0` - disabled | `0`                      |
+| `HASURA_EVENT_CLEANER`   | Enable the hasura event cleaner          | `false`                    |
+| `HASURA_EVENT_CLEANER_OLDER_THAN` | The interval for the hasura event cleaner (in days) | `1`                  |
+| `HASURA_EVENT_METADATA_DB` | URL to the hasura metadata database    | `postgresql://localhost:5432/hasura` |
 
 ### Speed
 

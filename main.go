@@ -83,12 +83,16 @@ func parseConfig() {
 	c.Api.BannedUsersFile = getDetailsFromEnv("BANNED_USERS_FILE", "/go/src/app/banned_users.json")
 	c.Server.PurgeOnCrawl = getDetailsFromEnv("PURGE_METRICS_ON_CRAWL", false)
 	c.Server.PurgeEvery = getDetailsFromEnv("PURGE_METRICS_ON_TIMER", 0)
+	c.HasuraEventCleaner.Enable = getDetailsFromEnv("HASURA_EVENT_CLEANER", false)
+	c.HasuraEventCleaner.ClearOlderThan = getDetailsFromEnv("HASURA_EVENT_CLEANER_OLDER_THAN", 1)
+	c.HasuraEventCleaner.EventMetadataDb = getDetailsFromEnv("HASURA_EVENT_METADATA_DB", "")
 	cfg = &c
 
 	enableCache() // takes close to no resources, but can be used with dynamic query cache
 	loadRatelimitConfig()
 	once.Do(func() {
 		go enableApi()
+		go enableHasuraEventCleaner()
 	})
 	prepareQueriesAndExemptions()
 }
