@@ -105,7 +105,7 @@ func (c *Cache) Clear() {
 	})
 }
 
-func (c *Cache) CountEntries() int {
+func (c *Cache) CountQueries() int {
 	c.rlock()
 	defer c.runlock()
 
