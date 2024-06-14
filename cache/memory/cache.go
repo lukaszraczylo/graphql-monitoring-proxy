@@ -19,7 +19,7 @@ type Cache struct {
 	decompressPool sync.Pool
 	entries        sync.Map
 	globalTTL      time.Duration
-	mu             sync.RWMutex
+	mu             sync.RWMutex // Added sync.RWMutex field for locking
 }
 
 func New(globalTTL time.Duration) *Cache {
@@ -51,7 +51,7 @@ func (c *Cache) cleanupRoutine(globalTTL time.Duration) {
 	}
 }
 
-func (c *Cache) Set(key string, value []byte, ttl time.Duration) error {
+func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 	c.lock()
 	defer c.unlock()
 
@@ -60,7 +60,7 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) error {
 	compressedValue, err := c.compress(value)
 	if err != nil {
 		log.Printf("Error compressing value for key %s: %v", key, err)
-		return err
+		return
 	}
 
 	entry := CacheEntry{
@@ -68,7 +68,6 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) error {
 		ExpiresAt: expiresAt,
 	}
 	c.entries.Store(key, entry)
-	return nil
 }
 
 func (c *Cache) Get(key string) ([]byte, bool) {
