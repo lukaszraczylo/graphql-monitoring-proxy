@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"io"
+	"log"
 	"sync"
 	"time"
 )
@@ -18,7 +19,7 @@ type Cache struct {
 	decompressPool sync.Pool
 	entries        sync.Map
 	globalTTL      time.Duration
-	sync.RWMutex
+	mu             sync.RWMutex // Added sync.RWMutex field for locking
 }
 
 func New(globalTTL time.Duration) *Cache {
@@ -26,13 +27,11 @@ func New(globalTTL time.Duration) *Cache {
 		globalTTL: globalTTL,
 		compressPool: sync.Pool{
 			New: func() interface{} {
-				w := gzip.NewWriter(nil)
-				return w
+				return gzip.NewWriter(nil)
 			},
 		},
 		decompressPool: sync.Pool{
 			New: func() interface{} {
-				// Ensure that new is returning a new reader initialized with an empty byte buffer
 				r, _ := gzip.NewReader(bytes.NewReader([]byte{}))
 				return r
 			},
@@ -53,13 +52,14 @@ func (c *Cache) cleanupRoutine(globalTTL time.Duration) {
 }
 
 func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
-	c.Lock() // use the lock
-	defer c.Unlock()
+	c.lock()
+	defer c.unlock()
 
 	expiresAt := time.Now().Add(ttl)
 
 	compressedValue, err := c.compress(value)
 	if err != nil {
+		log.Printf("Error compressing value for key %s: %v", key, err)
 		return
 	}
 
@@ -71,8 +71,8 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 }
 
 func (c *Cache) Get(key string) ([]byte, bool) {
-	c.RLock() // use the read lock
-	defer c.RUnlock()
+	c.rlock()
+	defer c.runlock()
 
 	entry, ok := c.entries.Load(key)
 	if !ok || entry.(CacheEntry).ExpiresAt.Before(time.Now()) {
@@ -81,30 +81,33 @@ func (c *Cache) Get(key string) ([]byte, bool) {
 	compressedValue := entry.(CacheEntry).Value
 	value, err := c.decompress(compressedValue)
 	if err != nil {
+		log.Printf("Error decompressing value for key %s: %v", key, err)
 		return nil, false
 	}
 	return value, true
 }
 
 func (c *Cache) Delete(key string) {
-	c.Lock()
-	defer c.Unlock()
-
-	_, ok := c.entries.Load(key)
-	if !ok {
-		return
-	}
+	c.lock()
+	defer c.unlock()
 
 	c.entries.Delete(key)
 }
 
 func (c *Cache) Clear() {
-	c.entries = sync.Map{}
+	c.lock()
+	defer c.unlock()
+
+	c.entries.Range(func(key, value interface{}) bool {
+		c.entries.Delete(key)
+		return true
+	})
 }
 
 func (c *Cache) CountQueries() int {
-	c.RLock()
-	defer c.RUnlock()
+	c.rlock()
+	defer c.runlock()
+
 	var count int
 	c.entries.Range(func(_, _ interface{}) bool {
 		count++
@@ -131,27 +134,24 @@ func (c *Cache) compress(data []byte) ([]byte, error) {
 func (c *Cache) decompress(data []byte) ([]byte, error) {
 	r, ok := c.decompressPool.Get().(*gzip.Reader)
 	if !ok || r == nil {
-		// If r is nil or type assertion fails, create a new gzip.Reader
 		var err error
 		r, err = gzip.NewReader(bytes.NewReader(data))
 		if err != nil {
-			return nil, err // Handle the error if gzip.NewReader fails
+			return nil, err
 		}
 	} else {
-		// Reset the existing reader with new data
 		if err := r.Reset(bytes.NewReader(data)); err != nil {
-			return nil, err // Handle the error if Reset fails
+			return nil, err
 		}
 	}
-	defer r.Close()
+	defer func() {
+		r.Close()
+		c.decompressPool.Put(r)
+	}()
 
-	// Ensure the reader is returned to the pool
-	defer c.decompressPool.Put(r)
-
-	// Read all the data from the reader
 	decompressedData, err := io.ReadAll(r)
 	if err != nil {
-		return nil, err // Handle the error if reading fails
+		return nil, err
 	}
 	return decompressedData, nil
 }
@@ -165,4 +165,22 @@ func (c *Cache) CleanExpiredEntries() {
 		}
 		return true
 	})
+}
+
+// Private methods to handle locking
+
+func (c *Cache) lock() {
+	c.mu.Lock()
+}
+
+func (c *Cache) unlock() {
+	c.mu.Unlock()
+}
+
+func (c *Cache) rlock() {
+	c.mu.RLock()
+}
+
+func (c *Cache) runlock() {
+	c.mu.RUnlock()
 }
