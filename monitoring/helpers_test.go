@@ -1,7 +1,6 @@
 package libpack_monitoring
 
 import (
-	"os"
 	"testing"
 
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
@@ -134,10 +133,96 @@ func TestValidateMetricsName(t *testing.T) {
 	}
 }
 
-func getPodName() string {
-	podName, err := os.Hostname()
-	if err != nil {
-		return "unknown"
+func TestCleanMetricName(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"valid metric name", "valid_metric_name"},
+		{"valid@metric#name!", "valid_metric_name"},
+		{"__valid__metric__name__", "valid_metric_name"},
+		{" valid metric name ", "valid_metric_name"},
 	}
-	return podName
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			assert.Equal(t, tt.expected, clean_metric_name(tt.input))
+		})
+	}
+}
+
+func TestDefaultLabels(t *testing.T) {
+	podName := "test-pod"
+	libpack_config.PKG_NAME = "example_microservice"
+	expected := map[string]string{
+		"microservice": "example_microservice",
+		"pod":          podName,
+	}
+
+	assert.Equal(t, expected, defaultLabels(podName))
+}
+
+func TestEnsureDefaultLabels(t *testing.T) {
+	podName := "test-pod"
+	libpack_config.PKG_NAME = "example_microservice"
+
+	tests := []struct {
+		name           string
+		inputLabels    map[string]string
+		expectedLabels map[string]string
+	}{
+		{
+			name:           "Nil labels",
+			inputLabels:    nil,
+			expectedLabels: map[string]string{"microservice": "example_microservice", "pod": podName},
+		},
+		{
+			name:           "Empty labels",
+			inputLabels:    map[string]string{},
+			expectedLabels: map[string]string{"microservice": "example_microservice", "pod": podName},
+		},
+		{
+			name:           "Partial labels",
+			inputLabels:    map[string]string{"microservice": "test_service"},
+			expectedLabels: map[string]string{"microservice": "test_service", "pod": podName},
+		},
+		{
+			name:           "Complete labels",
+			inputLabels:    map[string]string{"microservice": "test_service", "pod": "custom_pod"},
+			expectedLabels: map[string]string{"microservice": "test_service", "pod": "custom_pod"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ensureDefaultLabels(&tt.inputLabels, podName)
+			assert.Equal(t, tt.expectedLabels, tt.inputLabels)
+		})
+	}
+}
+
+func TestLabelsToString(t *testing.T) {
+	tests := []struct {
+		labels   map[string]string
+		expected string
+	}{
+		{
+			labels:   map[string]string{"key1": "value1", "key2": "value2"},
+			expected: "key1=value1;key2=value2;",
+		},
+		{
+			labels:   map[string]string{"a": "1", "b": "2"},
+			expected: "a=1;b=2;",
+		},
+		{
+			labels:   map[string]string{},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			assert.Equal(t, tt.expected, labelsToString(tt.labels))
+		})
+	}
 }
