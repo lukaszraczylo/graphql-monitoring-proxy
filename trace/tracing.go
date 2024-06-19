@@ -72,7 +72,7 @@ func TraceContextExtract(ctx context.Context, traceContext map[string]string) co
 
 func StartSpanFromContext(ctx context.Context, operationName string) (context.Context, oteltrace.Span) {
 	tr := otel.GetTracerProvider().Tracer("")
-	return tr.Start(ctx, operationName, oteltrace.WithSpanKind(oteltrace.SpanKindInternal))
+	return tr.Start(ctx, operationName, oteltrace.WithSpanKind(oteltrace.SpanKindServer))
 }
 
 func ContinueSpanFromContext(ctx context.Context, operationName string) (context.Context, oteltrace.Span) {

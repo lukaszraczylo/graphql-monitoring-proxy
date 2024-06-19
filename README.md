@@ -300,7 +300,13 @@ If you prefer more control over the metrics purging - you can enable `PURGE_METR
 
 Tracing can be enabled by setting `ENABLE_TRACE` to `true` and providing compatible with OTEL `TRACER_ENDPOINT` value ( default is `localhost:4317` ). From that moment you can include `X-Trace-Span` in your requests to the proxy.
 
-The value of X-Trace-Span should be in following format !!#TODO!!
+The value of X-Trace-Span should be in following format:
+
+```json
+{
+ "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+}
+```
 
 #### Healthcheck
 
