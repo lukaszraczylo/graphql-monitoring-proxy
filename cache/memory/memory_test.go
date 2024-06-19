@@ -1,4 +1,4 @@
-package libpack_cache
+package libpack_cache_memory
 
 import (
 	"testing"
@@ -7,25 +7,25 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-type CacheTestSuite struct {
+type MemoryTestSuite struct {
 	suite.Suite
 }
 
-func (suite *CacheTestSuite) SetupTest() {
+func (suite *MemoryTestSuite) SetupTest() {
 }
 
 func TestCachingTestSuite(t *testing.T) {
-	suite.Run(t, new(CacheTestSuite))
+	suite.Run(t, new(MemoryTestSuite))
 }
 
-func (suite *CacheTestSuite) Test_New() {
+func (suite *MemoryTestSuite) Test_New() {
 	suite.T().Run("should return a new cache", func(t *testing.T) {
 		cache := New(2 * time.Second)
 		suite.NotNil(cache)
 	})
 }
 
-func (suite *CacheTestSuite) Test_CacheUse() {
+func (suite *MemoryTestSuite) Test_CacheUse() {
 	cache := New(30 * time.Second)
 	tests := []struct {
 		name        string
@@ -50,7 +50,7 @@ func (suite *CacheTestSuite) Test_CacheUse() {
 	}
 }
 
-func (suite *CacheTestSuite) Test_CacheDelete() {
+func (suite *MemoryTestSuite) Test_CacheDelete() {
 	cache := New(30 * time.Second)
 	tests := []struct {
 		name        string
@@ -79,7 +79,7 @@ func (suite *CacheTestSuite) Test_CacheDelete() {
 	}
 }
 
-func (suite *CacheTestSuite) Test_CacheExpire() {
+func (suite *MemoryTestSuite) Test_CacheExpire() {
 	cache := New(30 * time.Second)
 	tests := []struct {
 		name        string

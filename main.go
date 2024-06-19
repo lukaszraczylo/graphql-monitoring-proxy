@@ -9,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/proxy"
 	"github.com/gookit/goutil/envutil"
 	graphql "github.com/lukaszraczylo/go-simple-graphql"
+	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
@@ -88,7 +89,18 @@ func parseConfig() {
 	c.HasuraEventCleaner.EventMetadataDb = getDetailsFromEnv("HASURA_EVENT_METADATA_DB", "")
 	cfg = &c
 
-	enableCache() // takes close to no resources, but can be used with dynamic query cache
+	if cfg.Cache.CacheEnable || cfg.Cache.CacheRedisEnable {
+		cacheConfig := &libpack_cache.CacheConfig{
+			TTL: cfg.Cache.CacheTTL,
+		}
+		if cfg.Cache.CacheRedisEnable {
+			cacheConfig.Redis.Enable = true
+			cacheConfig.Redis.URL = cfg.Cache.CacheRedisURL
+			cacheConfig.Redis.Password = cfg.Cache.CacheRedisPassword
+			cacheConfig.Redis.DB = cfg.Cache.CacheRedisDB
+		}
+		libpack_cache.EnableCache(cacheConfig)
+	}
 	loadRatelimitConfig()
 	once.Do(func() {
 		go enableApi()

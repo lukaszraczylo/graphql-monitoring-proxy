@@ -1,0 +1,45 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/telegram-bot-app/libpack/cacher
+BenchmarkCacheLookupInMemory-8   	 2086051	       562.5 ns/op	     561 B/op	       2 allocs/op
+BenchmarkCacheLookupInMemory-8   	 2114702	       562.8 ns/op	     561 B/op	       2 allocs/op
+BenchmarkCacheLookupInMemory-8   	 2078373	       575.6 ns/op	     561 B/op	       2 allocs/op
+BenchmarkCacheLookupInMemory-8   	 1939982	       613.5 ns/op	     561 B/op	       2 allocs/op
+BenchmarkCacheLookupInMemory-8   	 2049900	       568.5 ns/op	     561 B/op	       2 allocs/op
+BenchmarkCacheLookupInMemory-8   	 2079360	       570.0 ns/op	     561 B/op	       2 allocs/op
+BenchmarkCacheLookupInMemory-8   	 2107586	       564.7 ns/op	     561 B/op	       2 allocs/op
+BenchmarkCacheLookupInMemory-8   	 2084228	       610.4 ns/op	     562 B/op	       2 allocs/op
+BenchmarkCacheLookupInMemory-8   	 1819506	       575.1 ns/op	     561 B/op	       2 allocs/op
+BenchmarkCacheLookupInMemory-8   	 2062590	       614.8 ns/op	     562 B/op	       2 allocs/op
+BenchmarkCacheLookupRedis-8      	   53347	     21928 ns/op	     502 B/op	      23 allocs/op
+BenchmarkCacheLookupRedis-8      	   54756	     26644 ns/op	     501 B/op	      23 allocs/op
+BenchmarkCacheLookupRedis-8      	   56476	     21812 ns/op	     501 B/op	      23 allocs/op
+BenchmarkCacheLookupRedis-8      	   52696	     23558 ns/op	     502 B/op	      23 allocs/op
+BenchmarkCacheLookupRedis-8      	   53546	     21576 ns/op	     501 B/op	      23 allocs/op
+BenchmarkCacheLookupRedis-8      	   57470	     21074 ns/op	     501 B/op	      23 allocs/op
+BenchmarkCacheLookupRedis-8      	   54909	     22017 ns/op	     501 B/op	      23 allocs/op
+BenchmarkCacheLookupRedis-8      	   56838	     21954 ns/op	     501 B/op	      23 allocs/op
+BenchmarkCacheLookupRedis-8      	   57217	     21560 ns/op	     501 B/op	      23 allocs/op
+BenchmarkCacheLookupRedis-8      	   56215	     20928 ns/op	     501 B/op	      23 allocs/op
+BenchmarkCacheStoreInMemory-8    	   80233	     15616 ns/op	     212 B/op	       5 allocs/op
+BenchmarkCacheStoreInMemory-8    	   76290	     15666 ns/op	     213 B/op	       5 allocs/op
+BenchmarkCacheStoreInMemory-8    	   80841	     15597 ns/op	     222 B/op	       5 allocs/op
+BenchmarkCacheStoreInMemory-8    	   75967	     15683 ns/op	     202 B/op	       5 allocs/op
+BenchmarkCacheStoreInMemory-8    	   78678	     15435 ns/op	     202 B/op	       5 allocs/op
+BenchmarkCacheStoreInMemory-8    	   76165	     15705 ns/op	     202 B/op	       5 allocs/op
+BenchmarkCacheStoreInMemory-8    	   79219	     15455 ns/op	     212 B/op	       5 allocs/op
+BenchmarkCacheStoreInMemory-8    	   76342	     15324 ns/op	     224 B/op	       5 allocs/op
+BenchmarkCacheStoreInMemory-8    	   75433	     15630 ns/op	     202 B/op	       5 allocs/op
+BenchmarkCacheStoreInMemory-8    	   74482	     15565 ns/op	     224 B/op	       5 allocs/op
+BenchmarkCacheStoreRedis-8       	   51054	     22484 ns/op	     854 B/op	      35 allocs/op
+BenchmarkCacheStoreRedis-8       	   52684	     22902 ns/op	     854 B/op	      35 allocs/op
+BenchmarkCacheStoreRedis-8       	   52920	     22767 ns/op	     854 B/op	      35 allocs/op
+BenchmarkCacheStoreRedis-8       	   52896	     23745 ns/op	     854 B/op	      35 allocs/op
+BenchmarkCacheStoreRedis-8       	   54547	     23049 ns/op	     853 B/op	      35 allocs/op
+BenchmarkCacheStoreRedis-8       	   54576	     22311 ns/op	     854 B/op	      35 allocs/op
+BenchmarkCacheStoreRedis-8       	   53194	     22278 ns/op	     854 B/op	      35 allocs/op
+BenchmarkCacheStoreRedis-8       	   51861	     22644 ns/op	     854 B/op	      35 allocs/op
+BenchmarkCacheStoreRedis-8       	   55047	     22563 ns/op	     854 B/op	      35 allocs/op
+BenchmarkCacheStoreRedis-8       	   50065	     22421 ns/op	     854 B/op	      35 allocs/op
+PASS
+ok  	github.com/telegram-bot-app/libpack/cacher	62.399s

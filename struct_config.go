@@ -32,7 +32,6 @@ type config struct {
 		Enable          bool
 	}
 	Cache struct {
-		Client             CacheClient
 		CacheRedisURL      string
 		CacheRedisPassword string
 		CacheTTL           int

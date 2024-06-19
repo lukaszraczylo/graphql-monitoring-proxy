@@ -34,10 +34,9 @@ func (suite *Tests) SetupTest() {
 			JSONDecoder:           json.Unmarshal,
 		},
 	)
-	cacheStats = &CacheStats{}
 
 	// Initialize a simple in-memory cache client for testing purposes
-	cfg.Cache.Client = libpack_cache.New(5 * time.Minute)
+	libpack_cache.New(5 * time.Minute)
 	parseConfig()
 	enableApi()
 	StartMonitoringServer()

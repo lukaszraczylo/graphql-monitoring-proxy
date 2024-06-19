@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/google/uuid"
 
+	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
@@ -126,7 +127,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 		return proxyTheRequest(c, parsedResult.activeEndpoint)
 	}
 
-	calculatedQueryHash := calculateHash(c)
+	calculatedQueryHash := libpack_cache.CalculateHash(c)
 
 	if parsedResult.cacheTime > 0 {
 		cfg.Logger.Debug("Cache time set via query", map[string]interface{}{"cacheTime": parsedResult.cacheTime})
@@ -145,7 +146,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 
 	if parsedResult.cacheRefresh {
 		cfg.Logger.Debug("Cache refresh requested via query", map[string]interface{}{"user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")})
-		cacheDelete(calculatedQueryHash)
+		libpack_cache.CacheDelete(calculatedQueryHash)
 	}
 
 	// Handling Cache Logic
@@ -153,7 +154,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 		cfg.Logger.Debug("Cache enabled", map[string]interface{}{"via_query": parsedResult.cacheRequest, "via_env": cfg.Cache.CacheEnable})
 		queryCacheHash = calculatedQueryHash
 
-		if cachedResponse := cacheLookup(queryCacheHash); cachedResponse != nil {
+		if cachedResponse := libpack_cache.CacheLookup(queryCacheHash); cachedResponse != nil {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsCacheHit, nil)
 			cfg.Logger.Debug("Cache hit", map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")})
 			c.Request().Header.Add("X-Cache-Hit", "true")
@@ -196,7 +197,7 @@ func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int,
 		c.Status(500).SendString("Can't proxy the request - try again later")
 		return
 	}
-	cacheStoreWithTTL(queryCacheHash, c.Response().Body(), time.Duration(cacheTime)*time.Second)
+	libpack_cache.CacheStoreWithTTL(queryCacheHash, c.Response().Body(), time.Duration(cacheTime)*time.Second)
 	cfg.Monitoring.Increment(libpack_monitoring.MetricsQueriesCached, nil)
 	c.Send(c.Response().Body())
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/goccy/go-json"
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/gofrs/flock"
+	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 )
 
@@ -54,14 +55,14 @@ func checkIfUserIsBanned(c *fiber.Ctx, userID string) bool {
 
 func apiClearCache(c *fiber.Ctx) error {
 	cfg.Logger.Debug("Clearing cache via API", nil)
-	cacheClear()
+	libpack_cache.CacheClear()
 	cfg.Logger.Info("Cache cleared via API", nil)
 	c.Status(200).SendString("OK: cache cleared")
 	return nil
 }
 
 func apiCacheStats(c *fiber.Ctx) error {
-	stats := getCacheStats()
+	stats := libpack_cache.GetCacheStats()
 	cfg.Logger.Debug("Getting cache stats via API", map[string]interface{}{"stats": stats})
 	err := c.JSON(stats)
 	if err != nil {
