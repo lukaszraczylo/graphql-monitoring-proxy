@@ -1,9 +1,9 @@
 CI_RUN?=false
-ADDITIONAL_BUILD_FLAGS=""
+# ADDITIONAL_BUILD_FLAGS=""
 
-ifeq ($(CI_RUN), true)
-	ADDITIONAL_BUILD_FLAGS="-test.short"
-endif
+# ifeq ($(CI_RUN), true)
+# 	ADDITIONAL_BUILD_FLAGS="-test.short"
+# endif
 
 .PHONY: help
 help:  ## display this help
@@ -19,7 +19,7 @@ build: ## build the binary
 
 .PHONY: test
 test: ## run tests on library
-	@LOG_LEVEL=debug go test $(ADDITIONAL_BUILD_FLAGS) -v -cover ./... -race
+	@LOG_LEVEL=info go test -v -cover -race ./...
 
 .PHONY: test-packages
 test-packages: ## run tests on packages

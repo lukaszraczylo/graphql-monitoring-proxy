@@ -34,14 +34,13 @@ func (suite *Tests) SetupTest() {
 			JSONDecoder:           json.Unmarshal,
 		},
 	)
-	cacheStats = &CacheStats{}
 
 	// Initialize a simple in-memory cache client for testing purposes
-	cfg.Cache.Client = libpack_cache.New(5 * time.Minute)
+	libpack_cache.New(5 * time.Minute)
 	parseConfig()
 	enableApi()
 	StartMonitoringServer()
-	cfg.Logger = libpack_logging.NewLogger()
+	cfg.Logger = libpack_logging.New().SetMinLogLevel(libpack_logging.GetLogLevel(getDetailsFromEnv("LOG_LEVEL", "info")))
 	// Setup environment variables here if needed
 	os.Setenv("GMP_TEST_STRING", "testValue")
 	os.Setenv("GMP_TEST_INT", "123")

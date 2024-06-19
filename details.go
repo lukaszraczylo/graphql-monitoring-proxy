@@ -7,6 +7,7 @@ import (
 
 	"github.com/goccy/go-json"
 	"github.com/lukaszraczylo/ask"
+	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
 
@@ -15,7 +16,10 @@ func extractClaimsFromJWTHeader(authorization string) (usr string, role string) 
 
 	handleError := func(msg string, details map[string]interface{}) {
 		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
-		cfg.Logger.Error(msg, details)
+		cfg.Logger.Error(&libpack_logger.LogMessage{
+			Message: msg,
+			Pairs:   details,
+		})
 	}
 
 	tokenParts := strings.Split(authorization, ".")

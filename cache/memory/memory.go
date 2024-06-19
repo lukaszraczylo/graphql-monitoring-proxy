@@ -1,4 +1,4 @@
-package libpack_cache
+package libpack_cache_memory
 
 import (
 	"bytes"
@@ -19,7 +19,7 @@ type Cache struct {
 	decompressPool sync.Pool
 	entries        sync.Map
 	globalTTL      time.Duration
-	mu             sync.RWMutex // Added sync.RWMutex field for locking
+	sync.RWMutex
 }
 
 func New(globalTTL time.Duration) *Cache {
@@ -52,9 +52,6 @@ func (c *Cache) cleanupRoutine(globalTTL time.Duration) {
 }
 
 func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
-	c.lock()
-	defer c.unlock()
-
 	expiresAt := time.Now().Add(ttl)
 
 	compressedValue, err := c.compress(value)
@@ -71,9 +68,6 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 }
 
 func (c *Cache) Get(key string) ([]byte, bool) {
-	c.rlock()
-	defer c.runlock()
-
 	entry, ok := c.entries.Load(key)
 	if !ok || entry.(CacheEntry).ExpiresAt.Before(time.Now()) {
 		return nil, false
@@ -88,39 +82,32 @@ func (c *Cache) Get(key string) ([]byte, bool) {
 }
 
 func (c *Cache) Delete(key string) {
-	c.lock()
-	defer c.unlock()
-
 	c.entries.Delete(key)
 }
 
 func (c *Cache) Clear() {
-	c.lock()
-	defer c.unlock()
-
 	c.entries.Range(func(key, value interface{}) bool {
 		c.entries.Delete(key)
 		return true
 	})
 }
 
-func (c *Cache) CountQueries() int {
-	c.rlock()
-	defer c.runlock()
-
+func (c *Cache) CountQueries() int64 {
 	var count int
 	c.entries.Range(func(_, _ interface{}) bool {
 		count++
 		return true
 	})
-	return count
+	return int64(count)
 }
 
 func (c *Cache) compress(data []byte) ([]byte, error) {
-	w := c.compressPool.Get().(*gzip.Writer)
-	defer c.compressPool.Put(w)
-
 	var buf bytes.Buffer
+	w := c.compressPool.Get().(*gzip.Writer)
+	defer func() {
+		w.Close()
+		c.compressPool.Put(w)
+	}()
 	w.Reset(&buf)
 	if _, err := w.Write(data); err != nil {
 		return nil, err
@@ -149,11 +136,7 @@ func (c *Cache) decompress(data []byte) ([]byte, error) {
 		c.decompressPool.Put(r)
 	}()
 
-	decompressedData, err := io.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
-	return decompressedData, nil
+	return io.ReadAll(r)
 }
 
 func (c *Cache) CleanExpiredEntries() {
@@ -165,22 +148,4 @@ func (c *Cache) CleanExpiredEntries() {
 		}
 		return true
 	})
-}
-
-// Private methods to handle locking
-
-func (c *Cache) lock() {
-	c.mu.Lock()
-}
-
-func (c *Cache) unlock() {
-	c.mu.Unlock()
-}
-
-func (c *Cache) rlock() {
-	c.mu.RLock()
-}
-
-func (c *Cache) runlock() {
-	c.mu.RUnlock()
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gookit/goutil/envutil"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
-	logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
+	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
 type MetricsSetup struct {
@@ -23,7 +23,7 @@ type MetricsSetup struct {
 }
 
 var (
-	log *logging.LogConfig
+	log *libpack_logger.Logger
 )
 
 type InitConfig struct {
@@ -32,7 +32,7 @@ type InitConfig struct {
 }
 
 func NewMonitoring(ic *InitConfig) *MetricsSetup {
-	log = logging.NewLogger()
+	log = libpack_logger.New().SetMinLogLevel(libpack_logger.LEVEL_INFO)
 	ms := &MetricsSetup{ic: ic}
 	ms.metrics_set = metrics.NewSet()
 	ms.metrics_set_custom = metrics.NewSet()
@@ -86,7 +86,10 @@ func (ms *MetricsSetup) ListActiveMetrics() []string {
 
 func (ms *MetricsSetup) RegisterMetricsGauge(metric_name string, labels map[string]string, val float64) *metrics.Gauge {
 	if validate_metrics_name(metric_name) != nil {
-		log.Critical("RegisterMetricsGauge() error", map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name})
+		log.Critical(&libpack_logger.LogMessage{
+			Message: "RegisterMetricsGauge() error",
+			Pairs:   map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name},
+		})
 		return nil
 	}
 	return ms.metrics_set_custom.GetOrCreateGauge(ms.get_metrics_name(metric_name, labels), func() float64 {
@@ -97,7 +100,10 @@ func (ms *MetricsSetup) RegisterMetricsGauge(metric_name string, labels map[stri
 
 func (ms *MetricsSetup) RegisterMetricsCounter(metric_name string, labels map[string]string) *metrics.Counter {
 	if validate_metrics_name(metric_name) != nil {
-		log.Critical("RegisterMetricsCounter() error", map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name})
+		log.Critical(&libpack_logger.LogMessage{
+			Message: "RegisterMetricsCounter() error",
+			Pairs:   map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name},
+		})
 		return nil
 	}
 	if metric_name == MetricsSucceeded || metric_name == MetricsFailed || metric_name == MetricsSkipped {
@@ -108,7 +114,10 @@ func (ms *MetricsSetup) RegisterMetricsCounter(metric_name string, labels map[st
 
 func (ms *MetricsSetup) RegisterFloatCounter(metric_name string, labels map[string]string) *metrics.FloatCounter {
 	if validate_metrics_name(metric_name) != nil {
-		log.Critical("RegisterFloatCounter() error", map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name})
+		log.Critical(&libpack_logger.LogMessage{
+			Message: "RegisterFloatCounter() error",
+			Pairs:   map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name},
+		})
 		return nil
 	}
 	return ms.metrics_set_custom.GetOrCreateFloatCounter(ms.get_metrics_name(metric_name, labels))
@@ -116,7 +125,10 @@ func (ms *MetricsSetup) RegisterFloatCounter(metric_name string, labels map[stri
 
 func (ms *MetricsSetup) RegisterMetricsSummary(metric_name string, labels map[string]string) *metrics.Summary {
 	if validate_metrics_name(metric_name) != nil {
-		log.Critical("RegisterMetricsSummary() error", map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name})
+		log.Critical(&libpack_logger.LogMessage{
+			Message: "RegisterMetricsSummary() error",
+			Pairs:   map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name},
+		})
 		return nil
 	}
 	return ms.metrics_set_custom.GetOrCreateSummary(ms.get_metrics_name(metric_name, labels))
@@ -124,7 +136,10 @@ func (ms *MetricsSetup) RegisterMetricsSummary(metric_name string, labels map[st
 
 func (ms *MetricsSetup) RegisterMetricsHistogram(metric_name string, labels map[string]string) *metrics.Histogram {
 	if validate_metrics_name(metric_name) != nil {
-		log.Critical("RegisterMetricsHistogram() error", map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name})
+		log.Critical(&libpack_logger.LogMessage{
+			Message: "RegisterMetricsHistogram() error",
+			Pairs:   map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name},
+		})
 		return nil
 	}
 	return ms.metrics_set_custom.GetOrCreateHistogram(ms.get_metrics_name(metric_name, labels))

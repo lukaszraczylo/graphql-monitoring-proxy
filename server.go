@@ -10,13 +10,18 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/google/uuid"
 
+	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
+	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
 
 // StartHTTPProxy starts the HTTP and points it to the GraphQL server.
 func StartHTTPProxy() {
-	cfg.Logger.Debug("Starting the HTTP proxy", nil)
+	cfg.Logger.Debug(&libpack_logger.LogMessage{
+		Message: "Starting the HTTP proxy",
+		Pairs:   nil,
+	})
 	server := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 		AppName:               fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
@@ -40,10 +45,16 @@ func StartHTTPProxy() {
 	server.Post("/*", processGraphQLRequest)
 	server.Get("/*", proxyTheRequestToDefault)
 
-	cfg.Logger.Info("GraphQL query proxy started", map[string]interface{}{"port": cfg.Server.PortGraphQL})
+	cfg.Logger.Info(&libpack_logger.LogMessage{
+		Message: "GraphQL proxy started",
+		Pairs:   map[string]interface{}{"port": cfg.Server.PortGraphQL},
+	})
 	err := server.Listen(fmt.Sprintf(":%d", cfg.Server.PortGraphQL))
 	if err != nil {
-		cfg.Logger.Critical("Can't start the service", map[string]interface{}{"error": err.Error()})
+		cfg.Logger.Critical(&libpack_logger.LogMessage{
+			Message: "Can't start the service",
+			Pairs:   map[string]interface{}{"port": cfg.Server.PortGraphQL},
+		})
 	}
 }
 
@@ -66,17 +77,26 @@ func checkAllowedURLs(c *fiber.Ctx) bool {
 
 func healthCheck(c *fiber.Ctx) error {
 	if len(cfg.Server.HealthcheckGraphQL) > 0 {
-		cfg.Logger.Debug("Health check enabled", map[string]interface{}{"url": cfg.Server.HealthcheckGraphQL})
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Health check enabled",
+			Pairs:   map[string]interface{}{"url": cfg.Server.HealthcheckGraphQL},
+		})
 		query := `{ __typename }`
 		_, err := cfg.Client.GQLClient.Query(query, nil, nil)
 		if err != nil {
-			cfg.Logger.Error("Can't reach the GraphQL server", map[string]interface{}{"error": err.Error()})
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Can't reach the GraphQL server",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 			c.Status(500).SendString("Can't reach the GraphQL server with {__typename} query")
 			return err
 		}
 	}
-	cfg.Logger.Debug("Health check returning OK", nil)
+	cfg.Logger.Debug(&libpack_logger.LogMessage{
+		Message: "Health check returning OK",
+		Pairs:   nil,
+	})
 	c.Status(200).SendString("Health check OK")
 	return nil
 }
@@ -108,7 +128,10 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 
 	// Implementing rate limiting if enabled
 	if cfg.Client.RoleRateLimit {
-		cfg.Logger.Debug("Rate limiting enabled", map[string]interface{}{"user_id": extractedUserID, "role_name": extractedRoleName})
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Rate limiting enabled",
+			Pairs:   map[string]interface{}{"user_id": extractedUserID, "role_name": extractedRoleName},
+		})
 		if !rateLimitedRequest(extractedUserID, extractedRoleName) {
 			c.Status(429).SendString("Rate limit exceeded, try again later")
 			return nil
@@ -122,20 +145,29 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	}
 
 	if parsedResult.shouldIgnore {
-		cfg.Logger.Debug("Request passed as-is - probably not a GraphQL", nil)
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Request passed as-is - probably not a GraphQL",
+			Pairs:   nil,
+		})
 		return proxyTheRequest(c, parsedResult.activeEndpoint)
 	}
 
-	calculatedQueryHash := calculateHash(c)
+	calculatedQueryHash := libpack_cache.CalculateHash(c)
 
 	if parsedResult.cacheTime > 0 {
-		cfg.Logger.Debug("Cache time set via query", map[string]interface{}{"cacheTime": parsedResult.cacheTime})
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Cache time set via query",
+			Pairs:   map[string]interface{}{"cacheTime": parsedResult.cacheTime},
+		})
 	} else {
 		// If not set via query, try setting via header
 		cacheQuery := c.Request().Header.Peek("X-Cache-Graphql-Query")
 		if cacheQuery != nil {
 			parsedResult.cacheTime, _ = strconv.Atoi(string(cacheQuery))
-			cfg.Logger.Debug("Cache time set via header", map[string]interface{}{"cacheTime": parsedResult.cacheTime})
+			cfg.Logger.Debug(&libpack_logger.LogMessage{
+				Message: "Cache time set via header",
+				Pairs:   map[string]interface{}{"cacheTime": parsedResult.cacheTime},
+			})
 		} else {
 			parsedResult.cacheTime = cfg.Cache.CacheTTL
 		}
@@ -144,35 +176,53 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	wasCached := false
 
 	if parsedResult.cacheRefresh {
-		cfg.Logger.Debug("Cache refresh requested via query", map[string]interface{}{"user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")})
-		cacheDelete(calculatedQueryHash)
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Cache refresh requested via query",
+			Pairs:   map[string]interface{}{"user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")},
+		})
+		libpack_cache.CacheDelete(calculatedQueryHash)
 	}
 
 	// Handling Cache Logic
 	if parsedResult.cacheRequest || cfg.Cache.CacheEnable || cfg.Cache.CacheRedisEnable {
-		cfg.Logger.Debug("Cache enabled", map[string]interface{}{"via_query": parsedResult.cacheRequest, "via_env": cfg.Cache.CacheEnable})
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Cache enabled",
+			Pairs:   map[string]interface{}{"via_query": parsedResult.cacheRequest, "via_env": cfg.Cache.CacheEnable},
+		})
 		queryCacheHash = calculatedQueryHash
 
-		if cachedResponse := cacheLookup(queryCacheHash); cachedResponse != nil {
+		if cachedResponse := libpack_cache.CacheLookup(queryCacheHash); cachedResponse != nil {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsCacheHit, nil)
-			cfg.Logger.Debug("Cache hit", map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")})
+			cfg.Logger.Debug(&libpack_logger.LogMessage{
+				Message: "Cache hit",
+				Pairs:   map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")},
+			})
 			c.Request().Header.Add("X-Cache-Hit", "true")
 			err := c.Send(cachedResponse)
 			if err != nil {
-				cfg.Logger.Error("Can't send the cached response", map[string]interface{}{"error": err.Error()})
+				cfg.Logger.Error(&libpack_logger.LogMessage{
+					Message: "Can't send the cached response",
+					Pairs:   map[string]interface{}{"error": err.Error()},
+				})
 				cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 				c.Status(500).SendString("Can't send the cached response - try again later")
 			}
 			wasCached = true
 		} else {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsCacheMiss, nil)
-			cfg.Logger.Debug("Cache miss", map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")})
+			cfg.Logger.Debug(&libpack_logger.LogMessage{
+				Message: "Cache miss",
+				Pairs:   map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")},
+			})
 			proxyAndCacheTheRequest(c, queryCacheHash, parsedResult.cacheTime, parsedResult.activeEndpoint)
 		}
 	} else {
 		err := proxyTheRequest(c, parsedResult.activeEndpoint)
 		if err != nil {
-			cfg.Logger.Error("Can't proxy the request", map[string]interface{}{"error": err.Error()})
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Can't proxy the request",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 			c.Status(500).SendString("Can't proxy the request - try again later")
 			return nil
@@ -191,12 +241,15 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int, currentEndpoint string) {
 	err := proxyTheRequest(c, currentEndpoint)
 	if err != nil {
-		cfg.Logger.Error("Can't proxy the request", map[string]interface{}{"error": err.Error()})
+		cfg.Logger.Error(&libpack_logger.LogMessage{
+			Message: "Can't proxy the request",
+			Pairs:   map[string]interface{}{"error": err.Error()},
+		})
 		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 		c.Status(500).SendString("Can't proxy the request - try again later")
 		return
 	}
-	cacheStoreWithTTL(queryCacheHash, c.Response().Body(), time.Duration(cacheTime)*time.Second)
+	libpack_cache.CacheStoreWithTTL(queryCacheHash, c.Response().Body(), time.Duration(cacheTime)*time.Second)
 	cfg.Monitoring.Increment(libpack_monitoring.MetricsQueriesCached, nil)
 	c.Send(c.Response().Body())
 }
@@ -210,15 +263,18 @@ func logAndMonitorRequest(c *fiber.Ctx, userID, opType, opName string, wasCached
 	}
 
 	if cfg.Server.AccessLog {
-		cfg.Logger.Info("Request processed", map[string]interface{}{
-			"ip":           c.IP(),
-			"fwd-ip":       string(c.Request().Header.Peek("X-Forwarded-For")),
-			"user_id":      userID,
-			"op_type":      opType,
-			"op_name":      opName,
-			"time":         duration,
-			"cache":        wasCached,
-			"request_uuid": c.Locals("request_uuid"),
+		cfg.Logger.Info(&libpack_logger.LogMessage{
+			Message: "Request processed",
+			Pairs: map[string]interface{}{
+				"ip":           c.IP(),
+				"fwd-ip":       string(c.Request().Header.Peek("X-Forwarded-For")),
+				"user_id":      userID,
+				"op_type":      opType,
+				"op_name":      opName,
+				"time":         duration,
+				"cache":        wasCached,
+				"request_uuid": c.Locals("request_uuid"),
+			},
 		})
 	}
 

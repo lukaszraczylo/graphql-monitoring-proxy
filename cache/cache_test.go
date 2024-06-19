@@ -1,11 +1,20 @@
-package main
+package libpack_cache
 
 import (
-	"github.com/gookit/goutil/envutil"
-	libpack_redis "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/redis"
+	"time"
+
+	libpack_cache_memory "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/memory"
+	libpack_cache_redis "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/redis"
+	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
 func (suite *Tests) Test_cacheLookupInmemory() {
+	config = &CacheConfig{
+		Logger: libpack_logger.New(),
+		Client: libpack_cache_memory.New(5 * time.Minute),
+		TTL:    5,
+	}
+
 	type args struct {
 		hash string
 	}
@@ -40,21 +49,32 @@ func (suite *Tests) Test_cacheLookupInmemory() {
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
 			if tt.addCache.data != nil {
-				cacheStore(tt.args.hash, tt.addCache.data)
+				CacheStore(tt.args.hash, tt.addCache.data)
 			}
-			got := cacheLookup(tt.args.hash)
+			got := CacheLookup(tt.args.hash)
 			assert.Equal(tt.want, got, "Unexpected cache lookup result")
 		})
 	}
 }
 
 func (suite *Tests) Test_cacheLookupRedis() {
-	redis_server := envutil.Getenv("REDIS_SERVER", "localhost:6379")
-	cfg.Cache.Client = libpack_redis.NewClient(&libpack_redis.RedisClientConfig{
-		RedisServer:   redis_server,
-		RedisPassword: "",
-		RedisDB:       0,
+	// redis_server := envutil.Getenv("REDIS_SERVER", "localhost:6379")
+	// config.Client = libpack_cache_redis.NewClient(&libpack_cache_redis.RedisClientConfig{
+	// 	RedisServer:   redis_server,
+	// 	RedisPassword: "",
+	// 	RedisDB:       0,
+	// })
+
+	mockedCache := libpack_cache_redis.New(&libpack_cache_redis.RedisClientConfig{
+		RedisServer: redisMockServer.Addr(),
+		RedisDB:     0,
 	})
+
+	config = &CacheConfig{
+		Logger: libpack_logger.New(),
+		Client: mockedCache,
+		TTL:    5,
+	}
 
 	type args struct {
 		hash string
@@ -90,9 +110,9 @@ func (suite *Tests) Test_cacheLookupRedis() {
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
 			if tt.addCache.data != nil {
-				cacheStore(tt.args.hash, tt.addCache.data)
+				CacheStore(tt.args.hash, tt.addCache.data)
 			}
-			got := cacheLookup(tt.args.hash)
+			got := CacheLookup(tt.args.hash)
 			assert.Equal(tt.want, got, "Unexpected cache lookup result")
 		})
 	}

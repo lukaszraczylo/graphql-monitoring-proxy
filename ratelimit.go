@@ -7,6 +7,7 @@ import (
 	"github.com/goccy/go-json"
 
 	goratecounter "github.com/lukaszraczylo/go-ratecounter"
+	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
 type RateLimitConfig struct {
@@ -34,10 +35,17 @@ func loadRatelimitConfig() error {
 		if err == nil {
 			return nil
 		}
-		cfg.Logger.Debug("Failed to load config", map[string]interface{}{"path": path, "error": err})
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Failed to load config",
+			Pairs:   map[string]interface{}{"path": path, "error": err},
+		})
 	}
 
-	cfg.Logger.Error("Rate limit config not found", map[string]interface{}{"paths": paths})
+	cfg.Logger.Error(&libpack_logger.LogMessage{
+		Message: "Rate limit config not found",
+		Pairs:   map[string]interface{}{"paths": paths},
+	})
+
 	return os.ErrNotExist
 }
 
@@ -61,35 +69,53 @@ func loadConfigFromPath(path string) error {
 		value.RateCounterTicker = goratecounter.NewRateCounter().WithConfig(goratecounter.RateCounterConfig{
 			Interval: time.Duration(value.Req) * ratelimit_intervals[value.Interval],
 		})
-		cfg.Logger.Debug("Setting ratelimit config for role", map[string]interface{}{
-			"role":              key,
-			"interval_provided": value.Interval,
-			"interval_used":     ratelimit_intervals[value.Interval],
-			"ratelimit":         value.Req,
-		})
+
+		if cfg.LogLevel == "debug" {
+			cfg.Logger.Debug(&libpack_logger.LogMessage{
+				Message: "Setting ratelimit config for role",
+				Pairs: map[string]interface{}{
+					"role":              key,
+					"interval_provided": value.Interval,
+					"interval_used":     ratelimit_intervals[value.Interval],
+					"ratelimit":         value.Req,
+				},
+			})
+		}
 		config.RateLimit[key] = value
 	}
 
 	rateLimits = config.RateLimit
-	cfg.Logger.Debug("Rate limit config loaded", map[string]interface{}{"ratelimit": rateLimits})
+	cfg.Logger.Debug(&libpack_logger.LogMessage{
+		Message: "Rate limit config loaded",
+		Pairs:   map[string]interface{}{"ratelimit": rateLimits},
+	})
 	return nil
 }
 
 func rateLimitedRequest(userID string, userRole string) (shouldAllow bool) {
 	if rateLimits == nil {
-		cfg.Logger.Debug("Rate limit config not found", map[string]interface{}{"user_role": userRole})
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Rate limit config not found",
+			Pairs:   map[string]interface{}{"user_role": userRole},
+		})
 		return true
 	}
 
 	// Fetch role config once to avoid multiple map lookups
 	roleConfig, ok := rateLimits[userRole]
 	if !ok {
-		cfg.Logger.Warning("Rate limit role not found", map[string]interface{}{"user_role": userRole})
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Rate limit role not found",
+			Pairs:   map[string]interface{}{"user_role": userRole},
+		})
 		return true
 	}
 
 	if roleConfig.RateCounterTicker == nil {
-		cfg.Logger.Warning("Rate limit ticker not found", map[string]interface{}{"user_role": userRole})
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Rate limit ticker not found",
+			Pairs:   map[string]interface{}{"user_role": userRole},
+		})
 		return true
 	}
 
@@ -104,10 +130,16 @@ func rateLimitedRequest(userID string, userRole string) (shouldAllow bool) {
 		"interval":    roleConfig.Interval,
 	}
 
-	cfg.Logger.Debug("Rate limit ticker", logDetails)
+	cfg.Logger.Debug(&libpack_logger.LogMessage{
+		Message: "Rate limit ticker",
+		Pairs:   map[string]interface{}{"log_details": logDetails},
+	})
 
 	if tickerRate > float64(roleConfig.Req) {
-		cfg.Logger.Debug("Rate limit exceeded", logDetails)
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Rate limit exceeded",
+			Pairs:   map[string]interface{}{"log_details": logDetails},
+		})
 		return false
 	}
 
