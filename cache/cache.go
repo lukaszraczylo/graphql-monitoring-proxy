@@ -8,9 +8,11 @@ import (
 	"github.com/gookit/goutil/strutil"
 	libpack_cache_memory "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/memory"
 	libpack_cache_redis "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/redis"
+	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
 type CacheConfig struct {
+	Logger *libpack_logger.Logger
 	Client CacheClient
 	Redis  struct {
 		Enable   bool   `json:"enable"`
@@ -45,18 +47,29 @@ func CalculateHash(c *fiber.Ctx) string {
 }
 
 func EnableCache(cfg *CacheConfig) {
+	if cfg.Logger == nil {
+		cfg.Logger = libpack_logger.New()
+		cfg.Logger.Info(&libpack_logger.LogMessage{
+			Message: "Initializing in-module logger",
+		})
+	}
 	cacheStats = &CacheStats{}
-	if ShouldUseRedisCache() {
-		// cfg.Logger.Info("Using Redis cache", nil)
-		config.Client = libpack_cache_redis.New(&libpack_cache_redis.RedisClientConfig{
-			RedisDB:       config.Redis.DB,
-			RedisServer:   config.Redis.URL,
-			RedisPassword: config.Redis.Password,
+	if ShouldUseRedisCache(cfg) {
+		cfg.Logger.Info(&libpack_logger.LogMessage{
+			Message: "Using Redis cache",
+		})
+		cfg.Client = libpack_cache_redis.New(&libpack_cache_redis.RedisClientConfig{
+			RedisDB:       cfg.Redis.DB,
+			RedisServer:   cfg.Redis.URL,
+			RedisPassword: cfg.Redis.Password,
 		})
 	} else {
-		// cfg.Logger.Info("Using in-memory cache", nil)
-		config.Client = libpack_cache_memory.New(time.Duration(config.TTL) * time.Second)
+		cfg.Logger.Info(&libpack_logger.LogMessage{
+			Message: "Using in-memory cache",
+		})
+		cfg.Client = libpack_cache_memory.New(time.Duration(cfg.TTL) * time.Second)
 	}
+	config = cfg
 }
 
 func CacheLookup(hash string) []byte {
@@ -70,25 +83,36 @@ func CacheLookup(hash string) []byte {
 }
 
 func CacheDelete(hash string) {
-	// 	cfg.Logger.Debug("Deleting data from cache", map[string]interface{}{"hash": hash})
+	config.Logger.Debug(&libpack_logger.LogMessage{
+		Message: "Deleting data from cache",
+		Pairs:   map[string]interface{}{"hash": hash},
+	})
 	atomic.AddInt64(&cacheStats.CachedQueries, -1)
 	config.Client.Delete(hash)
 }
 
 func CacheStore(hash string, data []byte) {
-	// cfg.Logger.Debug("Storing data in cache", map[string]interface{}{"hash": hash})
+	config.Logger.Debug(&libpack_logger.LogMessage{
+		Message: "Storing data in cache",
+		Pairs:   map[string]interface{}{"hash": hash},
+	})
 	atomic.AddInt64(&cacheStats.CachedQueries, 1)
 	config.Client.Set(hash, data, time.Duration(config.TTL)*time.Second)
 }
 
 func CacheStoreWithTTL(hash string, data []byte, ttl time.Duration) {
-	// cfg.Logger.Debug("Storing data in cache with TTL", map[string]interface{}{"hash": hash, "ttl": ttl})
+	config.Logger.Debug(&libpack_logger.LogMessage{
+		Message: "Storing data in cache with TTL",
+		Pairs:   map[string]interface{}{"hash": hash, "ttl": ttl},
+	})
 	atomic.AddInt64(&cacheStats.CachedQueries, 1)
 	config.Client.Set(hash, data, ttl)
 }
 
 func CacheGetQueries() int64 {
-	// cfg.Logger.Debug("Counting cache queries", nil)
+	config.Logger.Debug(&libpack_logger.LogMessage{
+		Message: "Counting cache queries",
+	})
 	return config.Client.CountQueries()
 }
 
@@ -98,11 +122,13 @@ func CacheClear() {
 }
 
 func GetCacheStats() *CacheStats {
-	// cfg.Logger.Debug("Getting cache stats", nil)
+	config.Logger.Debug(&libpack_logger.LogMessage{
+		Message: "Getting cache stats",
+	})
 	cacheStats.CachedQueries = CacheGetQueries()
 	return cacheStats
 }
 
-func ShouldUseRedisCache() bool {
-	return config.Redis.Enable
+func ShouldUseRedisCache(cfg *CacheConfig) bool {
+	return cfg.Redis.Enable
 }

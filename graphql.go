@@ -8,6 +8,7 @@ import (
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/graphql-go/graphql/language/ast"
 	"github.com/graphql-go/graphql/language/parser"
+	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
 
@@ -71,7 +72,10 @@ func parseGraphQLQuery(c *fiber.Ctx) (res *parseGraphQLQueryResult) {
 	m := make(map[string]interface{})
 	err := json.Unmarshal(c.Body(), &m)
 	if err != nil {
-		cfg.Logger.Error("Can't unmarshal the request", map[string]interface{}{"error": err.Error(), "body": string(c.Body())})
+		cfg.Logger.Error(&libpack_logger.LogMessage{
+			Message: "Can't unmarshal the request",
+			Pairs:   map[string]interface{}{"error": err.Error(), "body": string(c.Body())},
+		})
 		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 		}
@@ -80,7 +84,10 @@ func parseGraphQLQuery(c *fiber.Ctx) (res *parseGraphQLQueryResult) {
 	// get the query
 	query, ok := m["query"].(string)
 	if !ok {
-		cfg.Logger.Error("Can't find the query", map[string]interface{}{"query": query, "m_val": m})
+		cfg.Logger.Error(&libpack_logger.LogMessage{
+			Message: "Can't find the query",
+			Pairs:   map[string]interface{}{"m_val": m},
+		})
 		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 		}
@@ -89,7 +96,10 @@ func parseGraphQLQuery(c *fiber.Ctx) (res *parseGraphQLQueryResult) {
 
 	p, err := parser.Parse(parser.ParseParams{Source: query})
 	if err != nil {
-		cfg.Logger.Error("Can't parse the query", map[string]interface{}{"query": query, "m_val": m})
+		cfg.Logger.Error(&libpack_logger.LogMessage{
+			Message: "Can't parse the query",
+			Pairs:   map[string]interface{}{"query": query, "m_val": m},
+		})
 		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 		}
@@ -115,7 +125,10 @@ func parseGraphQLQuery(c *fiber.Ctx) (res *parseGraphQLQueryResult) {
 			}
 
 			if res.operationType == "mutation" && cfg.Server.ReadOnlyMode {
-				cfg.Logger.Warning("Mutation blocked", m)
+				cfg.Logger.Warning(&libpack_logger.LogMessage{
+					Message: "Mutation blocked",
+					Pairs:   map[string]interface{}{"query": query},
+				})
 				if ifNotInTest() {
 					cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 				}
@@ -131,7 +144,10 @@ func parseGraphQLQuery(c *fiber.Ctx) (res *parseGraphQLQueryResult) {
 						if arg.Name.Value == "ttl" {
 							res.cacheTime, err = strconv.Atoi(arg.Value.GetValue().(string))
 							if err != nil {
-								cfg.Logger.Error("Can't parse the ttl, using global", map[string]interface{}{"bad_ttl": arg.Value.GetValue().(string)})
+								cfg.Logger.Error(&libpack_logger.LogMessage{
+									Message: "Can't parse the ttl, using global",
+									Pairs:   map[string]interface{}{"bad_ttl": arg.Value.GetValue().(string)},
+								})
 								if ifNotInTest() {
 									cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 								}
@@ -184,7 +200,10 @@ func checkIfContainsIntrospection(c *fiber.Ctx, whatever string) (shouldBlock bo
 		if len(cfg.Security.IntrospectionAllowed) > 0 {
 
 			if _, allowed_exists := introspectionAllowedQueries[whateverLower]; allowed_exists {
-				cfg.Logger.Debug("Introspection query allowed, passing through", map[string]interface{}{"query": whatever})
+				cfg.Logger.Debug(&libpack_logger.LogMessage{
+					Message: "Introspection query allowed, passing through",
+					Pairs:   map[string]interface{}{"query": whatever},
+				})
 				got_exemption = true
 				shouldBlock = false
 			}

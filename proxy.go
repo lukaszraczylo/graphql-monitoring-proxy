@@ -8,6 +8,7 @@ import (
 	"github.com/avast/retry-go/v4"
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/proxy"
+	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 	"github.com/valyala/fasthttp"
 )
@@ -30,7 +31,10 @@ func createFasthttpClient(timeout int) *fasthttp.Client {
 
 func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 	if !checkAllowedURLs(c) {
-		cfg.Logger.Error("Request blocked", map[string]interface{}{"path": c.Path()})
+		cfg.Logger.Error(&libpack_logger.LogMessage{
+			Message: "Request blocked",
+			Pairs:   map[string]interface{}{"path": c.Path()},
+		})
 		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 		}
@@ -42,13 +46,30 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 	c.Request().Header.Add(fiber.HeaderXForwardedFor, string(c.Request().Header.Peek("X-Forwarded-For")))
 	c.Request().Header.Del(fiber.HeaderAcceptEncoding)
 
-	cfg.Logger.Debug("Proxying the request", map[string]interface{}{"path": c.Path(), "body": string(c.Request().Body()), "headers": c.GetReqHeaders(), "request_uuid": c.Locals("request_uuid")})
+	// added dummy check for the log level because it executes additional functions which could
+	// potentially slow down the execution.
+	if cfg.LogLevel == "debug" {
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Proxying the request",
+			Pairs: map[string]interface{}{
+				"path":         c.Path(),
+				"body":         string(c.Request().Body()),
+				"headers":      c.GetReqHeaders(),
+				"request_uuid": c.Locals("request_uuid"),
+			},
+		})
+	}
 
 	err := retry.Do(
 		func() error {
 			errInt := proxy.DoRedirects(c, currentEndpoint+c.Path(), 3, cfg.Client.FastProxyClient)
 			if errInt != nil {
-				cfg.Logger.Error("Can't proxy the request", map[string]interface{}{"error": errInt.Error()})
+				cfg.Logger.Error(&libpack_logger.LogMessage{
+					Message: "Can't proxy the request",
+					Pairs: map[string]interface{}{
+						"error": errInt.Error(),
+					},
+				})
 				if ifNotInTest() {
 					cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 				}
@@ -57,7 +78,13 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 			return nil
 		},
 		retry.OnRetry(func(n uint, err error) {
-			cfg.Logger.Warning("Retrying the request", map[string]interface{}{"path": c.Path(), "error": err.Error()})
+			cfg.Logger.Warning(&libpack_logger.LogMessage{
+				Message: "Retrying the request",
+				Pairs: map[string]interface{}{
+					"path":  c.Path(),
+					"error": err.Error(),
+				},
+			})
 		}),
 		retry.Attempts(uint(3)),
 		retry.DelayType(retry.BackOffDelay),
@@ -66,11 +93,27 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 	)
 
 	if err != nil {
-		cfg.Logger.Warning("Can't proxy the request", map[string]interface{}{"error": err.Error()})
+		cfg.Logger.Warning(&libpack_logger.LogMessage{
+			Message: "Can't proxy the request",
+			Pairs: map[string]interface{}{
+				"error": err.Error(),
+			},
+		})
 		return err
 	}
 
-	cfg.Logger.Debug("Received proxied response", map[string]interface{}{"path": c.Path(), "response_body": string(c.Response().Body()), "response_code": c.Response().StatusCode(), "headers": c.GetRespHeaders(), "request_uuid": c.Locals("request_uuid")})
+	if cfg.LogLevel == "debug" {
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Received proxied response",
+			Pairs: map[string]interface{}{
+				"path":          c.Path(),
+				"response_body": string(c.Response().Body()),
+				"response_code": c.Response().StatusCode(),
+				"headers":       c.GetRespHeaders(),
+				"request_uuid":  c.Locals("request_uuid"),
+			},
+		})
+	}
 
 	if c.Response().StatusCode() != 200 {
 		if ifNotInTest() {

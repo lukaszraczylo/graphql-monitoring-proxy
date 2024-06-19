@@ -17,7 +17,6 @@ require (
 	github.com/lukaszraczylo/go-ratecounter v0.1.8
 	github.com/lukaszraczylo/go-simple-graphql v1.2.14
 	github.com/redis/go-redis/v9 v9.5.3
-	github.com/rs/zerolog v1.33.0
 	github.com/stretchr/testify v1.9.0
 	github.com/valyala/fasthttp v1.55.0
 )
@@ -39,6 +38,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
+	github.com/rs/zerolog v1.33.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fastrand v1.1.0 // indirect
 	github.com/valyala/histogram v1.2.0 // indirect

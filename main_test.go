@@ -40,7 +40,7 @@ func (suite *Tests) SetupTest() {
 	parseConfig()
 	enableApi()
 	StartMonitoringServer()
-	cfg.Logger = libpack_logging.NewLogger()
+	cfg.Logger = libpack_logging.New().SetMinLogLevel(libpack_logging.GetLogLevel(getDetailsFromEnv("LOG_LEVEL", "info")))
 	// Setup environment variables here if needed
 	os.Setenv("GMP_TEST_STRING", "testValue")
 	os.Setenv("GMP_TEST_INT", "123")

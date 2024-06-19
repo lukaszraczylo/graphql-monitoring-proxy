@@ -9,7 +9,8 @@ import (
 
 // config is a struct that holds the configuration of the application.
 type config struct {
-	Logger     *libpack_logging.LogConfig
+	Logger     *libpack_logging.Logger
+	LogLevel   string
 	Monitoring *libpack_monitoring.MetricsSetup
 	Api        struct{ BannedUsersFile string }
 	Client     struct {

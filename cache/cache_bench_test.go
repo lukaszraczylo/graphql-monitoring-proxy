@@ -6,6 +6,7 @@ import (
 
 	libpack_cache_memory "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/memory"
 	libpack_cache_redis "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/redis"
+	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
 const (
@@ -15,6 +16,7 @@ const (
 
 func BenchmarkCacheLookupInMemory(b *testing.B) {
 	config = &CacheConfig{
+		Logger: libpack_logger.New(),
 		Client: libpack_cache_memory.New(5 * time.Minute),
 		TTL:    5,
 	}
@@ -40,6 +42,7 @@ func BenchmarkCacheLookupRedis(b *testing.B) {
 	})
 
 	config = &CacheConfig{
+		Logger: libpack_logger.New(),
 		Client: mockedCache,
 		TTL:    5,
 	}
@@ -60,6 +63,7 @@ func BenchmarkCacheLookupRedis(b *testing.B) {
 
 func BenchmarkCacheStoreInMemory(b *testing.B) {
 	config = &CacheConfig{
+		Logger: libpack_logger.New(),
 		Client: libpack_cache_memory.New(5 * time.Minute),
 		TTL:    5,
 	}
@@ -84,6 +88,7 @@ func BenchmarkCacheStoreRedis(b *testing.B) {
 	})
 
 	config = &CacheConfig{
+		Logger: libpack_logger.New(),
 		Client: mockedCache,
 		TTL:    5,
 	}
