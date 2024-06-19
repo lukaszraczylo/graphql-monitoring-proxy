@@ -47,20 +47,20 @@ jobs:
     # container: github/super-linter:v4
     needs: [prepare]
 
-    services:
-      # Label used to access the service container
-      redis:
-        # Docker Hub image
-        image: redis
-        # Set health checks to wait until redis has started
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          # Maps the container port to the host machine
-          - 6379:6379
+    # services:
+    #   # Label used to access the service container
+    #   redis:
+    #     # Docker Hub image
+    #     image: redis
+    #     # Set health checks to wait until redis has started
+    #     options: >-
+    #       --health-cmd "redis-cli ping"
+    #       --health-interval 10s
+    #       --health-timeout 5s
+    #       --health-retries 5
+    #     ports:
+    #       # Maps the container port to the host machine
+    #       - 6379:6379
 
     steps:
       - name: Checkout repository
@@ -85,5 +85,5 @@ jobs:
           REDIS_PORT: 6379
           REDIS_SERVER: "redis:6379"
         run: |
-          export REDIS_SERVER="$REDIS_HOST:$REDIS_PORT"
+          # export REDIS_SERVER="$REDIS_HOST:$REDIS_PORT"
           CI_RUN=${CI} make test
