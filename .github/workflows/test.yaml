@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
   push:
     paths-ignore:
-    - '**/**.md'
-    - '**/**.yaml'
-    - 'static/**'
+      - "**/**.md"
+      - "**/**.yaml"
+      - "static/**"
     branches:
-    - 'main'
+      - "main"
 
 jobs:
   shared:

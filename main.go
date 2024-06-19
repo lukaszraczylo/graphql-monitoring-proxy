@@ -64,7 +64,7 @@ func parseConfig() {
 		return strings.Split(urls, ",")
 	}()
 	c.LogLevel = strings.ToUpper(getDetailsFromEnv("LOG_LEVEL", "info"))
-	c.Logger = libpack_logging.New().SetMinLogLevel(libpack_logging.GetLogLevel(c.LogLevel)).SetFieldName("timestamp", "ts").SetFieldName("message", "msg").SetShowCaller(true)
+	c.Logger = libpack_logging.New().SetMinLogLevel(libpack_logging.GetLogLevel(c.LogLevel)).SetFieldName("timestamp", "ts").SetFieldName("message", "msg").SetShowCaller(false)
 	c.Server.HealthcheckGraphQL = getDetailsFromEnv("HEALTHCHECK_GRAPHQL_URL", "")
 	c.Client.GQLClient = graphql.NewConnection()
 	c.Client.GQLClient.SetEndpoint(c.Server.HealthcheckGraphQL)
