@@ -1,9 +1,9 @@
 CI_RUN?=false
 ADDITIONAL_BUILD_FLAGS=""
 
-ifeq ($(CI_RUN), true)
-	ADDITIONAL_BUILD_FLAGS="-test.short"
-endif
+# ifeq ($(CI_RUN), true)
+# 	ADDITIONAL_BUILD_FLAGS="-test.short"
+# endif
 
 .PHONY: help
 help:  ## display this help
