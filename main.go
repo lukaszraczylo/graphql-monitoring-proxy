@@ -12,6 +12,7 @@ import (
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
+	libpack_trace "github.com/lukaszraczylo/graphql-monitoring-proxy/trace"
 )
 
 var cfg *config
@@ -88,6 +89,8 @@ func parseConfig() {
 	c.HasuraEventCleaner.Enable = getDetailsFromEnv("HASURA_EVENT_CLEANER", false)
 	c.HasuraEventCleaner.ClearOlderThan = getDetailsFromEnv("HASURA_EVENT_CLEANER_OLDER_THAN", 1)
 	c.HasuraEventCleaner.EventMetadataDb = getDetailsFromEnv("HASURA_EVENT_METADATA_DB", "")
+	c.Trace.Enable = getDetailsFromEnv("ENABLE_TRACE", false)
+	c.Trace.TraceEndpoint = getDetailsFromEnv("TRACER_ENDPOINT", "localhost:4317")
 	cfg = &c
 
 	if cfg.Cache.CacheEnable || cfg.Cache.CacheRedisEnable {
@@ -103,8 +106,21 @@ func parseConfig() {
 		}
 		libpack_cache.EnableCache(cacheConfig)
 	}
+
 	loadRatelimitConfig()
 	once.Do(func() {
+		if cfg.Trace.Enable {
+			var err error
+			cfg.Trace.Client, err = libpack_trace.NewClient(c.Trace.TraceEndpoint)
+			if err != nil {
+				cfg.Logger.Error(&libpack_logging.LogMessage{
+					Message: "Failed to start tracer",
+					Pairs: map[string]interface{}{
+						"error": err,
+					},
+				})
+			}
+		}
 		go enableApi()
 		go enableHasuraEventCleaner()
 	})

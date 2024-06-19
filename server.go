@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"time"
@@ -14,6 +15,7 @@ import (
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
+	libpack_trace "github.com/lukaszraczylo/graphql-monitoring-proxy/trace"
 )
 
 // StartHTTPProxy starts the HTTP and points it to the GraphQL server.
@@ -108,6 +110,23 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	extractedUserID := "-"
 	extractedRoleName := "-"
 	var queryCacheHash string
+
+	if cfg.Trace.Enable {
+		trace_header := c.Request().Header.Peek("X-Trace-Span")
+		if trace_header != nil {
+			traceHeaders := make(map[string]string)
+			err := json.Unmarshal([]byte(trace_header), &traceHeaders)
+			if err != nil {
+				cfg.Logger.Error(&libpack_logger.LogMessage{
+					Message: "Error unmarshalling tracer header",
+					Pairs:   map[string]interface{}{"error": err},
+				})
+			}
+			ctx := libpack_trace.TraceContextExtract(context.Background(), traceHeaders)
+			_, span := libpack_trace.ContinueSpanFromContext(ctx, "processingGraphQLRequest")
+			defer span.End()
+		}
+	}
 
 	authorization := c.Request().Header.Peek("Authorization")
 	if authorization != nil && (len(cfg.Client.JWTUserClaimPath) > 0 || len(cfg.Client.JWTRoleClaimPath) > 0) {

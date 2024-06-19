@@ -9,6 +9,11 @@ import (
 
 // config is a struct that holds the configuration of the application.
 type config struct {
+	Trace struct {
+		Client        func()
+		Enable        bool
+		TraceEndpoint string
+	}
 	Logger     *libpack_logging.Logger
 	LogLevel   string
 	Monitoring *libpack_monitoring.MetricsSetup

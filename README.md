@@ -28,6 +28,7 @@ This project is in active use by [telegram-bot.app](https://telegram-bot.app), a
     - [Cache operations](#cache-operations)
   - [General](#general)
     - [Metrics which matter](#metrics-which-matter)
+    - [Tracing](#tracing)
     - [Healthcheck](#healthcheck)
     - [Monitoring endpoint](#monitoring-endpoint)
 
@@ -144,6 +145,8 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `HASURA_EVENT_CLEANER`   | Enable the hasura event cleaner          | `false`                    |
 | `HASURA_EVENT_CLEANER_OLDER_THAN` | The interval for the hasura event cleaner (in days) | `1`                  |
 | `HASURA_EVENT_METADATA_DB` | URL to the hasura metadata database    | `postgresql://localhost:5432/hasura` |
+| `ENABLE_TRACE` | Enables tracing | `false` |
+| `TRACER_ENDPOINT` | Tracing endpoint | `localhost:4317` |
 
 ### Speed
 
@@ -292,6 +295,12 @@ You can always enable `PURGE_METRICS_ON_CRAWL` environment variable to purge the
 With the `PURGE_METRICS_ON_CRAWL` enabled, the `graphql_proxy_requests_failed`, `graphql_proxy_requests_skipped` and `graphql_proxy_requests_succesful` metrics will remain between resets.
 
 If you prefer more control over the metrics purging - you can enable `PURGE_METRICS_ON_TIMER` environment variable and set the interval in seconds. This will allow you to purge the metrics on a regular basis, for example every 90 seconds. It could be better solution if you have multiple crawlers checking the metrics endpoints and you want to avoid the situation when metrics are purged by for example healthcheck.
+
+#### Tracing
+
+Tracing can be enabled by setting `ENABLE_TRACE` to `true` and providing compatible with OTEL `TRACER_ENDPOINT` value ( default is `localhost:4317` ). From that moment you can include `X-Trace-Span` in your requests to the proxy.
+
+The value of X-Trace-Span should be in following format !!#TODO!!
 
 #### Healthcheck
 
