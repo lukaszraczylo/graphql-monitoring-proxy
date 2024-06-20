@@ -15,7 +15,7 @@ import (
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
-	libpack_trace "github.com/lukaszraczylo/graphql-monitoring-proxy/trace"
+	libpack_trace "github.com/lukaszraczylo/graphql-monitoring-proxy/tracing"
 )
 
 // StartHTTPProxy starts the HTTP and points it to the GraphQL server.
@@ -123,8 +123,13 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 				})
 			}
 			ctx := libpack_trace.TraceContextExtract(context.Background(), traceHeaders)
-			_, span := libpack_trace.ContinueSpanFromContext(ctx, "processingGraphQLRequest")
+			_, span := libpack_trace.ContinueSpanFromContext(ctx, "GraphQLRequest")
 			defer span.End()
+		} else {
+			cfg.Logger.Warning(&libpack_logger.LogMessage{
+				Message: "No trace header found",
+				Pairs:   nil,
+			})
 		}
 	}
 

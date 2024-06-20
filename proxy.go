@@ -119,6 +119,12 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 		}
+		cfg.Logger.Error(&libpack_logger.LogMessage{
+			Message: "Received non-200 response from the GraphQL server",
+			Pairs: map[string]interface{}{
+				"status_code": c.Response().StatusCode(),
+			},
+		})
 		return fmt.Errorf("Received non-200 response from the GraphQL server: %d", c.Response().StatusCode())
 	}
 

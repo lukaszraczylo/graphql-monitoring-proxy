@@ -12,7 +12,7 @@ import (
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
-	libpack_trace "github.com/lukaszraczylo/graphql-monitoring-proxy/trace"
+	libpack_trace "github.com/lukaszraczylo/graphql-monitoring-proxy/tracing"
 )
 
 var cfg *config
@@ -111,7 +111,7 @@ func parseConfig() {
 	once.Do(func() {
 		if cfg.Trace.Enable {
 			var err error
-			cfg.Trace.Client, err = libpack_trace.NewClient(c.Trace.TraceEndpoint)
+			cfg.Trace.Client, err = libpack_trace.NewClient(cfg.Logger, cfg.Trace.TraceEndpoint)
 			if err != nil {
 				cfg.Logger.Error(&libpack_logging.LogMessage{
 					Message: "Failed to start tracer",
