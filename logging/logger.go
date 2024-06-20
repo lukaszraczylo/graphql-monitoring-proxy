@@ -42,16 +42,16 @@ const (
 var defaultOutput = os.Stdout
 
 type Logger struct {
+	output      io.Writer
 	format      string
 	minLogLevel int
 	showCaller  bool
-	output      io.Writer
 }
 
 type LogMessage struct {
-	Message string
-	Pairs   map[string]any
 	output  io.Writer
+	Pairs   map[string]any
+	Message string
 }
 
 func (m *LogMessage) String() string {

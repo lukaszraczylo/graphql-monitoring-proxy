@@ -15,10 +15,10 @@ type CacheConfig struct {
 	Logger *libpack_logger.Logger
 	Client CacheClient
 	Redis  struct {
-		Enable   bool   `json:"enable"`
 		URL      string `json:"url"`
 		Password string `json:"password"`
 		DB       int    `json:"db"`
+		Enable   bool   `json:"enable"`
 	}
 	TTL int `json:"ttl"`
 }

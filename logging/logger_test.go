@@ -59,13 +59,13 @@ func (suite *LoggerTestSuite) Test_LogsLevelsPrint() {
 	logger := New().SetOutput(output)
 
 	tests := []struct {
+		pairs           map[string]any
 		name            string
 		method          string
+		message         string
 		loggerMinLevel  int
 		messageLogLevel int
-		message         string
-		pairs           map[string]any
-		wantOutput      bool // Whether we expect output to be written
+		wantOutput      bool
 	}{
 		{
 			name:            "Log: Debug, Level: Debug - no pairs",
