@@ -11,8 +11,8 @@ import (
 type config struct {
 	Trace struct {
 		Client        func()
-		Enable        bool
 		TraceEndpoint string
+		Enable        bool
 	}
 	Logger     *libpack_logging.Logger
 	LogLevel   string

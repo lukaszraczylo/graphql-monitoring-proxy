@@ -167,9 +167,9 @@ func TestEnsureDefaultLabels(t *testing.T) {
 	libpack_config.PKG_NAME = "example_microservice"
 
 	tests := []struct {
-		name           string
 		inputLabels    map[string]string
 		expectedLabels map[string]string
+		name           string
 	}{
 		{
 			name:           "Nil labels",

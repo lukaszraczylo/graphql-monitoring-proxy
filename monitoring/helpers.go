@@ -14,8 +14,8 @@ import (
 
 // Cache for sorted label keys to avoid repeated sorting
 var sortedLabelKeysCache = struct {
-	sync.RWMutex
 	m map[string][]string
+	sync.RWMutex
 }{m: make(map[string][]string)}
 
 func (ms *MetricsSetup) get_metrics_name(name string, labels map[string]string) string {

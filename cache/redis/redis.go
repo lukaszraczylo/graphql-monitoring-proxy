@@ -11,10 +11,10 @@ import (
 )
 
 type RedisConfig struct {
-	client      *redis.Client
 	ctx         context.Context
-	prefix      string
+	client      *redis.Client
 	builderPool *sync.Pool
+	prefix      string
 }
 
 func (c *RedisConfig) prependKeyName(key string) string {
@@ -29,8 +29,8 @@ func (c *RedisConfig) prependKeyName(key string) string {
 type RedisClientConfig struct {
 	RedisServer   string
 	RedisPassword string
-	RedisDB       int
 	Prefix        string
+	RedisDB       int
 }
 
 func New(redisClientConfig *RedisClientConfig) *RedisConfig {
