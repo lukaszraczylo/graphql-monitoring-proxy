@@ -12,21 +12,12 @@ import (
 
 type RateLimitConfig struct {
 	RateCounterTicker *goratecounter.RateCounter
-	Interval          string `json:"interval"`
-	Req               int    `json:"req"`
+	Interval          time.Duration `json:"interval"`
+	Req               int           `json:"req"`
 }
 
 var (
-	rateLimits         map[string]RateLimitConfig
-	ratelimitIntervals = map[string]time.Duration{
-		"milli":  time.Millisecond,
-		"micro":  time.Microsecond,
-		"nano":   time.Nanosecond,
-		"second": time.Second,
-		"minute": time.Minute,
-		"hour":   time.Hour,
-		"day":    24 * time.Hour,
-	}
+	rateLimits  = make(map[string]RateLimitConfig)
 	rateLimitMu sync.RWMutex
 )
 
@@ -64,19 +55,17 @@ func loadConfigFromPath(path string) error {
 
 	newRateLimits := make(map[string]RateLimitConfig, len(config.RateLimit))
 	for key, value := range config.RateLimit {
-		interval := ratelimitIntervals[value.Interval]
 		value.RateCounterTicker = goratecounter.NewRateCounter().WithConfig(goratecounter.RateCounterConfig{
-			Interval: time.Duration(value.Req) * interval,
+			Interval: value.Interval,
 		})
 
 		if cfg.LogLevel == "debug" {
 			cfg.Logger.Debug(&libpack_logger.LogMessage{
 				Message: "Setting ratelimit config for role",
 				Pairs: map[string]interface{}{
-					"role":              key,
-					"interval_provided": value.Interval,
-					"interval_used":     interval,
-					"ratelimit":         value.Req,
+					"role":          key,
+					"interval_used": value.Interval,
+					"ratelimit":     value.Req,
 				},
 			})
 		}
@@ -96,17 +85,9 @@ func loadConfigFromPath(path string) error {
 
 func rateLimitedRequest(userID, userRole string) bool {
 	rateLimitMu.RLock()
-	defer rateLimitMu.RUnlock()
-
-	if rateLimits == nil {
-		cfg.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Rate limit config not found",
-			Pairs:   map[string]interface{}{"user_role": userRole},
-		})
-		return true
-	}
-
 	roleConfig, ok := rateLimits[userRole]
+	rateLimitMu.RUnlock()
+
 	if !ok || roleConfig.RateCounterTicker == nil {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Rate limit role not found or ticker not initialized",

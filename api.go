@@ -65,7 +65,7 @@ func checkIfUserIsBanned(c *fiber.Ctx, userID string) bool {
 
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Checking if user is banned",
-		Pairs:   map[string]interface{}{"user_id": userID, "found": found},
+		Pairs:   map[string]interface{}{"user_id": userID, "banned": found},
 	})
 
 	if found {
@@ -73,7 +73,7 @@ func checkIfUserIsBanned(c *fiber.Ctx, userID string) bool {
 			Message: "User is banned",
 			Pairs:   map[string]interface{}{"user_id": userID},
 		})
-		c.Status(403).SendString("User is banned")
+		c.Status(fiber.StatusForbidden).SendString("User is banned")
 	}
 	return found
 }
@@ -105,7 +105,11 @@ func apiBanUser(c *fiber.Ctx) error {
 			Message: "Can't parse the ban user request",
 			Pairs:   map[string]interface{}{"error": err.Error()},
 		})
-		return err
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid request payload")
+	}
+
+	if req.UserID == "" || req.Reason == "" {
+		return c.Status(fiber.StatusBadRequest).SendString("user_id and reason are required")
 	}
 
 	bannedUsersIDsMutex.Lock()
@@ -117,7 +121,10 @@ func apiBanUser(c *fiber.Ctx) error {
 		Pairs:   map[string]interface{}{"user_id": req.UserID, "reason": req.Reason},
 	})
 
-	storeBannedUsers()
+	if err := storeBannedUsers(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString("Failed to store banned users")
+	}
+
 	return c.SendString("OK: user banned")
 }
 
@@ -128,7 +135,11 @@ func apiUnbanUser(c *fiber.Ctx) error {
 			Message: "Can't parse the unban user request",
 			Pairs:   map[string]interface{}{"error": err.Error()},
 		})
-		return err
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid request payload")
+	}
+
+	if req.UserID == "" {
+		return c.Status(fiber.StatusBadRequest).SendString("user_id is required")
 	}
 
 	bannedUsersIDsMutex.Lock()
@@ -140,18 +151,17 @@ func apiUnbanUser(c *fiber.Ctx) error {
 		Pairs:   map[string]interface{}{"user_id": req.UserID},
 	})
 
-	storeBannedUsers()
+	if err := storeBannedUsers(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString("Failed to store banned users")
+	}
+
 	return c.SendString("OK: user unbanned")
 }
 
-func storeBannedUsers() {
+func storeBannedUsers() error {
 	fileLock := flock.New(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
-	if err := fileLock.Lock(); err != nil {
-		cfg.Logger.Error(&libpack_logger.LogMessage{
-			Message: "Can't lock the file",
-			Pairs:   map[string]interface{}{"error": err.Error()},
-		})
-		return
+	if err := lockFile(fileLock); err != nil {
+		return err
 	}
 	defer fileLock.Unlock()
 
@@ -164,7 +174,7 @@ func storeBannedUsers() {
 			Message: "Can't marshal banned users",
 			Pairs:   map[string]interface{}{"error": err.Error()},
 		})
-		return
+		return err
 	}
 
 	if err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0644); err != nil {
@@ -172,7 +182,10 @@ func storeBannedUsers() {
 			Message: "Can't write banned users to file",
 			Pairs:   map[string]interface{}{"error": err.Error()},
 		})
+		return err
 	}
+
+	return nil
 }
 
 func loadBannedUsers() {
@@ -191,7 +204,7 @@ func loadBannedUsers() {
 	}
 
 	fileLock := flock.New(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
-	if err := fileLock.RLock(); err != nil {
+	if err := lockFileRead(fileLock); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't lock the file [load]",
 			Pairs:   map[string]interface{}{"error": err.Error()},
@@ -221,4 +234,26 @@ func loadBannedUsers() {
 	bannedUsersIDsMutex.Lock()
 	bannedUsersIDs = newBannedUsers
 	bannedUsersIDsMutex.Unlock()
+}
+
+func lockFile(fileLock *flock.Flock) error {
+	if err := fileLock.Lock(); err != nil {
+		cfg.Logger.Error(&libpack_logger.LogMessage{
+			Message: "Can't lock the file",
+			Pairs:   map[string]interface{}{"error": err.Error()},
+		})
+		return err
+	}
+	return nil
+}
+
+func lockFileRead(fileLock *flock.Flock) error {
+	if err := fileLock.RLock(); err != nil {
+		cfg.Logger.Error(&libpack_logger.LogMessage{
+			Message: "Can't lock the file for reading",
+			Pairs:   map[string]interface{}{"error": err.Error()},
+		})
+		return err
+	}
+	return nil
 }

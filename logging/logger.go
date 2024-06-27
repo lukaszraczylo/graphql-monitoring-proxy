@@ -80,7 +80,7 @@ func (l *Logger) SetOutput(output io.Writer) *Logger {
 
 var bufferPool = sync.Pool{
 	New: func() any {
-		return new(bytes.Buffer)
+		return bytes.NewBuffer(nil)
 	},
 }
 
@@ -112,23 +112,25 @@ func (l *Logger) log(level int, m *LogMessage) {
 	defer bufferPool.Put(buffer)
 	buffer.Reset()
 
-	var encoder = json.NewEncoder(buffer)
-	err := encoder.Encode(m.Pairs)
-	if err != nil {
+	encoder := json.NewEncoder(buffer)
+	if err := encoder.Encode(m.Pairs); err != nil {
 		fmt.Println("Error marshalling log message:", err)
 		return
 	}
 
 	// if not running in test - use stderr and stdout, otherwise - use logger's output setting
-	if flag.Lookup("test.v") != nil {
-		m.output = os.Stdout
+	if flag.Lookup("test.v") == nil {
 		if level >= LEVEL_ERROR {
 			m.output = os.Stderr
+		} else {
+			m.output = os.Stdout
 		}
+	} else {
+		m.output = l.output
 	}
 
-	// Use logger's output setting instead of os.Stdout or os.Stderr
-	l.output.Write(buffer.Bytes())
+	m.output.Write(buffer.Bytes())
+	m.output.Write([]byte("\n"))
 }
 
 func (l *Logger) Debug(m *LogMessage) {
@@ -162,12 +164,12 @@ func (l *Logger) Error(m *LogMessage) {
 func (l *Logger) Fatal(m *LogMessage) {
 	if l.shouldLog(LEVEL_FATAL) {
 		l.log(LEVEL_FATAL, m)
+		os.Exit(1)
 	}
 }
 
 func (l *Logger) Critical(m *LogMessage) {
 	l.Fatal(m)
-	os.Exit(1)
 }
 
 func (l *Logger) shouldLog(level int) bool {

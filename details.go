@@ -11,13 +11,9 @@ import (
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
 
-const (
-	defaultValue = "-"
-)
+const defaultValue = "-"
 
-var (
-	emptyMetrics = map[string]string{}
-)
+var emptyMetrics = map[string]string{}
 
 func extractClaimsFromJWTHeader(authorization string) (usr, role string) {
 	usr, role = defaultValue, defaultValue
