@@ -74,4 +74,8 @@ func cleanEvents() {
 			})
 		}
 	}
+	cfg.Logger.Info(&libpack_logger.LogMessage{
+		Message: "Old events cleaned up",
+		Pairs:   nil,
+	})
 }
