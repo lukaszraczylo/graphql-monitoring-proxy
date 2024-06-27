@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # Ensure full history is checked out
-          token: ${{ secrets.GITHUB_TOKEN }} # Ensure token is available for pushing changes
+          token: ${{ secrets.GHCR_TOKEN }}
 
       - name: Install Go
         uses: actions/setup-go@v5
