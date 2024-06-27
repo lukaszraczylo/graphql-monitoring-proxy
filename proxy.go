@@ -36,7 +36,6 @@ func createFasthttpClient(timeout int) *fasthttp.Client {
 		DisableHeaderNamesNormalizing: true,
 	}
 }
-
 func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 	if !checkAllowedURLs(c) {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
@@ -80,7 +79,7 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 	if err != nil {
 		cfg.Logger.Warning(&libpack_logger.LogMessage{
 			Message: "Can't proxy the request",
-			Pairs: map[string]interface{}{"error": err.Error()},
+			Pairs:   map[string]interface{}{"error": err.Error()},
 		})
 		return err
 	}

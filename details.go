@@ -11,9 +11,12 @@ import (
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
 
-var (
+const (
 	defaultValue = "-"
-	emptyMetrics = map[string]string(nil)
+)
+
+var (
+	emptyMetrics = map[string]string{}
 )
 
 func extractClaimsFromJWTHeader(authorization string) (usr, role string) {
@@ -51,6 +54,7 @@ func extractClaim(claimMap map[string]interface{}, claimPath, name string) strin
 	value, ok := ask.For(claimMap, claimPath).String(defaultValue)
 	if !ok {
 		handleError(fmt.Sprintf("Can't find the %s", name), map[string]interface{}{"claim_map": claimMap, "path": claimPath})
+		return defaultValue
 	}
 
 	return value

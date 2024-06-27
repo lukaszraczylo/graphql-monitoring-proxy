@@ -39,12 +39,6 @@ func enableHasuraEventCleaner() {
 		Pairs:   map[string]interface{}{"interval_in_days": cfg.HasuraEventCleaner.ClearOlderThan},
 	})
 
-	time.Sleep(initialDelay)
-
-	cfg.Logger.Info(&libpack_logger.LogMessage{
-		Message: "Initial cleanup of old events",
-	})
-
 	pool, err := pgxpool.New(context.Background(), cfg.HasuraEventCleaner.EventMetadataDb)
 	if err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
@@ -55,17 +49,24 @@ func enableHasuraEventCleaner() {
 	}
 	defer pool.Close()
 
-	cleanEvents(pool)
+	go func() {
+		time.Sleep(initialDelay)
 
-	ticker := time.NewTicker(cleanupInterval)
-	defer ticker.Stop()
-
-	for range ticker.C {
 		cfg.Logger.Info(&libpack_logger.LogMessage{
-			Message: "Cleaning up old events",
+			Message: "Initial cleanup of old events",
 		})
 		cleanEvents(pool)
-	}
+
+		ticker := time.NewTicker(cleanupInterval)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			cfg.Logger.Info(&libpack_logger.LogMessage{
+				Message: "Cleaning up old events",
+			})
+			cleanEvents(pool)
+		}
+	}()
 }
 
 func cleanEvents(pool *pgxpool.Pool) {
@@ -73,7 +74,7 @@ func cleanEvents(pool *pgxpool.Pool) {
 	for _, query := range delQueries {
 		_, err := pool.Exec(ctx, fmt.Sprintf(query, cfg.HasuraEventCleaner.ClearOlderThan))
 		if err != nil {
-			cfg.Logger.Debug(&libpack_logger.LogMessage{
+			cfg.Logger.Error(&libpack_logger.LogMessage{
 				Message: "Failed to execute query",
 				Pairs:   map[string]interface{}{"query": query, "error": err},
 			})
