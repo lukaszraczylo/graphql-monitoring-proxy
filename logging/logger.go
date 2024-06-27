@@ -46,8 +46,6 @@ type Logger struct {
 	format      string
 	minLogLevel int
 	showCaller  bool
-	buffer      *bytes.Buffer
-	encoder     *json.Encoder
 }
 
 type LogMessage struct {
@@ -56,8 +54,8 @@ type LogMessage struct {
 	Message string
 }
 
-func (lm *LogMessage) String() string {
-	return lm.Message
+func (m *LogMessage) String() string {
+	return m.Message
 }
 
 var fieldNames = map[string]string{
@@ -67,14 +65,11 @@ var fieldNames = map[string]string{
 }
 
 func New() *Logger {
-	buffer := &bytes.Buffer{}
 	return &Logger{
 		format:      defaultFormat,
 		minLogLevel: defaultMinLevel,
 		output:      defaultOutput,
 		showCaller:  defaultShowCaller,
-		buffer:      buffer,
-		encoder:     json.NewEncoder(buffer),
 	}
 }
 
@@ -83,11 +78,13 @@ func (l *Logger) SetOutput(output io.Writer) *Logger {
 	return l
 }
 
-var pairsPool = sync.Pool{
-	New: func() interface{} {
-		return make(map[string]any)
+var bufferPool = sync.Pool{
+	New: func() any {
+		return new(bytes.Buffer)
 	},
 }
+
+var defaultPairs = make(map[string]any)
 
 func GetLogLevel(level string) int {
 	for i, name := range LevelNames {
@@ -99,47 +96,39 @@ func GetLogLevel(level string) int {
 }
 
 func (l *Logger) log(level int, m *LogMessage) {
-	pairs := pairsPool.Get().(map[string]any)
-	defer pairsPool.Put(pairs)
+	if m.Pairs == nil {
+		m.Pairs = defaultPairs
+	}
 
-	pairs[fieldNames["timestamp"]] = time.Now().Format(l.format)
-	pairs[fieldNames["level"]] = LevelNames[level]
-	pairs[fieldNames["message"]] = m.Message
+	m.Pairs[fieldNames["timestamp"]] = time.Now().Format(l.format)
+	m.Pairs[fieldNames["level"]] = LevelNames[level]
+	m.Pairs[fieldNames["message"]] = m.Message
 
 	if l.showCaller {
-		pairs["caller"] = getCaller()
+		m.Pairs["caller"] = getCaller()
 	}
 
-	if m.Pairs != nil {
-		for k, v := range m.Pairs {
-			pairs[k] = v
-		}
-	}
+	buffer := bufferPool.Get().(*bytes.Buffer)
+	defer bufferPool.Put(buffer)
+	buffer.Reset()
 
-	l.buffer.Reset()
-
-	if err := l.encoder.Encode(pairs); err != nil {
+	var encoder = json.NewEncoder(buffer)
+	err := encoder.Encode(m.Pairs)
+	if err != nil {
 		fmt.Println("Error marshalling log message:", err)
 		return
 	}
 
 	// if not running in test - use stderr and stdout, otherwise - use logger's output setting
-	if flag.Lookup("test.v") == nil {
+	if flag.Lookup("test.v") != nil {
+		m.output = os.Stdout
 		if level >= LEVEL_ERROR {
 			m.output = os.Stderr
-		} else {
-			m.output = os.Stdout
 		}
-	} else {
-		m.output = l.output
 	}
 
-	m.output.Write(l.buffer.Bytes())
-	m.output.Write([]byte("\n"))
-
-	for k := range pairs {
-		delete(pairs, k)
-	}
+	// Use logger's output setting instead of os.Stdout or os.Stderr
+	l.output.Write(buffer.Bytes())
 }
 
 func (l *Logger) Debug(m *LogMessage) {
@@ -173,12 +162,12 @@ func (l *Logger) Error(m *LogMessage) {
 func (l *Logger) Fatal(m *LogMessage) {
 	if l.shouldLog(LEVEL_FATAL) {
 		l.log(LEVEL_FATAL, m)
-		os.Exit(1)
 	}
 }
 
 func (l *Logger) Critical(m *LogMessage) {
 	l.Fatal(m)
+	os.Exit(1)
 }
 
 func (l *Logger) shouldLog(level int) bool {
