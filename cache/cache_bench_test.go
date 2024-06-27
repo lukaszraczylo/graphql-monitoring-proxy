@@ -20,6 +20,7 @@ func BenchmarkCacheLookupInMemory(b *testing.B) {
 		Client: libpack_cache_memory.New(5 * time.Minute),
 		TTL:    5,
 	}
+	EnableCache(config)
 
 	hash := "00000000000000000000000000000000001337"
 	data := []byte("it's fine.")
@@ -46,6 +47,8 @@ func BenchmarkCacheLookupRedis(b *testing.B) {
 		Client: mockedCache,
 		TTL:    5,
 	}
+	config.Redis.Enable = true
+	EnableCache(config)
 
 	hash := "00000000000000000000000000000000001337"
 	data := []byte("it's fine.")
@@ -67,6 +70,7 @@ func BenchmarkCacheStoreInMemory(b *testing.B) {
 		Client: libpack_cache_memory.New(5 * time.Minute),
 		TTL:    5,
 	}
+	EnableCache(config)
 
 	hash := "00000000000000000000000000000000001337"
 	data := []byte("it's fine.")
@@ -92,6 +96,8 @@ func BenchmarkCacheStoreRedis(b *testing.B) {
 		Client: mockedCache,
 		TTL:    5,
 	}
+	config.Redis.Enable = true
+	EnableCache(config)
 
 	hash := "00000000000000000000000000000000001337"
 	data := []byte("it's fine.")
