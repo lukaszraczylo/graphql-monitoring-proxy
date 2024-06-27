@@ -1,20 +1,22 @@
 module github.com/lukaszraczylo/graphql-monitoring-proxy
 
-go 1.21
+go 1.21.0
+
+toolchain go1.22.4
 
 require (
-	github.com/VictoriaMetrics/metrics v1.33.1
+	github.com/VictoriaMetrics/metrics v1.34.0
 	github.com/alicebob/miniredis/v2 v2.33.0
 	github.com/avast/retry-go/v4 v4.6.0
 	github.com/goccy/go-json v0.10.3
 	github.com/gofiber/fiber/v2 v2.52.4
-	github.com/gofrs/flock v0.8.1
+	github.com/gofrs/flock v0.9.0
 	github.com/google/uuid v1.6.0
 	github.com/gookit/goutil v0.6.15
 	github.com/graphql-go/graphql v0.8.1
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/lukaszraczylo/ask v0.0.0-20230927103145-2ff1123b4415
-	github.com/lukaszraczylo/go-ratecounter v0.1.8
+	github.com/lukaszraczylo/go-ratecounter v0.1.10
 	github.com/lukaszraczylo/go-simple-graphql v1.2.14
 	github.com/redis/go-redis/v9 v9.5.3
 	github.com/stretchr/testify v1.9.0
@@ -31,7 +33,6 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
-	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
