@@ -63,6 +63,7 @@ jobs:
       - name: Run unit tests
         run: |
           CI_RUN=${CI} make test
+          git config --global --add safe.directory /__w/graphql-monitoring-proxy/graphql-monitoring-proxy
 
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
