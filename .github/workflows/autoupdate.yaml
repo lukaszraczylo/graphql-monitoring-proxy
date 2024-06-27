@@ -64,11 +64,9 @@ jobs:
         run: |
           CI_RUN=${CI} make test
 
-      # if go.mod or go.sum have changed then commit the changes to the repository
       - name: Commit changes
-        run: |
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global user.name "github-actions[bot]"
-          git add go.mod go.sum
-          git diff-index --quiet HEAD || git commit -m "Update go.mod and go.sum"
-          git push
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Update go.mod and go.sum"
+          commit_options: "--no-verify --signoff"
+          file_pattern: "go.mod go.sum"
