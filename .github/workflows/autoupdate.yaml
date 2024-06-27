@@ -1,4 +1,4 @@
-name: Test and release
+name: Autoupdate go.mod and go.sum
 
 on:
   workflow_dispatch:
