@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/avast/retry-go/v4"
@@ -48,10 +49,24 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 		return c.Status(403).SendString("Request blocked - not allowed URL")
 	}
 
-	c.Request().Header.DisableNormalizing()
-	c.Request().Header.Set("X-Real-IP", c.IP())
-	c.Request().Header.Set(fiber.HeaderXForwardedFor, c.Get("X-Forwarded-For"))
-	c.Request().Header.Del(fiber.HeaderAcceptEncoding)
+	var headerPool = sync.Pool{
+		New: func() interface{} {
+			return make(map[string]string, 8)
+		},
+	}
+
+	headers := headerPool.Get().(map[string]string)
+	defer headerPool.Put(headers)
+	for k := range headers {
+		delete(headers, k)
+	}
+
+	c.Request().Header.VisitAll(func(key, value []byte) {
+		headers[string(key)] = string(value)
+	})
+	headers["X-Real-IP"] = c.IP()
+	headers["X-Forwarded-For"] = c.Get("X-Forwarded-For")
+	delete(headers, fiber.HeaderAcceptEncoding)
 
 	if cfg.LogLevel == "debug" {
 		logDebugRequest(c)
@@ -98,7 +113,6 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 	c.Response().Header.Del(fiber.HeaderServer)
 	return nil
 }
-
 func logDebugRequest(c *fiber.Ctx) {
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Proxying the request",
