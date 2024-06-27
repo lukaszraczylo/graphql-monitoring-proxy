@@ -11,18 +11,15 @@ import (
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
 
-func extractClaimsFromJWTHeader(authorization string) (usr string, role string) {
-	usr, role = "-", "-"
+var (
+	defaultValue = "-"
+	emptyMetrics = map[string]string(nil)
+)
 
-	handleError := func(msg string, details map[string]interface{}) {
-		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
-		cfg.Logger.Error(&libpack_logger.LogMessage{
-			Message: msg,
-			Pairs:   details,
-		})
-	}
+func extractClaimsFromJWTHeader(authorization string) (usr, role string) {
+	usr, role = defaultValue, defaultValue
 
-	tokenParts := strings.Split(authorization, ".")
+	tokenParts := strings.SplitN(authorization, ".", 3)
 	if len(tokenParts) != 3 {
 		handleError("Can't split the token", map[string]interface{}{"token": authorization})
 		return
@@ -40,18 +37,29 @@ func extractClaimsFromJWTHeader(authorization string) (usr string, role string) 
 		return
 	}
 
-	extractClaim := func(claimPath string, target *string, name string) {
-		if len(claimPath) > 0 {
-			var ok bool
-			*target, ok = ask.For(claimMap, claimPath).String("-")
-			if !ok {
-				handleError(fmt.Sprintf("Can't find the %s", name), map[string]interface{}{"claim_map": claimMap, "path": claimPath})
-			}
-		}
-	}
-
-	extractClaim(cfg.Client.JWTUserClaimPath, &usr, "user id")
-	extractClaim(cfg.Client.JWTRoleClaimPath, &role, "role")
+	usr = extractClaim(claimMap, cfg.Client.JWTUserClaimPath, "user id")
+	role = extractClaim(claimMap, cfg.Client.JWTRoleClaimPath, "role")
 
 	return
+}
+
+func extractClaim(claimMap map[string]interface{}, claimPath, name string) string {
+	if claimPath == "" {
+		return defaultValue
+	}
+
+	value, ok := ask.For(claimMap, claimPath).String(defaultValue)
+	if !ok {
+		handleError(fmt.Sprintf("Can't find the %s", name), map[string]interface{}{"claim_map": claimMap, "path": claimPath})
+	}
+
+	return value
+}
+
+func handleError(msg string, details map[string]interface{}) {
+	cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, emptyMetrics)
+	cfg.Logger.Error(&libpack_logger.LogMessage{
+		Message: msg,
+		Pairs:   details,
+	})
 }
