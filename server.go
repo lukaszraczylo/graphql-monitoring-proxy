@@ -77,6 +77,26 @@ func checkAllowedURLs(c *fiber.Ctx) bool {
 	return ok
 }
 
+func extractTraceHeaders(c *fiber.Ctx) (found bool, traceHeaders map[string]string) {
+	if !cfg.Trace.Enable {
+		return
+	}
+	headers := c.Request().Header
+	traceHeader := headers.Peek("X-Trace-Span")
+	if traceHeader != nil {
+		traceHeaders = make(map[string]string)
+		if err := json.Unmarshal(traceHeader, &traceHeaders); err != nil {
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Error unmarshalling tracer header",
+				Pairs:   map[string]interface{}{"error": err},
+			})
+			return
+		}
+		found = true
+	}
+	return
+}
+
 func healthCheck(c *fiber.Ctx) error {
 	if len(cfg.Server.HealthcheckGraphQL) > 0 {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
@@ -111,26 +131,14 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 
 	// Pre-fetch headers and trace header processing
 	headers := c.Request().Header
-	traceHeader := headers.Peek("X-Trace-Span")
 	authorization := headers.Peek("Authorization")
+	ctx := context.Background()
+	traceHeaderFound, traceHeader := extractTraceHeaders(c)
 
-	if cfg.Trace.Enable && traceHeader != nil {
-		traceHeaders := make(map[string]string)
-		if err := json.Unmarshal(traceHeader, &traceHeaders); err != nil {
-			cfg.Logger.Error(&libpack_logger.LogMessage{
-				Message: "Error unmarshalling tracer header",
-				Pairs:   map[string]interface{}{"error": err},
-			})
-		} else {
-			ctx := libpack_trace.TraceContextExtract(context.Background(), traceHeaders)
-			_, span := libpack_trace.ContinueSpanFromContext(ctx, "GraphQLRequest")
-			defer span.End()
-		}
-	} else if cfg.Trace.Enable {
-		cfg.Logger.Warning(&libpack_logger.LogMessage{
-			Message: "No trace header found",
-			Pairs:   nil,
-		})
+	if traceHeaderFound {
+		ctx = libpack_trace.TraceContextExtract(ctx, traceHeader)
+		_, span := libpack_trace.ContinueSpanFromContext(ctx, "GraphQLRequest")
+		defer span.End()
 	}
 
 	// JWT and role extraction with pre-check
@@ -170,7 +178,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 			Message: "Request passed as-is - probably not a GraphQL",
 			Pairs:   nil,
 		})
-		return proxyTheRequest(c, parsedResult.activeEndpoint)
+		return proxyTheRequest(c, parsedResult.activeEndpoint, ctx)
 	}
 	// Cache handling logic
 	queryCacheHash := libpack_cache.CalculateHash(c)
@@ -223,10 +231,10 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 				Message: "Cache miss",
 				Pairs:   map[string]interface{}{"hash": queryCacheHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")},
 			})
-			proxyAndCacheTheRequest(c, queryCacheHash, parsedResult.cacheTime, parsedResult.activeEndpoint)
+			proxyAndCacheTheRequest(c, queryCacheHash, parsedResult.cacheTime, parsedResult.activeEndpoint, ctx)
 		}
 	} else {
-		if err := proxyTheRequest(c, parsedResult.activeEndpoint); err != nil {
+		if err := proxyTheRequest(c, parsedResult.activeEndpoint, ctx); err != nil {
 			cfg.Logger.Error(&libpack_logger.LogMessage{
 				Message: "Can't proxy the request",
 				Pairs:   map[string]interface{}{"error": err.Error()},
@@ -242,8 +250,8 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 }
 
 // Additional helper function to avoid code repetition
-func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int, currentEndpoint string) {
-	err := proxyTheRequest(c, currentEndpoint)
+func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int, currentEndpoint string, ctx context.Context) {
+	err := proxyTheRequest(c, currentEndpoint, ctx)
 	if err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't proxy the request",

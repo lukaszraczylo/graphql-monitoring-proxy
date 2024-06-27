@@ -1,15 +1,18 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"time"
 
 	"github.com/avast/retry-go/v4"
+	"github.com/goccy/go-json"
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/proxy"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
+	libpack_trace "github.com/lukaszraczylo/graphql-monitoring-proxy/tracing"
 	"github.com/valyala/fasthttp"
 )
 
@@ -29,7 +32,7 @@ func createFasthttpClient(timeout int) *fasthttp.Client {
 	}
 }
 
-func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
+func proxyTheRequest(c *fiber.Ctx, currentEndpoint string, ctx context.Context) error {
 	if !checkAllowedURLs(c) {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Request blocked",
@@ -129,5 +132,25 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 	}
 
 	c.Response().Header.Del(fiber.HeaderServer)
+	if cfg.Trace.Enable {
+		tracingContext := libpack_trace.TraceContextInject(ctx)
+		if tracingContext == nil {
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Can't inject empty tracing context",
+			})
+			return nil
+		}
+		traceJsonEncoded, err := json.Marshal(tracingContext)
+		if err != nil {
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Can't convert tracing context to JSON",
+				Pairs: map[string]interface{}{
+					"error": err.Error(),
+				},
+			})
+			return err
+		}
+		c.Response().Header.Set("X-Trace-Span", string(traceJsonEncoded))
+	}
 	return nil
 }
