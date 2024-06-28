@@ -78,6 +78,7 @@ jobs:
           apt-get install ca-certificates make -y
           update-ca-certificates
           go mod tidy
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Run unit tests
         run: |
@@ -86,7 +87,6 @@ jobs:
       - name: Run benchmark
         run: |
           go test -bench=. -benchmem ./... -run=^# | tee output.txt
-          git config --global --add safe.directory /__w/graphql-monitoring-proxy
 
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
