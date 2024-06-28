@@ -16,7 +16,7 @@ require (
 	github.com/graphql-go/graphql v0.8.1
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/lukaszraczylo/ask v0.0.0-20230927103145-2ff1123b4415
-	github.com/lukaszraczylo/go-ratecounter v0.1.8
+	github.com/lukaszraczylo/go-ratecounter v0.1.10
 	github.com/lukaszraczylo/go-simple-graphql v1.2.14
 	github.com/redis/go-redis/v9 v9.5.3
 	github.com/stretchr/testify v1.9.0
