@@ -14,9 +14,9 @@ const (
 	cleanupInterval = 1 * time.Hour
 )
 
-var delQueries = []string{
-	"DELETE FROM hdb_catalog.event_invocation_logs WHERE created_at < now() - interval '%d days';",
-	"DELETE FROM hdb_catalog.event_log WHERE created_at < now() - interval '%d days';",
+var delQueries = [...]string{
+	"DELETE FROM hdb_catalog.event_invocation_logs WHERE created_at < NOW() - interval '%d days';",
+	"DELETE FROM hdb_catalog.event_log WHERE created_at < NOW() - interval '%d days';",
 	"DELETE FROM hdb_catalog.hdb_action_log WHERE created_at < NOW() - INTERVAL '%d days';",
 	"DELETE FROM hdb_catalog.hdb_cron_event_invocation_logs WHERE created_at < NOW() - INTERVAL '%d days';",
 	"DELETE FROM hdb_catalog.hdb_scheduled_event_invocation_logs WHERE created_at < NOW() - INTERVAL '%d days';",
@@ -39,17 +39,17 @@ func enableHasuraEventCleaner() {
 		Pairs:   map[string]interface{}{"interval_in_days": cfg.HasuraEventCleaner.ClearOlderThan},
 	})
 
-	pool, err := pgxpool.New(context.Background(), cfg.HasuraEventCleaner.EventMetadataDb)
-	if err != nil {
-		cfg.Logger.Error(&libpack_logger.LogMessage{
-			Message: "Failed to create connection pool",
-			Pairs:   map[string]interface{}{"error": err},
-		})
-		return
-	}
-	defer pool.Close()
-
 	go func() {
+		pool, err := pgxpool.New(context.Background(), cfg.HasuraEventCleaner.EventMetadataDb)
+		if err != nil {
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Failed to create connection pool",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
+			return
+		}
+		defer pool.Close()
+
 		time.Sleep(initialDelay)
 
 		cfg.Logger.Info(&libpack_logger.LogMessage{
@@ -76,7 +76,12 @@ func cleanEvents(pool *pgxpool.Pool) {
 		if err != nil {
 			cfg.Logger.Error(&libpack_logger.LogMessage{
 				Message: "Failed to execute query",
-				Pairs:   map[string]interface{}{"query": query, "error": err},
+				Pairs:   map[string]interface{}{"query": query, "error": err.Error()},
+			})
+		} else {
+			cfg.Logger.Debug(&libpack_logger.LogMessage{
+				Message: "Successfully executed query",
+				Pairs:   map[string]interface{}{"query": query},
 			})
 		}
 	}

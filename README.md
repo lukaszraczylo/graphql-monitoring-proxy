@@ -2,7 +2,7 @@
 
 Creates a passthrough proxy to a graphql endpoint(s), allowing you to analyse the queries and responses, producing the Prometheus metrics at a fraction of the cost - because, as we know - $0 is a fair price.
 
-This project is in active use by [telegram-bot.app](https://telegram-bot.app), and was tested with 30k queries per second on a single instance, consuming 10 MB of RAM and 0.1% CPU.
+This project is in active use by [telegram-bot.app](https://telegram-bot.app), and was tested with 30k queries per second on a single instance, consuming 10 MB of RAM and 0.1% CPU. [Benchmarks](https://lukaszraczylo.github.io/graphql-monitoring-proxy/dev/bench/) are available.
 
 ![Example of monitoring dashboard](static/monitoring-at-glance.png?raw=true)
 
