@@ -93,7 +93,6 @@ jobs:
         with:
           tool: "go"
           output-file-path: output.txt
-          external-data-json-path: ./cache/benchmark-data.json
           fail-on-alert: true
           github-token: ${{ secrets.GHCR_TOKEN }}
           comment-on-alert: true
