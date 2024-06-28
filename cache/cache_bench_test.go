@@ -1,7 +1,6 @@
 package libpack_cache
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -99,7 +98,6 @@ func BenchmarkCacheStoreRedis(b *testing.B) {
 	config.Redis.DB = 0
 	config.Redis.URL = redis_server.Addr()
 	config.Redis.Enable = true
-	fmt.Println(config)
 	EnableCache(config)
 
 	hash := "00000000000000000000000000000000001337"
