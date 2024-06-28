@@ -6,7 +6,6 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	libpack_cache_memory "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/memory"
-	libpack_cache_redis "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/redis"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
@@ -38,17 +37,16 @@ func BenchmarkCacheLookupInMemory(b *testing.B) {
 }
 
 func BenchmarkCacheLookupRedis(b *testing.B) {
-	redis_server, _ := miniredis.Run()
-	mockedCache := libpack_cache_redis.New(&libpack_cache_redis.RedisClientConfig{
-		RedisServer: redis_server.Addr(),
-		RedisDB:     0,
-	})
-
+	redis_server, err := miniredis.Run()
+	if err != nil {
+		panic(err)
+	}
 	config = &CacheConfig{
 		Logger: libpack_logger.New(),
-		Client: mockedCache,
 		TTL:    5,
 	}
+	config.Redis.DB = 0
+	config.Redis.URL = redis_server.Addr()
 	config.Redis.Enable = true
 	EnableCache(config)
 
@@ -88,17 +86,17 @@ func BenchmarkCacheStoreInMemory(b *testing.B) {
 }
 
 func BenchmarkCacheStoreRedis(b *testing.B) {
-	redis_server, _ := miniredis.Run()
-	mockedCache := libpack_cache_redis.New(&libpack_cache_redis.RedisClientConfig{
-		RedisServer: redis_server.Addr(),
-		RedisDB:     0,
-	})
+	redis_server, err := miniredis.Run()
+	if err != nil {
+		panic(err)
+	}
 
 	config = &CacheConfig{
 		Logger: libpack_logger.New(),
-		Client: mockedCache,
 		TTL:    5,
 	}
+	config.Redis.DB = 0
+	config.Redis.URL = redis_server.Addr()
 	config.Redis.Enable = true
 	EnableCache(config)
 
