@@ -1,0 +1,16 @@
+{
+  "ratelimit": {
+      "admin": {
+          "req": 100,
+          "interval": "second"
+      },
+      "guest": {
+          "req": 3,
+          "interval": "second"
+      },
+      "-": {
+          "req": 100,
+          "interval": "hour"
+      }
+  }
+}
