@@ -55,7 +55,7 @@ func EnableCache(cfg *CacheConfig) {
 	}
 	cacheStats = &CacheStats{}
 	if ShouldUseRedisCache(cfg) {
-		cfg.Logger.Info(&libpack_logger.LogMessage{
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Using Redis cache",
 		})
 		cfg.Client = libpack_cache_redis.New(&libpack_cache_redis.RedisClientConfig{
@@ -64,7 +64,7 @@ func EnableCache(cfg *CacheConfig) {
 			RedisPassword: cfg.Redis.Password,
 		})
 	} else {
-		cfg.Logger.Info(&libpack_logger.LogMessage{
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Using in-memory cache",
 		})
 		cfg.Client = libpack_cache_memory.New(time.Duration(cfg.TTL) * time.Second)
