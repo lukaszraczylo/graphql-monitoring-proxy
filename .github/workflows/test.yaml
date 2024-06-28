@@ -23,8 +23,8 @@ jobs:
       ghcr-token: ${{ secrets.GHCR_TOKEN }}
 
   test:
-    name: "Unit testing"
-    # needs: [prepare]
+    name: "Benchmarking the results"
+    needs: [shared]
     runs-on: ubuntu-latest
     container: golang:1
     # container: github/super-linter:v4
