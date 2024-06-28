@@ -53,7 +53,7 @@ type parseGraphQLQueryResult struct {
 var (
 	queryPool = sync.Pool{
 		New: func() interface{} {
-			return make(map[string]interface{}, 4)
+			return make(map[string]interface{}, 48)
 		},
 	}
 	resultPool = sync.Pool{
@@ -65,14 +65,15 @@ var (
 
 func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 	res := resultPool.Get().(*parseGraphQLQueryResult)
-	defer resultPool.Put(res)
-	*res = parseGraphQLQueryResult{shouldIgnore: true}
+	*res = parseGraphQLQueryResult{shouldIgnore: true, activeEndpoint: cfg.Server.HostGraphQL}
 
 	m := queryPool.Get().(map[string]interface{})
-	defer queryPool.Put(m)
-	for k := range m {
-		delete(m, k)
-	}
+	defer func() {
+		for k := range m {
+			delete(m, k)
+		}
+		queryPool.Put(m)
+	}()
 
 	if err := json.Unmarshal(c.Body(), &m); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
@@ -82,6 +83,7 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 		}
+		resultPool.Put(res)
 		return res
 	}
 
@@ -94,6 +96,7 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 		}
+		resultPool.Put(res)
 		return res
 	}
 
@@ -106,16 +109,15 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 		}
+		resultPool.Put(res)
 		return res
 	}
 
 	res.shouldIgnore = false
 	res.operationName = "undefined"
-	res.activeEndpoint = cfg.Server.HostGraphQL
 
 	for _, d := range p.Definitions {
 		if oper, ok := d.(*ast.OperationDefinition); ok {
-			// If we haven't set an operation type yet, use this one
 			if res.operationType == "" {
 				res.operationType = strings.ToLower(oper.Operation)
 				if oper.Name != nil {
@@ -123,13 +125,25 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 				}
 			}
 
-			if cfg.Server.HostGraphQLReadOnly != "" && res.operationType != "mutation" {
-				res.activeEndpoint = cfg.Server.HostGraphQLReadOnly
+			if cfg.Server.HostGraphQLReadOnly != "" {
+				if res.operationType == "" {
+					res.activeEndpoint = cfg.Server.HostGraphQLReadOnly
+				} else if res.operationType != "mutation" {
+					res.activeEndpoint = cfg.Server.HostGraphQLReadOnly
+				}
 			}
+
+			cfg.Logger.Debug(&libpack_logger.LogMessage{
+				Message: "Endpoint selection",
+				Pairs: map[string]interface{}{
+					"operationType":    res.operationType,
+					"selectedEndpoint": res.activeEndpoint,
+				},
+			})
 
 			if res.operationType == "mutation" && cfg.Server.ReadOnlyMode {
 				cfg.Logger.Warning(&libpack_logger.LogMessage{
-					Message: "Mutation blocked",
+					Message: "Mutation blocked - server in read-only mode",
 					Pairs:   map[string]interface{}{"query": query},
 				})
 				if ifNotInTest() {
@@ -137,6 +151,7 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 				}
 				_ = c.Status(403).SendString("The server is in read-only mode")
 				res.shouldBlock = true
+				resultPool.Put(res)
 				return res
 			}
 
@@ -161,6 +176,7 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 			if cfg.Security.BlockIntrospection {
 				res.shouldBlock = checkSelections(c, oper.GetSelectionSet().Selections)
 				if res.shouldBlock {
+					resultPool.Put(res)
 					return res
 				}
 			}

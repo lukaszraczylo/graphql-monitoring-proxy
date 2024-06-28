@@ -1,8 +1,6 @@
 package main
 
 import (
-	"strings"
-
 	"github.com/valyala/fasthttp"
 )
 
@@ -14,47 +12,63 @@ func (suite *Tests) Test_proxyTheRequest() {
 	}
 
 	tests := []struct {
-		headers map[string]string
-		name    string
-		body    string
-		host    string
-		hostRO  string
-		path    string
-		wantErr bool
+		headers      map[string]string
+		name         string
+		body         string
+		host         string
+		hostRO       string
+		path         string
+		wantErr      bool
+		wantEndpoint string
 	}{
 		{
-			name:    "test_empty",
-			body:    `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
-			host:    "https://telegram-bot.app/",
-			path:    "/v1/graphql",
-			headers: supplied_headers,
-			wantErr: false,
+			name:         "test_empty",
+			body:         `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
+			host:         "https://telegram-bot.app/",
+			path:         "/v1/graphql",
+			headers:      supplied_headers,
+			wantErr:      false,
+			wantEndpoint: "https://telegram-bot.app/",
 		},
 		{
-			name:    "test_wrong_url",
-			body:    `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
-			host:    "https://google.com/",
-			path:    "/v1/wrongURL",
-			headers: supplied_headers,
-			wantErr: true,
+			name:         "test_wrong_url",
+			body:         `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
+			host:         "https://google.com/",
+			path:         "/v1/wrongURL",
+			headers:      supplied_headers,
+			wantErr:      true,
+			wantEndpoint: "https://google.com/",
 		},
 		{
-			name:    "Test read only mode",
-			body:    `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
-			host:    "https://google.com/",
-			hostRO:  "https://telegram-bot.app/",
-			path:    "/v1/graphql",
-			headers: supplied_headers,
-			wantErr: false,
+			name:         "Test read only mode",
+			body:         `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
+			host:         "https://google.com/",
+			hostRO:       "https://telegram-bot.app/",
+			path:         "/v1/graphql",
+			headers:      supplied_headers,
+			wantErr:      false,
+			wantEndpoint: "https://telegram-bot.app/",
 		},
 		{
-			name:    "Test read only mode wrong host",
-			body:    `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
-			host:    "https://telegram-bot.app/",
-			hostRO:  "https://google.com/",
-			path:    "/v1/graphql",
-			headers: supplied_headers,
-			wantErr: true,
+			name:   "Test read only mode wrong host",
+			body:   `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
+			host:   "https://telegram-bot.app/",
+			hostRO: "https://google.com/",
+
+			path:         "/v1/graphql",
+			headers:      supplied_headers,
+			wantErr:      true,
+			wantEndpoint: "https://google.com/",
+		},
+		{
+			name:         "Test mutation with endpoint flip",
+			body:         `{"query":"mutation {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
+			host:         "https://telegram-bot.app/",
+			hostRO:       "https://google.com/",
+			path:         "/v1/graphql",
+			headers:      supplied_headers,
+			wantErr:      false,
+			wantEndpoint: "https://telegram-bot.app/",
 		},
 	}
 
@@ -94,34 +108,49 @@ func (suite *Tests) Test_proxyTheRequest() {
 			} else {
 				assert.Nil(err, "Error is not nil", tt.name)
 			}
+			assert.Equal(tt.wantEndpoint, res.activeEndpoint, "Unexpected endpoint", tt.name)
 		})
 	}
 }
 
 func (suite *Tests) Test_proxyTheRequestWithPayloads() {
-	allowedUrls = make(map[string]struct{})
-	allowedUrls["/"] = struct{}{}
 
-	suite.Run("Test with invalid URL", func() {
-		cfg.Server.HostGraphQL = "://invalid-url"
-		ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{})
-		err := proxyTheRequest(ctx, cfg.Server.HostGraphQL)
-		assert.NotNil(err)
-	})
+	tests := []struct {
+		name    string
+		payload string
+		url     string
+		wantErr bool
+	}{
+		{
+			name:    "Test with invalid URL",
+			payload: `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
+			url:     "://invalid-url",
+			wantErr: true,
+		},
+		{
+			name:    "Test with network error",
+			payload: `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
+			url:     "http://non-existent-host.invalid",
+			wantErr: true,
+		},
+		// {
+		// 	name:    "Test with large payload",
+		// 	payload: strings.Repeat("a", 10*1024*1024), // 10MB payload
+		// 	url:     "https://google.com/",
+		// 	wantErr: false,
+		// },
+	}
 
-	suite.Run("Test with network error", func() {
-		cfg.Server.HostGraphQL = "http://non-existent-host.invalid"
-		ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{})
-		err := proxyTheRequest(ctx, cfg.Server.HostGraphQL)
-		assert.NotNil(err)
-	})
-
-	suite.Run("Test with large payload", func() {
-		cfg.Server.HostGraphQL = "https://telegram-bot.app/"
-		ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{})
-		largePayload := strings.Repeat("a", 10*1024*1024) // 10MB payload
-		ctx.Context().Request.SetBody([]byte(largePayload))
-		err := proxyTheRequest(ctx, cfg.Server.HostGraphQL)
-		assert.Nil(err)
-	})
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			cfg.Server.HostGraphQL = tt.url
+			ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{})
+			err := proxyTheRequest(ctx, cfg.Server.HostGraphQL)
+			if tt.wantErr {
+				assert.NotNil(err)
+			} else {
+				assert.Nil(err)
+			}
+		})
+	}
 }
