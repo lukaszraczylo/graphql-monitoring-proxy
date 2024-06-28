@@ -85,27 +85,36 @@ func appendSortedLabels(buf *bytes.Buffer, labels map[string]string) {
 func getSortedKeys(labels map[string]string) []string {
 	labelsKey := labelsToString(labels)
 
+	// Check if the sorted keys are already cached
 	if keys, ok := sortedLabelKeysCache.m.Load(labelsKey); ok {
 		return keys.([]string)
 	}
 
+	// Compute the sorted keys
 	keys := make([]string, 0, len(labels))
 	for k := range labels {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
+	// Store the sorted keys in the cache
 	sortedLabelKeysCache.m.Store(labelsKey, keys)
 
 	return keys
 }
 
 func labelsToString(labels map[string]string) string {
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
 	var sb strings.Builder
-	for k, v := range labels {
+	for _, k := range keys {
 		sb.WriteString(k)
 		sb.WriteByte('=')
-		sb.WriteString(v)
+		sb.WriteString(labels[k])
 		sb.WriteByte(';')
 	}
 	return sb.String()
