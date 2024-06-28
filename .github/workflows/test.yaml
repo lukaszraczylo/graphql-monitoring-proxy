@@ -65,7 +65,7 @@ jobs:
           fail-on-alert: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-on-alert: true
-          summary-always: false
+          summary-always: true
           # auto-push only if it's on main branch
           auto-push: true
           gh-pages-branch: "gh-pages"
