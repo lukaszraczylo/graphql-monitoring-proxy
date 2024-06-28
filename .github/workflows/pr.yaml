@@ -15,6 +15,12 @@ on:
 env:
   GO_VERSION: ">=1.21"
 
+permissions:
+  # deployments permission to deploy GitHub pages website
+  deployments: write
+  # contents permission to update benchmark contents in gh-pages branch
+  contents: write
+
 jobs:
   # This job is responsible for preparation of the build
   # environment variables.
@@ -94,7 +100,7 @@ jobs:
           tool: "go"
           output-file-path: output.txt
           fail-on-alert: true
-          github-token: ${{ secrets.GHCR_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-on-alert: true
           summary-always: true
           # auto-push only if it's on main branch
