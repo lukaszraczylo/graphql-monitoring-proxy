@@ -7,7 +7,6 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	libpack_cache_memory "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/memory"
-	libpack_cache_redis "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/redis"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
@@ -61,23 +60,15 @@ func (suite *Tests) Test_cacheLookupInmemory() {
 }
 
 func (suite *Tests) Test_cacheLookupRedis() {
-	// redis_server := envutil.Getenv("REDIS_SERVER", "localhost:6379")
-	// config.Client = libpack_cache_redis.NewClient(&libpack_cache_redis.RedisClientConfig{
-	// 	RedisServer:   redis_server,
-	// 	RedisPassword: "",
-	// 	RedisDB:       0,
-	// })
-
-	mockedCache := libpack_cache_redis.New(&libpack_cache_redis.RedisClientConfig{
-		RedisServer: redisMockServer.Addr(),
-		RedisDB:     0,
-	})
 
 	config = &CacheConfig{
 		Logger: libpack_logger.New(),
-		Client: mockedCache,
 		TTL:    5,
 	}
+	config.Redis.DB = 0
+	config.Redis.URL = redisMockServer.Addr()
+	config.Redis.Enable = true
+	EnableCache(config)
 
 	type args struct {
 		hash string
@@ -193,12 +184,12 @@ func (suite *Tests) Test_cacheRedisFailure() {
 
 	config = &CacheConfig{
 		Logger: libpack_logger.New(),
-		Client: libpack_cache_redis.New(&libpack_cache_redis.RedisClientConfig{
-			RedisServer: mr.Addr(),
-			RedisDB:     0,
-		}),
-		TTL: 5,
+		TTL:    5,
 	}
+	config.Redis.DB = 0
+	config.Redis.URL = mr.Addr()
+	config.Redis.Enable = true
+	EnableCache(config)
 
 	// Test normal operation
 	CacheStore("test-key", []byte("test-value"))
