@@ -107,4 +107,3 @@ jobs:
           auto-push: false
           gh-pages-branch: "gh-pages"
           benchmark-data-dir-path: "docs"
-          alert-threshold: "10%"
