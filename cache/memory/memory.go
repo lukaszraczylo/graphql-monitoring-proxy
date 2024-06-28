@@ -69,11 +69,17 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 
 func (c *Cache) Get(key string) ([]byte, bool) {
 	entry, ok := c.entries.Load(key)
-	if !ok || entry.(CacheEntry).ExpiresAt.Before(time.Now()) {
+	if !ok {
 		return nil, false
 	}
-	compressedValue := entry.(CacheEntry).Value
-	value, err := c.decompress(compressedValue)
+
+	cacheEntry := entry.(CacheEntry)
+	if cacheEntry.ExpiresAt.Before(time.Now()) {
+		c.entries.Delete(key)
+		return nil, false
+	}
+
+	value, err := c.decompress(cacheEntry.Value)
 	if err != nil {
 		log.Printf("Error decompressing value for key %s: %v", key, err)
 		return nil, false

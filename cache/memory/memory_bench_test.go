@@ -1,6 +1,7 @@
 package libpack_cache_memory
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -51,4 +52,31 @@ func BenchmarkMemCacheStats(b *testing.B) {
 	value := []byte("benchmark-value")
 	cache.Set(key, value, 5*time.Second) // Pre-set a value to retrieve
 	cache.Get(key)
+}
+
+func BenchmarkCacheSet(b *testing.B) {
+	cache := New(5 * time.Second)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cache.Set(fmt.Sprintf("key-%d", i), []byte("value"), 5*time.Second)
+	}
+}
+
+func BenchmarkCacheGet(b *testing.B) {
+	cache := New(5 * time.Second)
+	cache.Set("test-key", []byte("test-value"), 5*time.Second)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cache.Get("test-key")
+	}
+}
+
+func BenchmarkCacheDelete(b *testing.B) {
+	cache := New(5 * time.Second)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := fmt.Sprintf("key-%d", i)
+		cache.Set(key, []byte("value"), 5*time.Second)
+		cache.Delete(key)
+	}
 }
