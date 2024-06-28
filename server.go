@@ -84,7 +84,8 @@ func checkAllowedURLs(c *fiber.Ctx) bool {
 	if len(allowedUrls) == 0 {
 		return true
 	}
-	_, ok := allowedUrls[c.Path()]
+	path := c.OriginalURL()
+	_, ok := allowedUrls[path]
 	return ok
 }
 

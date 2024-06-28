@@ -115,10 +115,12 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 
 	for _, d := range p.Definitions {
 		if oper, ok := d.(*ast.OperationDefinition); ok {
-			res.operationType = strings.ToLower(oper.Operation)
-
-			if oper.Name != nil {
-				res.operationName = oper.Name.Value
+			// If we haven't set an operation type yet, use this one
+			if res.operationType == "" {
+				res.operationType = strings.ToLower(oper.Operation)
+				if oper.Name != nil {
+					res.operationName = oper.Name.Value
+				}
 			}
 
 			if cfg.Server.HostGraphQLReadOnly != "" && res.operationType != "mutation" {

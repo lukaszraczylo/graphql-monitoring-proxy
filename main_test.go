@@ -112,3 +112,29 @@ func (suite *Tests) Test_envVariableSetting() {
 		})
 	}
 }
+
+func (suite *Tests) Test_getDetailsFromEnv() {
+	tests := []struct {
+		name         string
+		key          string
+		defaultValue interface{}
+		envValue     string
+		expected     interface{}
+	}{
+		{"string value", "TEST_STRING", "default", "envValue", "envValue"},
+		{"int value", "TEST_INT", 0, "123", 123},
+		{"bool value", "TEST_BOOL", false, "true", true},
+		{"default value", "NON_EXISTENT", "default", "", "default"},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			if tt.envValue != "" {
+				os.Setenv("GMP_"+tt.key, tt.envValue)
+				defer os.Unsetenv("GMP_" + tt.key)
+			}
+			result := getDetailsFromEnv(tt.key, tt.defaultValue)
+			assert.Equal(tt.expected, result)
+		})
+	}
+}

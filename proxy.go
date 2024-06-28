@@ -3,7 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
-	"sync"
+	"net/url"
 	"time"
 
 	"github.com/avast/retry-go/v4"
@@ -46,35 +46,22 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 		}
-		return c.Status(403).SendString("Request blocked - not allowed URL")
+		return fmt.Errorf("request blocked - not allowed URL: %s", c.Path())
 	}
 
-	var headerPool = sync.Pool{
-		New: func() interface{} {
-			return make(map[string]string, 8)
-		},
+	proxyURL := currentEndpoint + c.Path()
+	_, err := url.Parse(proxyURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %v", err)
 	}
-
-	headers := headerPool.Get().(map[string]string)
-	defer headerPool.Put(headers)
-	for k := range headers {
-		delete(headers, k)
-	}
-
-	c.Request().Header.VisitAll(func(key, value []byte) {
-		headers[string(key)] = string(value)
-	})
-	headers["X-Real-IP"] = c.IP()
-	headers["X-Forwarded-For"] = c.Get("X-Forwarded-For")
-	delete(headers, fiber.HeaderAcceptEncoding)
 
 	if cfg.LogLevel == "debug" {
 		logDebugRequest(c)
 	}
 
-	err := retry.Do(
+	err = retry.Do(
 		func() error {
-			return proxy.DoRedirects(c, currentEndpoint+c.Path(), 3, httpClient)
+			return proxy.DoRedirects(c, proxyURL, 3, httpClient)
 		},
 		retry.OnRetry(func(n uint, err error) {
 			cfg.Logger.Warning(&libpack_logger.LogMessage{
@@ -96,7 +83,10 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 			Message: "Can't proxy the request",
 			Pairs:   map[string]interface{}{"error": err.Error()},
 		})
-		return err
+		if ifNotInTest() {
+			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+		}
+		return fmt.Errorf("failed to proxy request: %v", err)
 	}
 
 	if cfg.LogLevel == "debug" {
@@ -113,6 +103,7 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 	c.Response().Header.Del(fiber.HeaderServer)
 	return nil
 }
+
 func logDebugRequest(c *fiber.Ctx) {
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Proxying the request",

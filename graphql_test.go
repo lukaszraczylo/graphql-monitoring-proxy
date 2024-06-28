@@ -1,6 +1,10 @@
 package main
 
 import (
+	"fmt"
+	"strings"
+
+	fiber "github.com/gofiber/fiber/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -317,4 +321,112 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 			}
 		})
 	}
+}
+
+func (suite *Tests) Test_parseGraphQLQuery_complex() {
+	// ... existing tests ...
+
+	// Add these new test cases
+	suite.Run("test complex query with multiple operations", func() {
+		query := `
+			query GetUser($id: ID!) {
+					user(id: $id) {
+							name
+							email
+					}
+			}
+			mutation UpdateUser($id: ID!, $name: String!) {
+					updateUser(id: $id, name: $name) {
+							id
+							name
+					}
+			}
+			`
+		body := fmt.Sprintf(`{"query": %q}`, query)
+		ctx := createTestContext(body)
+		result := parseGraphQLQuery(ctx)
+		assert.Equal("query", result.operationType)
+		assert.Equal("GetUser", result.operationName)
+		assert.False(result.shouldBlock)
+	})
+
+	suite.Run("test query with custom directives", func() {
+		query := `
+			query GetUser($id: ID!) @custom(directive: "value") {
+					user(id: $id) {
+							name
+							email
+					}
+			}
+			`
+		body := fmt.Sprintf(`{"query": %q}`, query)
+		ctx := createTestContext(body)
+		result := parseGraphQLQuery(ctx)
+		assert.Equal("query", result.operationType)
+		assert.Equal("GetUser", result.operationName)
+		assert.False(result.shouldBlock)
+		assert.False(result.shouldBlock)
+	})
+}
+
+func (suite *Tests) Test_checkAllowedURLs() {
+	tests := []struct {
+		name     string
+		path     string
+		allowed  []string
+		expected bool
+	}{
+		{"allowed path", "/v1/graphql", []string{"/v1/graphql"}, true},
+		{"disallowed path", "/v2/graphql", []string{"/v1/graphql"}, false},
+		{"empty allowed list", "/v1/graphql", []string{}, true},
+		{"multiple allowed paths", "/v2/graphql", []string{"/v1/graphql", "/v2/graphql"}, true},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			allowedUrls = make(map[string]struct{})
+			for _, url := range tt.allowed {
+				allowedUrls[url] = struct{}{}
+			}
+			app := fiber.New()
+			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			ctx.Request().SetRequestURI(tt.path)
+			ctx.Request().URI().SetPath(tt.path)
+			result := checkAllowedURLs(ctx)
+			assert.Equal(tt.expected, result)
+		})
+	}
+}
+
+func (suite *Tests) Test_checkIfContainsIntrospection() {
+	tests := []struct {
+		name     string
+		query    string
+		allowed  []string
+		expected bool
+	}{
+		{"allowed introspection", "__schema", []string{"__schema"}, false},
+		{"disallowed introspection", "__type", []string{"__schema"}, true},
+		{"non-introspection query", "normalQuery", []string{}, false},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			cfg.Security.IntrospectionAllowed = tt.allowed
+			introspectionAllowedQueries = make(map[string]struct{})
+			for _, q := range tt.allowed {
+				introspectionAllowedQueries[strings.ToLower(q)] = struct{}{}
+			}
+			ctx := createTestContext("")
+			result := checkIfContainsIntrospection(ctx, tt.query)
+			assert.Equal(tt.expected, result)
+		})
+	}
+}
+
+func createTestContext(body string) *fiber.Ctx {
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().SetBody([]byte(body))
+	return ctx
 }
