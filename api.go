@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/goccy/go-json"
@@ -13,55 +14,66 @@ import (
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
-var bannedUsersIDs map[string]string = make(map[string]string)
+var (
+	bannedUsersIDs      = make(map[string]string)
+	bannedUsersIDsMutex sync.RWMutex
+)
 
 func enableApi() {
-	if cfg.Server.EnableApi {
-		apiserver := fiber.New(fiber.Config{
-			DisableStartupMessage: true,
-			AppName:               fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
+	if !cfg.Server.EnableApi {
+		return
+	}
+
+	apiserver := fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+		AppName:               fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
+	})
+
+	api := apiserver.Group("/api")
+	api.Post("/user-ban", apiBanUser)
+	api.Post("/user-unban", apiUnbanUser)
+	api.Post("/cache-clear", apiClearCache)
+	api.Get("/cache-stats", apiCacheStats)
+
+	go periodicallyReloadBannedUsers()
+
+	if err := apiserver.Listen(fmt.Sprintf(":%d", cfg.Server.ApiPort)); err != nil {
+		cfg.Logger.Critical(&libpack_logger.LogMessage{
+			Message: "Can't start the service",
+			Pairs:   map[string]interface{}{"port": cfg.Server.ApiPort},
 		})
-
-		api := apiserver.Group("/api")
-		api.Post("/user-ban", apiBanUser)
-		api.Post("/user-unban", apiUnbanUser)
-		api.Post("/cache-clear", apiClearCache)
-		api.Get("/cache-stats", apiCacheStats)
-
-		go periodicallyReloadBannedUsers()
-		err := apiserver.Listen(fmt.Sprintf(":%d", cfg.Server.ApiPort))
-		if err != nil {
-			cfg.Logger.Critical(&libpack_logger.LogMessage{
-				Message: "Can't start the service",
-				Pairs:   map[string]interface{}{"port": cfg.Server.ApiPort},
-			})
-		}
 	}
 }
 
 func periodicallyReloadBannedUsers() {
-	for {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
 		loadBannedUsers()
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Banned users reloaded",
 			Pairs:   map[string]interface{}{"users": bannedUsersIDs},
 		})
-		<-time.After(10 * time.Second)
 	}
 }
 
 func checkIfUserIsBanned(c *fiber.Ctx, userID string) bool {
+	bannedUsersIDsMutex.RLock()
 	_, found := bannedUsersIDs[userID]
+	bannedUsersIDsMutex.RUnlock()
+
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Checking if user is banned",
-		Pairs:   map[string]interface{}{"user_id": userID, "found": found},
+		Pairs:   map[string]interface{}{"user_id": userID, "banned": found},
 	})
+
 	if found {
 		cfg.Logger.Info(&libpack_logger.LogMessage{
 			Message: "User is banned",
 			Pairs:   map[string]interface{}{"user_id": userID},
 		})
-		c.Status(403).SendString("User is banned")
+		c.Status(fiber.StatusForbidden).SendString("User is banned")
 	}
 	return found
 }
@@ -69,28 +81,16 @@ func checkIfUserIsBanned(c *fiber.Ctx, userID string) bool {
 func apiClearCache(c *fiber.Ctx) error {
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Clearing cache via API",
-		Pairs:   nil,
 	})
 	libpack_cache.CacheClear()
 	cfg.Logger.Info(&libpack_logger.LogMessage{
 		Message: "Cache cleared via API",
-		Pairs:   nil,
 	})
-	c.Status(200).SendString("OK: cache cleared")
-	return nil
+	return c.SendString("OK: cache cleared")
 }
 
 func apiCacheStats(c *fiber.Ctx) error {
-	stats := libpack_cache.GetCacheStats()
-	err := c.JSON(stats)
-	if err != nil {
-		cfg.Logger.Error(&libpack_logger.LogMessage{
-			Message: "Can't marshal cache stats",
-			Pairs:   map[string]interface{}{"error": err.Error()},
-		})
-		return err
-	}
-	return nil
+	return c.JSON(libpack_cache.GetCacheStats())
 }
 
 type apiBanUserRequest struct {
@@ -100,71 +100,92 @@ type apiBanUserRequest struct {
 
 func apiBanUser(c *fiber.Ctx) error {
 	var req apiBanUserRequest
-	err := c.BodyParser(&req)
-	if err != nil {
+	if err := c.BodyParser(&req); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't parse the ban user request",
 			Pairs:   map[string]interface{}{"error": err.Error()},
 		})
-		return err
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid request payload")
 	}
+
+	if req.UserID == "" || req.Reason == "" {
+		return c.Status(fiber.StatusBadRequest).SendString("user_id and reason are required")
+	}
+
+	bannedUsersIDsMutex.Lock()
 	bannedUsersIDs[req.UserID] = req.Reason
+	bannedUsersIDsMutex.Unlock()
+
 	cfg.Logger.Info(&libpack_logger.LogMessage{
 		Message: "Banned user",
 		Pairs:   map[string]interface{}{"user_id": req.UserID, "reason": req.Reason},
 	})
-	storeBannedUsers()
-	c.Status(200).SendString("OK: user banned")
-	return nil
+
+	if err := storeBannedUsers(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString("Failed to store banned users")
+	}
+
+	return c.SendString("OK: user banned")
 }
 
 func apiUnbanUser(c *fiber.Ctx) error {
 	var req apiBanUserRequest
-	err := c.BodyParser(&req)
-	if err != nil {
+	if err := c.BodyParser(&req); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't parse the unban user request",
 			Pairs:   map[string]interface{}{"error": err.Error()},
 		})
-		return err
+		return c.Status(fiber.StatusBadRequest).SendString("Invalid request payload")
 	}
+
+	if req.UserID == "" {
+		return c.Status(fiber.StatusBadRequest).SendString("user_id is required")
+	}
+
+	bannedUsersIDsMutex.Lock()
 	delete(bannedUsersIDs, req.UserID)
+	bannedUsersIDsMutex.Unlock()
+
 	cfg.Logger.Info(&libpack_logger.LogMessage{
 		Message: "Unbanned user",
 		Pairs:   map[string]interface{}{"user_id": req.UserID},
 	})
-	storeBannedUsers()
-	c.Status(200).SendString("OK: user unbanned")
-	return nil
+
+	if err := storeBannedUsers(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString("Failed to store banned users")
+	}
+
+	return c.SendString("OK: user unbanned")
 }
 
-func storeBannedUsers() {
+func storeBannedUsers() error {
 	fileLock := flock.New(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
-	err := fileLock.Lock()
-	if err != nil {
-		cfg.Logger.Error(&libpack_logger.LogMessage{
-			Message: "Can't lock the file",
-			Pairs:   map[string]interface{}{"error": err.Error()},
-		})
-		return
+	if err := lockFile(fileLock); err != nil {
+		return err
 	}
 	defer fileLock.Unlock()
+
+	bannedUsersIDsMutex.RLock()
 	data, err := json.Marshal(bannedUsersIDs)
+	bannedUsersIDsMutex.RUnlock()
+
 	if err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't marshal banned users",
 			Pairs:   map[string]interface{}{"error": err.Error()},
 		})
-		return
+		return err
 	}
-	err = os.WriteFile(cfg.Api.BannedUsersFile, data, 0644)
-	if err != nil {
+
+	if err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0644); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't write banned users to file",
 			Pairs:   map[string]interface{}{"error": err.Error()},
 		})
-		return
+		return err
 	}
+
+	return nil
 }
 
 func loadBannedUsers() {
@@ -173,19 +194,9 @@ func loadBannedUsers() {
 			Message: "Banned users file doesn't exist - creating it",
 			Pairs:   map[string]interface{}{"file": cfg.Api.BannedUsersFile},
 		})
-		_, err := os.Create(cfg.Api.BannedUsersFile)
-		if err != nil {
+		if err := os.WriteFile(cfg.Api.BannedUsersFile, []byte("{}"), 0644); err != nil {
 			cfg.Logger.Error(&libpack_logger.LogMessage{
-				Message: "Can't create the file",
-				Pairs:   map[string]interface{}{"error": err.Error()},
-			})
-			return
-		}
-		// write empty json to the file
-		err = os.WriteFile(cfg.Api.BannedUsersFile, []byte("{}"), 0644)
-		if err != nil {
-			cfg.Logger.Error(&libpack_logger.LogMessage{
-				Message: "Can't write to the file",
+				Message: "Can't create and write to the file",
 				Pairs:   map[string]interface{}{"error": err.Error()},
 			})
 			return
@@ -193,8 +204,7 @@ func loadBannedUsers() {
 	}
 
 	fileLock := flock.New(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
-	err := fileLock.RLock() // Use RLock for read lock
-	if err != nil {
+	if err := lockFileRead(fileLock); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't lock the file [load]",
 			Pairs:   map[string]interface{}{"error": err.Error()},
@@ -211,12 +221,39 @@ func loadBannedUsers() {
 		})
 		return
 	}
-	err = json.Unmarshal(data, &bannedUsersIDs)
-	if err != nil {
+
+	var newBannedUsers map[string]string
+	if err := json.Unmarshal(data, &newBannedUsers); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't unmarshal banned users",
 			Pairs:   map[string]interface{}{"error": err.Error()},
 		})
 		return
 	}
+
+	bannedUsersIDsMutex.Lock()
+	bannedUsersIDs = newBannedUsers
+	bannedUsersIDsMutex.Unlock()
+}
+
+func lockFile(fileLock *flock.Flock) error {
+	if err := fileLock.Lock(); err != nil {
+		cfg.Logger.Error(&libpack_logger.LogMessage{
+			Message: "Can't lock the file",
+			Pairs:   map[string]interface{}{"error": err.Error()},
+		})
+		return err
+	}
+	return nil
+}
+
+func lockFileRead(fileLock *flock.Flock) error {
+	if err := fileLock.RLock(); err != nil {
+		cfg.Logger.Error(&libpack_logger.LogMessage{
+			Message: "Can't lock the file for reading",
+			Pairs:   map[string]interface{}{"error": err.Error()},
+		})
+		return err
+	}
+	return nil
 }

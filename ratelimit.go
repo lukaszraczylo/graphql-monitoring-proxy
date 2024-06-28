@@ -6,54 +6,42 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
-
 	goratecounter "github.com/lukaszraczylo/go-ratecounter"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
 type RateLimitConfig struct {
 	RateCounterTicker *goratecounter.RateCounter
-	Interval          string `json:"interval"`
-	Req               int    `json:"req"`
+	Interval          time.Duration `json:"interval"`
+	Req               int           `json:"req"`
 }
 
 var (
-	rateLimits         map[string]RateLimitConfig
-	ratelimitIntervals = map[string]time.Duration{
-		"milli":  time.Millisecond,
-		"micro":  time.Microsecond,
-		"nano":   time.Nanosecond,
-		"second": time.Second,
-		"minute": time.Minute,
-		"hour":   time.Hour,
-		"day":    24 * time.Hour,
-	}
-	configPaths = []string{"/go/src/app/ratelimit.json", "./ratelimit.json", "./static/app/default-ratelimit.json"}
-	mu          sync.RWMutex
+	rateLimits  = make(map[string]RateLimitConfig)
+	rateLimitMu sync.RWMutex
 )
 
 func loadRatelimitConfig() error {
-	for _, path := range configPaths {
+	paths := []string{"/go/src/app/ratelimit.json", "./ratelimit.json", "./static/app/default-ratelimit.json"}
+	for _, path := range paths {
 		if err := loadConfigFromPath(path); err == nil {
-			cfg.Logger.Debug(&libpack_logger.LogMessage{
-				Message: "Failed to load config",
-				Pairs:   map[string]interface{}{"path": path, "error": err},
-			})
 			return nil
 		}
 	}
-
 	cfg.Logger.Error(&libpack_logger.LogMessage{
 		Message: "Rate limit config not found",
-		Pairs:   map[string]interface{}{"paths": configPaths},
+		Pairs:   map[string]interface{}{"paths": paths},
 	})
-
 	return os.ErrNotExist
 }
 
 func loadConfigFromPath(path string) error {
 	file, err := os.ReadFile(path)
 	if err != nil {
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Failed to load config",
+			Pairs:   map[string]interface{}{"path": path, "error": err},
+		})
 		return err
 	}
 
@@ -65,28 +53,28 @@ func loadConfigFromPath(path string) error {
 		return err
 	}
 
-	mu.Lock()
-	defer mu.Unlock()
-
-	rateLimits = make(map[string]RateLimitConfig, len(config.RateLimit))
+	newRateLimits := make(map[string]RateLimitConfig, len(config.RateLimit))
 	for key, value := range config.RateLimit {
 		value.RateCounterTicker = goratecounter.NewRateCounter().WithConfig(goratecounter.RateCounterConfig{
-			Interval: time.Duration(value.Req) * ratelimitIntervals[value.Interval],
+			Interval: value.Interval,
 		})
 
 		if cfg.LogLevel == "debug" {
 			cfg.Logger.Debug(&libpack_logger.LogMessage{
 				Message: "Setting ratelimit config for role",
 				Pairs: map[string]interface{}{
-					"role":              key,
-					"interval_provided": value.Interval,
-					"interval_used":     ratelimitIntervals[value.Interval],
-					"ratelimit":         value.Req,
+					"role":          key,
+					"interval_used": value.Interval,
+					"ratelimit":     value.Req,
 				},
 			})
 		}
-		rateLimits[key] = value
+		newRateLimits[key] = value
 	}
+
+	rateLimitMu.Lock()
+	rateLimits = newRateLimits
+	rateLimitMu.Unlock()
 
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Rate limit config loaded",
@@ -96,21 +84,13 @@ func loadConfigFromPath(path string) error {
 }
 
 func rateLimitedRequest(userID, userRole string) bool {
-	mu.RLock()
-	defer mu.RUnlock()
-
-	if rateLimits == nil {
-		cfg.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Rate limit config not found",
-			Pairs:   map[string]interface{}{"user_role": userRole},
-		})
-		return true
-	}
-
+	rateLimitMu.RLock()
 	roleConfig, ok := rateLimits[userRole]
+	rateLimitMu.RUnlock()
+
 	if !ok || roleConfig.RateCounterTicker == nil {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Rate limit role or ticker not found",
+			Message: "Rate limit role not found or ticker not initialized",
 			Pairs:   map[string]interface{}{"user_role": userRole},
 		})
 		return true
@@ -119,29 +99,23 @@ func rateLimitedRequest(userID, userRole string) bool {
 	roleConfig.RateCounterTicker.Incr(1)
 	tickerRate := roleConfig.RateCounterTicker.GetRate()
 
-	if cfg.LogLevel == "debug" {
-		cfg.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Rate limit ticker",
-			Pairs: map[string]interface{}{
-				"user_role":   userRole,
-				"user_id":     userID,
-				"rate":        tickerRate,
-				"config_rate": roleConfig.Req,
-				"interval":    roleConfig.Interval,
-			},
-		})
+	logDetails := map[string]interface{}{
+		"user_role":   userRole,
+		"user_id":     userID,
+		"rate":        tickerRate,
+		"config_rate": roleConfig.Req,
+		"interval":    roleConfig.Interval,
 	}
+
+	cfg.Logger.Debug(&libpack_logger.LogMessage{
+		Message: "Rate limit ticker",
+		Pairs:   map[string]interface{}{"log_details": logDetails},
+	})
 
 	if tickerRate > float64(roleConfig.Req) {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Rate limit exceeded",
-			Pairs: map[string]interface{}{
-				"user_role":   userRole,
-				"user_id":     userID,
-				"rate":        tickerRate,
-				"config_rate": roleConfig.Req,
-				"interval":    roleConfig.Interval,
-			},
+			Pairs:   map[string]interface{}{"log_details": logDetails},
 		})
 		return false
 	}

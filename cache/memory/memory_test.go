@@ -1,6 +1,8 @@
 package libpack_cache_memory
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -109,4 +111,58 @@ func (suite *MemoryTestSuite) Test_CacheExpire() {
 			suite.Equal("", string(c))
 		})
 	}
+}
+
+func (suite *MemoryTestSuite) Test_ConcurrentReadWrite() {
+	cache := New(5 * time.Second)
+	const numGoroutines = 100
+	const numOperations = 1000
+
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < numOperations; j++ {
+				key := fmt.Sprintf("key-%d-%d", id, j)
+				value := []byte(fmt.Sprintf("value-%d-%d", id, j))
+
+				if j%2 == 0 {
+					cache.Set(key, value, 5*time.Second)
+				} else {
+					_, _ = cache.Get(key)
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+}
+
+func (suite *MemoryTestSuite) Test_LargeItems() {
+	cache := New(5 * time.Second)
+	largeValue := make([]byte, 10*1024*1024) // 10MB
+	cache.Set("large-key", largeValue, 5*time.Second)
+
+	retrieved, found := cache.Get("large-key")
+	suite.Assert().True(found)
+	suite.Assert().Equal(largeValue, retrieved)
+}
+
+func (suite *MemoryTestSuite) Test_ZeroTTL() {
+	cache := New(5 * time.Second)
+	cache.Set("zero-ttl", []byte("value"), 0)
+
+	_, found := cache.Get("zero-ttl")
+	suite.Assert().False(found, "Item with zero TTL should not be stored")
+}
+
+func (suite *MemoryTestSuite) Test_LongTTL() {
+	cache := New(5 * time.Second)
+	cache.Set("long-ttl", []byte("value"), 24*365*time.Hour) // 1 year
+
+	retrieved, found := cache.Get("long-ttl")
+	suite.Assert().True(found)
+	suite.Assert().Equal([]byte("value"), retrieved)
 }

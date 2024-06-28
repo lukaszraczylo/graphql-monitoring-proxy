@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/valyala/fasthttp"
 )
 
@@ -94,4 +96,32 @@ func (suite *Tests) Test_proxyTheRequest() {
 			}
 		})
 	}
+}
+
+func (suite *Tests) Test_proxyTheRequestWithPayloads() {
+	allowedUrls = make(map[string]struct{})
+	allowedUrls["/"] = struct{}{}
+
+	suite.Run("Test with invalid URL", func() {
+		cfg.Server.HostGraphQL = "://invalid-url"
+		ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{})
+		err := proxyTheRequest(ctx, cfg.Server.HostGraphQL)
+		assert.NotNil(err)
+	})
+
+	suite.Run("Test with network error", func() {
+		cfg.Server.HostGraphQL = "http://non-existent-host.invalid"
+		ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{})
+		err := proxyTheRequest(ctx, cfg.Server.HostGraphQL)
+		assert.NotNil(err)
+	})
+
+	suite.Run("Test with large payload", func() {
+		cfg.Server.HostGraphQL = "https://telegram-bot.app/"
+		ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{})
+		largePayload := strings.Repeat("a", 10*1024*1024) // 10MB payload
+		ctx.Context().Request.SetBody([]byte(largePayload))
+		err := proxyTheRequest(ctx, cfg.Server.HostGraphQL)
+		assert.Nil(err)
+	})
 }

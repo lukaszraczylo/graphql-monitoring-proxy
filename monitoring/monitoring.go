@@ -1,6 +1,3 @@
-// Package `libpack_monitoring` provides and easy way to add prometheus metrics to your application.
-// It also provides a way to add custom metrics to the already started prometheus registry.
-
 package libpack_monitoring
 
 import (
@@ -22,9 +19,7 @@ type MetricsSetup struct {
 	metrics_prefix     string
 }
 
-var (
-	log *libpack_logger.Logger
-)
+var log = libpack_logger.New().SetMinLogLevel(libpack_logger.LEVEL_INFO)
 
 type InitConfig struct {
 	PurgeOnCrawl bool
@@ -32,11 +27,11 @@ type InitConfig struct {
 }
 
 func NewMonitoring(ic *InitConfig) *MetricsSetup {
-	log = libpack_logger.New().SetMinLogLevel(libpack_logger.LEVEL_INFO)
-	ms := &MetricsSetup{ic: ic}
-	ms.metrics_set = metrics.NewSet()
-	ms.metrics_set_custom = metrics.NewSet()
-	// if not testing, start the prometheus endpoint
+	ms := &MetricsSetup{
+		ic:                 ic,
+		metrics_set:        metrics.NewSet(),
+		metrics_set_custom: metrics.NewSet(),
+	}
 
 	if flag.Lookup("test.v") == nil {
 		go ms.startPrometheusEndpoint()
@@ -60,9 +55,11 @@ func (ms *MetricsSetup) startPrometheusEndpoint() {
 		AppName:               fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
 	})
 	app.Get("/metrics", ms.metricsEndpoint)
-	err := app.Listen(fmt.Sprintf(":%d", envutil.GetInt("MONITORING_PORT", 9393)))
-	if err != nil {
-		fmt.Println("Can't start the service: ", err)
+	if err := app.Listen(fmt.Sprintf(":%d", envutil.GetInt("MONITORING_PORT", 9393))); err != nil {
+		log.Critical(&libpack_logger.LogMessage{
+			Message: "Can't start the service",
+			Pairs:   map[string]interface{}{"error": err},
+		})
 	}
 }
 
@@ -85,7 +82,7 @@ func (ms *MetricsSetup) ListActiveMetrics() []string {
 }
 
 func (ms *MetricsSetup) RegisterMetricsGauge(metric_name string, labels map[string]string, val float64) *metrics.Gauge {
-	if validate_metrics_name(metric_name) != nil {
+	if err := validate_metrics_name(metric_name); err != nil {
 		log.Critical(&libpack_logger.LogMessage{
 			Message: "RegisterMetricsGauge() error",
 			Pairs:   map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name},
@@ -93,13 +90,12 @@ func (ms *MetricsSetup) RegisterMetricsGauge(metric_name string, labels map[stri
 		return nil
 	}
 	return ms.metrics_set_custom.GetOrCreateGauge(ms.get_metrics_name(metric_name, labels), func() float64 {
-		// get current value of the gauge and add val to it
 		return val
 	})
 }
 
 func (ms *MetricsSetup) RegisterMetricsCounter(metric_name string, labels map[string]string) *metrics.Counter {
-	if validate_metrics_name(metric_name) != nil {
+	if err := validate_metrics_name(metric_name); err != nil {
 		log.Critical(&libpack_logger.LogMessage{
 			Message: "RegisterMetricsCounter() error",
 			Pairs:   map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name},
@@ -113,7 +109,7 @@ func (ms *MetricsSetup) RegisterMetricsCounter(metric_name string, labels map[st
 }
 
 func (ms *MetricsSetup) RegisterFloatCounter(metric_name string, labels map[string]string) *metrics.FloatCounter {
-	if validate_metrics_name(metric_name) != nil {
+	if err := validate_metrics_name(metric_name); err != nil {
 		log.Critical(&libpack_logger.LogMessage{
 			Message: "RegisterFloatCounter() error",
 			Pairs:   map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name},
@@ -124,7 +120,7 @@ func (ms *MetricsSetup) RegisterFloatCounter(metric_name string, labels map[stri
 }
 
 func (ms *MetricsSetup) RegisterMetricsSummary(metric_name string, labels map[string]string) *metrics.Summary {
-	if validate_metrics_name(metric_name) != nil {
+	if err := validate_metrics_name(metric_name); err != nil {
 		log.Critical(&libpack_logger.LogMessage{
 			Message: "RegisterMetricsSummary() error",
 			Pairs:   map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name},
@@ -135,7 +131,7 @@ func (ms *MetricsSetup) RegisterMetricsSummary(metric_name string, labels map[st
 }
 
 func (ms *MetricsSetup) RegisterMetricsHistogram(metric_name string, labels map[string]string) *metrics.Histogram {
-	if validate_metrics_name(metric_name) != nil {
+	if err := validate_metrics_name(metric_name); err != nil {
 		log.Critical(&libpack_logger.LogMessage{
 			Message: "RegisterMetricsHistogram() error",
 			Pairs:   map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name},

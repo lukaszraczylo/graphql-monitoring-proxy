@@ -78,7 +78,24 @@ jobs:
           apt-get install ca-certificates make -y
           update-ca-certificates
           go mod tidy
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Run unit tests
         run: |
           CI_RUN=${CI} make test
+
+      - name: Run benchmark
+        run: |
+          go test -bench=. -benchmem ./... -run=^# | tee output.txt
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: "go"
+          output-file-path: output.txt
+          fail-on-alert: true
+          github-token: ${{ secrets.GHCR_TOKEN }}
+          comment-on-alert: true
+          summary-always: true
+          # auto-push only if it's on main branch
+          auto-push: false
