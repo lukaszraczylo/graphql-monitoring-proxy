@@ -98,4 +98,4 @@ jobs:
           comment-on-alert: true
           summary-always: true
           # auto-push only if it's on main branch
-          auto-push: true
+          auto-push: false

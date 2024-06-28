@@ -10,6 +10,9 @@ on:
     branches:
       - "main"
 
+env:
+  GO_VERSION: ">=1.21"
+
 jobs:
   shared:
     uses: telegram-bot-app/ci-scripts/.github/workflows/build-test-publish-inject.yaml@main
@@ -18,3 +21,44 @@ jobs:
       should-deploy: false
     secrets:
       ghcr-token: ${{ secrets.GHCR_TOKEN }}
+
+  test:
+    name: "Unit testing"
+    # needs: [prepare]
+    runs-on: ubuntu-latest
+    container: golang:1
+    # container: github/super-linter:v4
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{env.GO_VERSION}}
+          cache-dependency-path: "**/*.sum"
+
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install ca-certificates make -y
+          update-ca-certificates
+          go mod tidy
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Run benchmark
+        run: |
+          go test -bench=. -benchmem ./... -run=^# | tee output.txt
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: "go"
+          output-file-path: output.txt
+          fail-on-alert: true
+          github-token: ${{ secrets.GHCR_TOKEN }}
+          comment-on-alert: true
+          summary-always: true
+          # auto-push only if it's on main branch
+          auto-push: true
