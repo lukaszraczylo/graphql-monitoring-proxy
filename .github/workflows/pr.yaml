@@ -102,8 +102,9 @@ jobs:
           fail-on-alert: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-on-alert: true
-          summary-always: true
+          summary-always: false
           # auto-push only if it's on main branch
           auto-push: false
           gh-pages-branch: "gh-pages"
           benchmark-data-dir-path: "docs"
+          alert-threshold: "10%"
