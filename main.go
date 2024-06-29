@@ -14,8 +14,10 @@ import (
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
-var cfg *config
-var once sync.Once
+var (
+	cfg  *config
+	once sync.Once
+)
 
 // function get value from the env where the value can be anything
 func getDetailsFromEnv[T any](key string, defaultValue T) T {
