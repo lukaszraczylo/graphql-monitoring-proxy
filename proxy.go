@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net/url"
 	"time"
 
@@ -91,6 +94,30 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 
 	if cfg.LogLevel == "debug" {
 		logDebugResponse(c)
+	}
+
+	if c.Response().Header.Peek("Content-Encoding") != nil && string(c.Response().Header.Peek("Content-Encoding")) == "gzip" {
+		reader, err := gzip.NewReader(bytes.NewReader(c.Response().Body()))
+		if err != nil {
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Failed to create gzip reader",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
+			return err
+		}
+		defer reader.Close()
+
+		decompressed, err := io.ReadAll(reader)
+		if err != nil {
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Failed to decompress response",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
+			return err
+		}
+
+		c.Response().SetBody(decompressed)
+		c.Response().Header.Del("Content-Encoding")
 	}
 
 	if c.Response().StatusCode() != 200 {

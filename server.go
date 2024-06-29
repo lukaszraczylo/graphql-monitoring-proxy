@@ -189,6 +189,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 			})
 			c.Set("X-Cache-Hit", "true")
 			wasCached = true
+			c.Set("Content-Type", "application/json")
 			return c.Send(cachedResponse)
 		}
 

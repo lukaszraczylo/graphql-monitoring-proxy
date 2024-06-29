@@ -1,6 +1,9 @@
 package libpack_cache
 
 import (
+	"bytes"
+	"compress/gzip"
+	"io"
 	"sync/atomic"
 	"time"
 
@@ -76,6 +79,28 @@ func CacheLookup(hash string) []byte {
 	obj, found := config.Client.Get(hash)
 	if found {
 		atomic.AddInt64(&cacheStats.CacheHits, 1)
+		// If the cached data is compressed, decompress it
+		if len(obj) > 2 && obj[0] == 0x1f && obj[1] == 0x8b {
+			reader, err := gzip.NewReader(bytes.NewReader(obj))
+			if err != nil {
+				config.Logger.Error(&libpack_logger.LogMessage{
+					Message: "Failed to create gzip reader for cached data",
+					Pairs:   map[string]interface{}{"error": err.Error(), "hash": hash},
+				})
+				return nil
+			}
+			defer reader.Close()
+
+			decompressed, err := io.ReadAll(reader)
+			if err != nil {
+				config.Logger.Error(&libpack_logger.LogMessage{
+					Message: "Failed to decompress cached data",
+					Pairs:   map[string]interface{}{"error": err.Error(), "hash": hash},
+				})
+				return nil
+			}
+			return decompressed
+		}
 		return obj
 	}
 	atomic.AddInt64(&cacheStats.CacheMisses, 1)
