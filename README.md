@@ -103,7 +103,7 @@ In this case, both proxy and websockets will be available under the `/v1/graphql
 | security   | Blocking mutations in read-only mode                                  |
 | security   | Allow access only to listed URLs                                      |
 | security   | Ban / unban specific user from accessing the application              |
-| maintenance | Hasura event cleaner                                                 |
+| maintenance | Hasura events cleaner                                                 |
 
 
 ### Configuration
