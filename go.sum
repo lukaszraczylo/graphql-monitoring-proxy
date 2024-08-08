@@ -52,8 +52,8 @@ github.com/lukaszraczylo/ask v0.0.0-20230927103145-2ff1123b4415 h1:lvI8Wlbg4PxkR
 github.com/lukaszraczylo/ask v0.0.0-20230927103145-2ff1123b4415/go.mod h1:M+UVdyqZs++xtEPrascaVmZdOMhCnxjZ2SgH+xHpR0c=
 github.com/lukaszraczylo/go-ratecounter v0.1.12 h1:VO6hHYGw/Jy9JUizXf/bS0AI2QX1ueWWAWckMFVJ/w4=
 github.com/lukaszraczylo/go-ratecounter v0.1.12/go.mod h1:TqXEOCtFJStk1i0tkipprv1kiDHGon1MVUisjSTBSKM=
-github.com/lukaszraczylo/go-simple-graphql v1.2.19 h1:7MebwQP1epVos+D5nDOAZDVtiPbZSy+JfJzixgoUMoA=
-github.com/lukaszraczylo/go-simple-graphql v1.2.19/go.mod h1:0PKR4rmAYrtZ93yMMKvLqL70GNvce3xascdYtCV7REo=
+github.com/lukaszraczylo/go-simple-graphql v1.2.20 h1:cNkFq40W2sIzZYu0hAMSpygVq3Htfku/K2h+rDdRLKQ=
+github.com/lukaszraczylo/go-simple-graphql v1.2.20/go.mod h1:qG6SWPs9DWY+zvJkWEbkkjCZZ+hk0KBoVP7tjpsAvhY=
 github.com/mattn/go-colorable v0.1.13 h1:fFA4WZxdEF4tXPZVKMLwD8oUnCTTo08duU7wxecdEvA=
 github.com/mattn/go-colorable v0.1.13/go.mod h1:7S9/ev0klgBDR4GtXTXX8a3vIGJpMovkB8vQcUbaXHg=
 github.com/mattn/go-isatty v0.0.16/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
