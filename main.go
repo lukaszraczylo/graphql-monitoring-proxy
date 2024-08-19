@@ -105,6 +105,7 @@ func parseConfig() {
 		}
 		libpack_cache.EnableCache(cacheConfig)
 	}
+
 	loadRatelimitConfig()
 	once.Do(func() {
 		go enableApi()

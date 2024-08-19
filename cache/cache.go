@@ -76,6 +76,10 @@ func EnableCache(cfg *CacheConfig) {
 }
 
 func CacheLookup(hash string) []byte {
+	if !IsCacheInitialized() {
+		return nil
+	}
+
 	obj, found := config.Client.Get(hash)
 	if found {
 		atomic.AddInt64(&cacheStats.CacheHits, 1)
@@ -156,4 +160,8 @@ func GetCacheStats() *CacheStats {
 
 func ShouldUseRedisCache(cfg *CacheConfig) bool {
 	return cfg.Redis.Enable
+}
+
+func IsCacheInitialized() bool {
+	return config != nil && config.Client != nil
 }
