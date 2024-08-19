@@ -77,9 +77,6 @@ func EnableCache(cfg *CacheConfig) {
 
 func CacheLookup(hash string) []byte {
 	if !IsCacheInitialized() {
-		config.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Cache not initialized",
-		})
 		return nil
 	}
 
@@ -116,9 +113,6 @@ func CacheLookup(hash string) []byte {
 
 func CacheDelete(hash string) {
 	if !IsCacheInitialized() {
-		config.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Cache not initialized",
-		})
 		return
 	}
 	config.Logger.Debug(&libpack_logger.LogMessage{
@@ -146,9 +140,6 @@ func CacheStore(hash string, data []byte) {
 
 func CacheStoreWithTTL(hash string, data []byte, ttl time.Duration) {
 	if !IsCacheInitialized() {
-		config.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Cache not initialized",
-		})
 		return
 	}
 	config.Logger.Debug(&libpack_logger.LogMessage{
@@ -161,9 +152,6 @@ func CacheStoreWithTTL(hash string, data []byte, ttl time.Duration) {
 
 func CacheGetQueries() int64 {
 	if !IsCacheInitialized() {
-		config.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Cache not initialized",
-		})
 		return 0
 	}
 	config.Logger.Debug(&libpack_logger.LogMessage{
@@ -178,6 +166,9 @@ func CacheClear() {
 }
 
 func GetCacheStats() *CacheStats {
+	if !IsCacheInitialized() {
+		return &CacheStats{}
+	}
 	config.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Getting cache stats",
 	})
