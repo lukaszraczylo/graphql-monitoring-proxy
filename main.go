@@ -57,6 +57,7 @@ func parseConfig() {
 	c.Cache.CacheRedisURL = getDetailsFromEnv("CACHE_REDIS_URL", "localhost:6379")
 	c.Cache.CacheRedisPassword = getDetailsFromEnv("CACHE_REDIS_PASSWORD", "")
 	c.Cache.CacheRedisDB = getDetailsFromEnv("CACHE_REDIS_DB", 0)
+	/* security */
 	c.Security.BlockIntrospection = getDetailsFromEnv("BLOCK_SCHEMA_INTROSPECTION", false)
 	c.Security.IntrospectionAllowed = func() []string {
 		urls := getDetailsFromEnv("ALLOWED_INTROSPECTION", "")

@@ -77,6 +77,9 @@ func EnableCache(cfg *CacheConfig) {
 
 func CacheLookup(hash string) []byte {
 	if !IsCacheInitialized() {
+		config.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Cache not initialized",
+		})
 		return nil
 	}
 
@@ -112,6 +115,12 @@ func CacheLookup(hash string) []byte {
 }
 
 func CacheDelete(hash string) {
+	if !IsCacheInitialized() {
+		config.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Cache not initialized",
+		})
+		return
+	}
 	config.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Deleting data from cache",
 		Pairs:   map[string]interface{}{"hash": hash},
@@ -121,6 +130,12 @@ func CacheDelete(hash string) {
 }
 
 func CacheStore(hash string, data []byte) {
+	if !IsCacheInitialized() {
+		config.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Cache not initialized",
+		})
+		return
+	}
 	config.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Storing data in cache",
 		Pairs:   map[string]interface{}{"hash": hash},
@@ -130,6 +145,12 @@ func CacheStore(hash string, data []byte) {
 }
 
 func CacheStoreWithTTL(hash string, data []byte, ttl time.Duration) {
+	if !IsCacheInitialized() {
+		config.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Cache not initialized",
+		})
+		return
+	}
 	config.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Storing data in cache with TTL",
 		Pairs:   map[string]interface{}{"hash": hash, "ttl": ttl},
@@ -139,6 +160,12 @@ func CacheStoreWithTTL(hash string, data []byte, ttl time.Duration) {
 }
 
 func CacheGetQueries() int64 {
+	if !IsCacheInitialized() {
+		config.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Cache not initialized",
+		})
+		return 0
+	}
 	config.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Counting cache queries",
 	})
