@@ -41,7 +41,7 @@ You can find the example of the Kubernetes manifest in the [example standalone d
 
 #### Note on websocket support
 
-Proxy in its current version 0.5.30 does not support websockets. If you need to proxy the websocket requests - you can use following trick whilst setting up the proxy. As I'm a big fan of Traefik - there's an example which works with the mentioned above combined deployment.
+Proxy in its current version 0.23.3 does not support websockets. If you need to proxy the websocket requests - you can use following trick whilst setting up the proxy. As I'm a big fan of Traefik - there's an example which works with the mentioned above combined deployment.
 
 <details>
   <summary>Click to show working Traefik Ingress Route example.</summary>
