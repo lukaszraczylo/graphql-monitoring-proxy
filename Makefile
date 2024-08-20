@@ -1,4 +1,6 @@
 CI_RUN?=false
+TIMESTAMP := $(shell date +%Y%m%d-%H%M%S)
+
 # ADDITIONAL_BUILD_FLAGS=""
 
 # ifeq ($(CI_RUN), true)
@@ -32,3 +34,25 @@ all: test-packages test
 update: ## update dependencies
 	@go get -u -v ./...
 	@go mod tidy -v
+
+.PHONY: build-amd64
+build-amd64: ## build the Linux AMD64 binary
+	GOOS=linux GOARCH=amd64 go build -o graphql-proxy-amd64 *.go
+
+.PHONY: build-arm64
+build-arm64: ## build the Linux ARM64 binary
+	GOOS=linux GOARCH=arm64 go build -o graphql-proxy-arm64 *.go
+
+.PHONY: build-all
+build-all: build-amd64 build-arm64 ## build both AMD64 and ARM64 binaries
+
+.PHONY: docker
+docker: build-all ## build multi-arch (AMD64 and ARM64) docker image
+	@mkdir -p dist
+	@mv graphql-proxy-amd64 dist/bot-linux-amd64
+	@mv graphql-proxy-arm64 dist/bot-linux-arm64
+	@docker buildx build --push \
+		--platform linux/amd64,linux/arm64 \
+		-t ghcr.io/lukaszraczylo/graphql-monitoring-proxy:local-test-build-$(TIMESTAMP) \
+		.
+
