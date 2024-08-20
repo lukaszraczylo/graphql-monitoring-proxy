@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gofiber/fiber/v2/middleware/proxy"
 	"github.com/gookit/goutil/envutil"
@@ -118,6 +119,7 @@ func parseConfig() {
 func main() {
 	parseConfig()
 	StartMonitoringServer()
+	time.Sleep(5 * time.Second)
 	StartHTTPProxy()
 }
 
