@@ -8,6 +8,7 @@ This project is in active use by [telegram-bot.app](https://telegram-bot.app), a
 
 - [graphql monitoring proxy](#graphql-monitoring-proxy)
   - [Why this project exists](#why-this-project-exists)
+  - [Important releases](#important-releases)
   - [How to deploy](#how-to-deploy)
     - [Note on websocket support](#note-on-websocket-support)
   - [Endpoints](#endpoints)
@@ -34,6 +35,14 @@ This project is in active use by [telegram-bot.app](https://telegram-bot.app), a
 ### Why this project exists
 
 I wanted to monitor the queries and responses of our graphql endpoint. Still, we didn't want to pay the price of the graphql server itself ( and I will not point fingers at a particular well-known project), as monitoring and basic security features should be a standard, free functionality.
+
+### Important releases
+
+You should always try to stick to the latest and greatest version of the graphql-proxy to ensure that it's as much bug-free as possible. Following list will be kept to the maximum of five "most important" bugs and enhancements included in the latest versions.
+
+* **20/08/2024 - 0.23.21+** - Fixes the bug when timeouts were not respected on proxy-graphql line. Affected versions before that were timeouting after 30 seconds which was set as default ( thanks to Jurica Železnjak for reporting ). It also provides a temporary fix for running within kubernetes deployment, when graphql server ( for example - hasura ) took more time to start than the proxy, causing avalanche of errors with "can't proxy the request".
+
+* **19/08/2024 - 0.21.82+** - Fixed the issue when proxy failed to start if global cache was disabled, therefore not initialized and proxy tried to perform the cache operations during normal query operations.
 
 ### How to deploy
 
