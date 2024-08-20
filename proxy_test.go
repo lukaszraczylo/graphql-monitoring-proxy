@@ -1,6 +1,10 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"time"
+
 	"github.com/valyala/fasthttp"
 )
 
@@ -150,6 +154,83 @@ func (suite *Tests) Test_proxyTheRequestWithPayloads() {
 				assert.NotNil(err)
 			} else {
 				assert.Nil(err)
+			}
+		})
+	}
+}
+
+func (suite *Tests) Test_proxyTheRequestWithTimeouts() {
+	originalTimeout := cfg.Client.ClientTimeout
+	defer func() {
+		cfg.Client.ClientTimeout = originalTimeout
+		cfg.Client.FastProxyClient = createFasthttpClient(cfg.Client.ClientTimeout)
+	}()
+
+	// Create a mock server
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sleepDuration, _ := time.ParseDuration(r.Header.Get("X-Sleep-Duration"))
+		time.Sleep(sleepDuration)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"data":{"test":"response"}}`))
+	}))
+	defer mockServer.Close()
+
+	tests := []struct {
+		name          string
+		clientTimeout int
+		sleepDuration string
+		body          string
+		wantErr       bool
+	}{
+		{
+			name:          "Short timeout, long wait for response",
+			clientTimeout: 1,
+			sleepDuration: "2s",
+			body:          `{"query":"query { test }"}`,
+			wantErr:       true,
+		},
+		{
+			name:          "Short timeout, short wait for response",
+			clientTimeout: 2,
+			sleepDuration: "500ms",
+			body:          `{"query":"query { test }"}`,
+			wantErr:       false,
+		},
+		{
+			name:          "Long timeout, short wait for response",
+			clientTimeout: 10,
+			sleepDuration: "1s",
+			body:          `{"query":"query { test }"}`,
+			wantErr:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			cfg.Client.ClientTimeout = tt.clientTimeout
+			cfg.Client.FastProxyClient = createFasthttpClient(cfg.Client.ClientTimeout)
+			cfg.Server.HostGraphQL = mockServer.URL
+
+			req := &fasthttp.Request{}
+			req.SetBody([]byte(tt.body))
+			req.SetRequestURI("/v1/graphql")
+			req.Header.SetMethod("POST")
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Sleep-Duration", tt.sleepDuration)
+
+			ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{})
+			ctx.Request().Header.SetMethod("POST")
+			ctx.Request().SetBody(req.Body())
+			ctx.Request().SetRequestURI(string(req.RequestURI())) // Convert []byte to string
+			ctx.Request().Header.SetContentType("application/json")
+			ctx.Request().Header.Set("X-Sleep-Duration", tt.sleepDuration)
+
+			err := proxyTheRequest(ctx, cfg.Server.HostGraphQL)
+
+			if tt.wantErr {
+				assert.NotNil(err, "Expected an error for test: %s", tt.name)
+			} else {
+				assert.Nil(err, "Expected no error for test: %s", tt.name)
 			}
 		})
 	}

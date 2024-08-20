@@ -37,9 +37,9 @@ func StartHTTPProxy() {
 	serverConfig := fiber.Config{
 		DisableStartupMessage: true,
 		AppName:               fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
-		IdleTimeout:           time.Duration(cfg.Client.ClientTimeout) * time.Second * 2,
-		ReadTimeout:           time.Duration(cfg.Client.ClientTimeout) * time.Second * 2,
-		WriteTimeout:          time.Duration(cfg.Client.ClientTimeout) * time.Second * 2,
+		IdleTimeout:           time.Duration(cfg.Client.ClientTimeout) * time.Second,
+		ReadTimeout:           time.Duration(cfg.Client.ClientTimeout) * time.Second,
+		WriteTimeout:          time.Duration(cfg.Client.ClientTimeout) * time.Second,
 		JSONEncoder:           json.Marshal,
 		JSONDecoder:           json.Unmarshal,
 	}

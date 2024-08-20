@@ -17,14 +17,6 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-var (
-	httpClient *fasthttp.Client
-)
-
-func init() {
-	httpClient = createFasthttpClient(30) // Assuming a default timeout of 30 seconds
-}
-
 func createFasthttpClient(timeout int) *fasthttp.Client {
 	return &fasthttp.Client{
 		Name:                     "graphql_proxy",
@@ -40,6 +32,7 @@ func createFasthttpClient(timeout int) *fasthttp.Client {
 		DisableHeaderNamesNormalizing: true,
 	}
 }
+
 func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 	if !checkAllowedURLs(c) {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
@@ -64,7 +57,7 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 
 	err = retry.Do(
 		func() error {
-			return proxy.DoRedirects(c, proxyURL, 3, httpClient)
+			return proxy.DoRedirects(c, proxyURL, 3, cfg.Client.FastProxyClient)
 		},
 		retry.OnRetry(func(n uint, err error) {
 			cfg.Logger.Warning(&libpack_logger.LogMessage{
