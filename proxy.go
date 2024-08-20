@@ -57,20 +57,29 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 
 	err = retry.Do(
 		func() error {
-			return proxy.DoRedirects(c, proxyURL, 3, cfg.Client.FastProxyClient)
+			proxyErr := proxy.DoRedirects(c, proxyURL, 3, cfg.Client.FastProxyClient)
+			if proxyErr != nil {
+				return proxyErr
+			}
+			if c.Response().StatusCode() != 200 {
+				return fmt.Errorf("received non-200 response from the GraphQL server: %d", c.Response().StatusCode())
+			}
+			return nil
 		},
+		retry.Attempts(5),
+		retry.DelayType(retry.BackOffDelay),
+		retry.Delay(250*time.Millisecond),
+		retry.MaxDelay(5*time.Second),
 		retry.OnRetry(func(n uint, err error) {
 			cfg.Logger.Warning(&libpack_logger.LogMessage{
 				Message: "Retrying the request",
 				Pairs: map[string]interface{}{
-					"path":  c.Path(),
-					"error": err.Error(),
+					"path":    c.Path(),
+					"attempt": n + 1,
+					"error":   err.Error(),
 				},
 			})
 		}),
-		retry.Attempts(3),
-		retry.DelayType(retry.BackOffDelay),
-		retry.Delay(250*time.Millisecond),
 		retry.LastErrorOnly(true),
 	)
 
