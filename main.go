@@ -5,15 +5,12 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/avast/retry-go/v4"
 	"github.com/gofiber/fiber/v2/middleware/proxy"
 	"github.com/gookit/goutil/envutil"
 	graphql "github.com/lukaszraczylo/go-simple-graphql"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
-	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
@@ -121,33 +118,6 @@ func parseConfig() {
 func main() {
 	parseConfig()
 	StartMonitoringServer()
-
-	err := retry.Do(
-		func() error {
-			_, err := cfg.Client.GQLClient.Query(healthCheckQueryStr, nil, nil)
-			return err
-		},
-		retry.Attempts(10),
-		retry.Delay(1*time.Second),
-		retry.OnRetry(func(n uint, err error) {
-			cfg.Logger.Warning(&libpack_logger.LogMessage{
-				Message: "Retrying initial connection to GraphQL server",
-				Pairs: map[string]interface{}{
-					"attempt": n + 1,
-					"error":   err.Error(),
-				},
-			})
-		}),
-	)
-
-	if err != nil {
-		cfg.Logger.Critical(&libpack_logger.LogMessage{
-			Message: "Failed to establish initial connection to GraphQL server",
-			Pairs:   map[string]interface{}{"error": err.Error()},
-		})
-		os.Exit(1)
-	}
-
 	StartHTTPProxy()
 }
 
