@@ -12,7 +12,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gookit/goutil v0.6.16
 	github.com/graphql-go/graphql v0.8.1
-	github.com/jackc/pgx/v5 v5.7.0
+	github.com/jackc/pgx/v5 v5.7.1
 	github.com/lukaszraczylo/ask v0.0.0-20230927103145-2ff1123b4415
 	github.com/lukaszraczylo/go-ratecounter v0.1.12
 	github.com/lukaszraczylo/go-simple-graphql v1.2.23
@@ -30,7 +30,7 @@ require (
 	github.com/gookit/color v1.5.4 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/puddle/v2 v2.2.1 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
