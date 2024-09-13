@@ -4,7 +4,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"unsafe"
 
 	"github.com/goccy/go-json"
 	fiber "github.com/gofiber/fiber/v2"
@@ -25,12 +24,9 @@ var (
 	}
 	introspectionAllowedQueries = make(map[string]struct{})
 	allowedUrls                 = make(map[string]struct{})
-	mu                          sync.RWMutex
 )
 
 func prepareQueriesAndExemptions() {
-	mu.Lock()
-	defer mu.Unlock()
 	for _, q := range cfg.Security.IntrospectionAllowed {
 		introspectionAllowedQueries[strings.ToLower(q)] = struct{}{}
 	}
@@ -78,12 +74,15 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 	if err := json.Unmarshal(c.Body(), &m); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't unmarshal the request",
-			Pairs:   map[string]interface{}{"error": err.Error(), "body": unsafeString(c.Body())},
+			Pairs:   map[string]interface{}{"error": err.Error(), "body": string(c.Body())},
 		})
 		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 		}
-		resultPool.Put(res)
+		if res.shouldBlock {
+			resultPool.Put(res)
+			return res
+		}
 		return res
 	}
 
@@ -185,18 +184,20 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 	return res
 }
 
-func unsafeString(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
-}
-
 func checkSelections(c *fiber.Ctx, selections []ast.Selection) bool {
-	for _, s := range selections {
+	stack := make([]ast.Selection, len(selections))
+	copy(stack, selections)
+
+	for len(stack) > 0 {
+		var s ast.Selection
+		s, stack = stack[len(stack)-1], stack[:len(stack)-1]
+
 		if field, ok := s.(*ast.Field); ok {
 			if checkIfContainsIntrospection(c, field.Name.Value) {
 				return true
 			}
-			if field.SelectionSet != nil && checkSelections(c, field.GetSelectionSet().Selections) {
-				return true
+			if field.SelectionSet != nil {
+				stack = append(stack, field.GetSelectionSet().Selections...)
 			}
 		}
 	}
@@ -205,8 +206,6 @@ func checkSelections(c *fiber.Ctx, selections []ast.Selection) bool {
 
 func checkIfContainsIntrospection(c *fiber.Ctx, whatever string) bool {
 	whateverLower := strings.ToLower(whatever)
-	mu.RLock()
-	defer mu.RUnlock()
 
 	if _, exists := introspectionQueries[whateverLower]; exists {
 		if len(cfg.Security.IntrospectionAllowed) > 0 {
