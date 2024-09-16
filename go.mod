@@ -13,7 +13,7 @@ require (
 	github.com/gookit/goutil v0.6.16
 	github.com/graphql-go/graphql v0.8.1
 	github.com/jackc/pgx/v5 v5.7.1
-	github.com/lukaszraczylo/ask v0.0.0-20240913191002-cd9856eb6d12
+	github.com/lukaszraczylo/ask v0.0.0-20240916204100-6e9ef53a62d9
 	github.com/lukaszraczylo/go-ratecounter v0.1.12
 	github.com/lukaszraczylo/go-simple-graphql v1.2.25
 	github.com/redis/go-redis/v9 v9.6.1
