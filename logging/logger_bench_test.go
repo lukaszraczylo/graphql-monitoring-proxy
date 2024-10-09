@@ -56,11 +56,6 @@ func Benchmark_NewLogger(b *testing.B) {
 		b.Run(tt.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				got := New()
-
-				if tt.triggers.ModFormat.Format != "" {
-					got = got.SetFormat(tt.triggers.ModFormat.Format)
-				}
-
 				if tt.triggers.ModLevel.Level != 0 {
 					got = got.SetMinLogLevel(tt.triggers.ModLevel.Level)
 				}

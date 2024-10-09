@@ -40,7 +40,7 @@ func (suite *LoggerTestSuite) Test_LogMessageString() {
 		Message: "test message",
 	}
 
-	assert.Equal("test message", msg.String())
+	assert.Equal("test message", msg.Message)
 }
 
 func callLoggerMethod(logger *Logger, methodName string, message *LogMessage) {
@@ -125,7 +125,7 @@ func (suite *LoggerTestSuite) Test_LogsLevelsPrint() {
 
 			// Set logger's minimum log level
 			logger.SetMinLogLevel(tt.loggerMinLevel)
-			fmt.Println("Logger min log level:", LevelNames[logger.minLogLevel])
+			fmt.Println("Logger min log level:", levelNames[logger.minLogLevel])
 
 			// Call the logging method
 			callLoggerMethod(logger, tt.method, msg)
@@ -143,7 +143,7 @@ func (suite *LoggerTestSuite) Test_LogsLevelsPrint() {
 				if !containsLogMessage(logOutput, tt.message) {
 					t.Errorf("Expected log message %q, but got %q", tt.message, logOutput)
 				}
-				assert.Equal(LevelNames[tt.messageLogLevel], loggedMessage["level"])
+				assert.Equal(levelNames[tt.messageLogLevel], loggedMessage["level"])
 				if tt.pairs != nil {
 					for k, v := range tt.pairs {
 						assert.Equal(v, loggedMessage[k])
@@ -161,9 +161,9 @@ func containsLogMessage(logOutput, expectedMessage string) bool {
 }
 
 func (suite *LoggerTestSuite) Test_SetFormat() {
-	logger := New().SetFormat(time.RFC3339Nano)
+	logger := New().SetTimeFormat(time.RFC3339Nano)
 
-	assert.Equal(time.RFC3339Nano, logger.format)
+	assert.Equal(time.RFC3339Nano, logger.timeFormat)
 }
 
 func (suite *LoggerTestSuite) Test_SetMinLogLevel() {

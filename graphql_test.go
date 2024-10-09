@@ -393,7 +393,7 @@ func (suite *Tests) Test_checkAllowedURLs() {
 			ctx.Request().SetRequestURI(tt.path)
 			ctx.Request().URI().SetPath(tt.path)
 			result := checkAllowedURLs(ctx)
-			assert.Equal(tt.expected, result)
+			assert.Equal(tt.expected, result, "Unexpected result in test case: "+tt.name)
 		})
 	}
 }

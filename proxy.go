@@ -17,6 +17,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// createFasthttpClient creates and configures a fasthttp client.
 func createFasthttpClient(timeout int) *fasthttp.Client {
 	return &fasthttp.Client{
 		Name:                     "graphql_proxy",
@@ -33,6 +34,7 @@ func createFasthttpClient(timeout int) *fasthttp.Client {
 	}
 }
 
+// proxyTheRequest handles the request proxying logic.
 func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 	if !checkAllowedURLs(c) {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
@@ -51,7 +53,7 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 		return fmt.Errorf("invalid URL: %v", err)
 	}
 
-	if cfg.LogLevel == "debug" {
+	if cfg.LogLevel == "DEBUG" {
 		logDebugRequest(c)
 	}
 
@@ -61,7 +63,7 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 			if proxyErr != nil {
 				return proxyErr
 			}
-			if c.Response().StatusCode() != 200 {
+			if c.Response().StatusCode() != fiber.StatusOK {
 				return fmt.Errorf("received non-200 response from the GraphQL server: %d", c.Response().StatusCode())
 			}
 			return nil
@@ -94,11 +96,12 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 		return fmt.Errorf("failed to proxy request: %v", err)
 	}
 
-	if cfg.LogLevel == "debug" {
+	if cfg.LogLevel == "DEBUG" {
 		logDebugResponse(c)
 	}
 
-	if c.Response().Header.Peek("Content-Encoding") != nil && string(c.Response().Header.Peek("Content-Encoding")) == "gzip" {
+	if bytes.EqualFold(c.Response().Header.Peek("Content-Encoding"), []byte("gzip")) {
+		// Decompress gzip response
 		reader, err := gzip.NewReader(bytes.NewReader(c.Response().Body()))
 		if err != nil {
 			cfg.Logger.Error(&libpack_logger.LogMessage{
@@ -122,7 +125,7 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 		c.Response().Header.Del("Content-Encoding")
 	}
 
-	if c.Response().StatusCode() != 200 {
+	if c.Response().StatusCode() != fiber.StatusOK {
 		if ifNotInTest() {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 		}
@@ -133,6 +136,7 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 	return nil
 }
 
+// logDebugRequest logs the request details when in debug mode.
 func logDebugRequest(c *fiber.Ctx) {
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Proxying the request",
@@ -145,6 +149,7 @@ func logDebugRequest(c *fiber.Ctx) {
 	})
 }
 
+// logDebugResponse logs the response details when in debug mode.
 func logDebugResponse(c *fiber.Ctx) {
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Received proxied response",

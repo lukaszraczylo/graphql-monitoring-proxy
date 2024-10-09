@@ -10,6 +10,7 @@ import (
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
+// RateLimitConfig holds the rate limit configuration for a role
 type RateLimitConfig struct {
 	RateCounterTicker *goratecounter.RateCounter
 	Interval          time.Duration `json:"interval"`
@@ -21,6 +22,7 @@ var (
 	rateLimitMu sync.RWMutex
 )
 
+// loadRatelimitConfig loads the rate limit configurations from file
 func loadRatelimitConfig() error {
 	paths := []string{"/go/src/app/ratelimit.json", "./ratelimit.json", "./static/app/default-ratelimit.json"}
 	for _, path := range paths {
@@ -59,7 +61,7 @@ func loadConfigFromPath(path string) error {
 			Interval: value.Interval,
 		})
 
-		if cfg.LogLevel == "debug" {
+		if cfg.LogLevel == "DEBUG" {
 			cfg.Logger.Debug(&libpack_logger.LogMessage{
 				Message: "Setting ratelimit config for role",
 				Pairs: map[string]interface{}{
@@ -83,6 +85,7 @@ func loadConfigFromPath(path string) error {
 	return nil
 }
 
+// rateLimitedRequest checks if a request should be rate-limited
 func rateLimitedRequest(userID, userRole string) bool {
 	rateLimitMu.RLock()
 	roleConfig, ok := rateLimits[userRole]

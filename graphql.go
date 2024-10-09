@@ -30,6 +30,7 @@ func prepareQueriesAndExemptions() {
 	for _, q := range cfg.Security.IntrospectionAllowed {
 		introspectionAllowedQueries[strings.ToLower(q)] = struct{}{}
 	}
+
 	for _, u := range cfg.Server.AllowURLs {
 		allowedUrls[u] = struct{}{}
 	}
