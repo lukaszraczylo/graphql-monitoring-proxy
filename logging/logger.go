@@ -2,7 +2,6 @@ package libpack_logger
 
 import (
 	"bytes"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -16,16 +15,14 @@ import (
 )
 
 const (
-	_ = iota
-	LEVEL_DEBUG
+	LEVEL_DEBUG = iota
 	LEVEL_INFO
 	LEVEL_WARN
 	LEVEL_ERROR
 	LEVEL_FATAL
 )
 
-var LevelNames = [...]string{
-	"none",
+var levelNames = []string{
 	"debug",
 	"info",
 	"warn",
@@ -34,74 +31,103 @@ var LevelNames = [...]string{
 }
 
 const (
-	defaultFormat     = time.RFC3339
+	defaultTimeFormat = time.RFC3339
 	defaultMinLevel   = LEVEL_INFO
 	defaultShowCaller = false
 )
 
-var defaultOutput = os.Stdout
-
+// Logger represents the logging object with configurations.
 type Logger struct {
 	output      io.Writer
-	format      string
+	timeFormat  string
 	minLogLevel int
 	showCaller  bool
 }
 
+// LogMessage represents a log message with optional pairs.
 type LogMessage struct {
-	output  io.Writer
-	Pairs   map[string]any
+	Pairs   map[string]interface{}
 	Message string
 }
 
-func (m *LogMessage) String() string {
-	return m.Message
+// bufferPool is used to reuse bytes.Buffer for efficiency.
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return new(bytes.Buffer)
+	},
 }
 
+// fieldNames allows customization of output field names.
 var fieldNames = map[string]string{
 	"timestamp": "timestamp",
 	"level":     "level",
 	"message":   "message",
 }
 
+// New creates a new Logger with default settings.
 func New() *Logger {
 	return &Logger{
-		format:      defaultFormat,
+		timeFormat:  defaultTimeFormat,
 		minLogLevel: defaultMinLevel,
-		output:      defaultOutput,
+		output:      os.Stdout,
 		showCaller:  defaultShowCaller,
 	}
 }
 
+// SetOutput sets the output destination for the logger.
 func (l *Logger) SetOutput(output io.Writer) *Logger {
 	l.output = output
 	return l
 }
 
-var bufferPool = sync.Pool{
-	New: func() any {
-		return new(bytes.Buffer)
-	},
-}
-
-var defaultPairs = make(map[string]any)
-
+// GetLogLevel returns the log level integer corresponding to the given level name.
 func GetLogLevel(level string) int {
-	for i, name := range LevelNames {
-		if name == strings.ToLower(level) {
+	level = strings.ToLower(level)
+	for i, name := range levelNames {
+		if name == level {
 			return i
 		}
 	}
 	return defaultMinLevel
 }
 
+// SetTimeFormat sets the time format for the logger's timestamp field.
+func (l *Logger) SetTimeFormat(format string) *Logger {
+	l.timeFormat = format
+	return l
+}
+
+// SetMinLogLevel sets the minimum log level for the logger.
+func (l *Logger) SetMinLogLevel(level int) *Logger {
+	l.minLogLevel = level
+	return l
+}
+
+// SetFieldName allows customizing the field names in log output.
+func (l *Logger) SetFieldName(field, name string) *Logger {
+	fieldNames[field] = name
+	return l
+}
+
+// SetShowCaller enables or disables including the caller information in log output.
+func (l *Logger) SetShowCaller(show bool) *Logger {
+	l.showCaller = show
+	return l
+}
+
+// shouldLog determines if the message should be logged based on the logger's minimum log level.
+func (l *Logger) shouldLog(level int) bool {
+	return level >= l.minLogLevel
+}
+
+// log writes the log message with the given level.
 func (l *Logger) log(level int, m *LogMessage) {
 	if m.Pairs == nil {
-		m.Pairs = defaultPairs
+		m.Pairs = make(map[string]interface{})
 	}
 
-	m.Pairs[fieldNames["timestamp"]] = time.Now().Format(l.format)
-	m.Pairs[fieldNames["level"]] = LevelNames[level]
+	m.Pairs[fieldNames["timestamp"]] = time.Now().Format(l.timeFormat)
+	m.Pairs[fieldNames["level"]] = levelNames[level]
 	m.Pairs[fieldNames["message"]] = m.Message
 
 	if l.showCaller {
@@ -109,93 +135,73 @@ func (l *Logger) log(level int, m *LogMessage) {
 	}
 
 	buffer := bufferPool.Get().(*bytes.Buffer)
-	defer bufferPool.Put(buffer)
 	buffer.Reset()
+	defer bufferPool.Put(buffer)
 
-	var encoder = json.NewEncoder(buffer)
+	encoder := json.NewEncoder(buffer)
 	err := encoder.Encode(m.Pairs)
 	if err != nil {
-		fmt.Println("Error marshalling log message:", err)
+		fmt.Fprintln(os.Stderr, "Error marshalling log message:", err)
 		return
 	}
 
-	// if not running in test - use stderr and stdout, otherwise - use logger's output setting
-	if flag.Lookup("test.v") != nil {
-		m.output = os.Stdout
-		if level >= LEVEL_ERROR {
-			m.output = os.Stderr
-		}
+	_, err = l.output.Write(buffer.Bytes())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error writing log message:", err)
 	}
-
-	// Use logger's output setting instead of os.Stdout or os.Stderr
-	l.output.Write(buffer.Bytes())
 }
 
+// Debug logs a debug-level message.
 func (l *Logger) Debug(m *LogMessage) {
 	if l.shouldLog(LEVEL_DEBUG) {
 		l.log(LEVEL_DEBUG, m)
 	}
 }
 
+// Info logs an info-level message.
 func (l *Logger) Info(m *LogMessage) {
 	if l.shouldLog(LEVEL_INFO) {
 		l.log(LEVEL_INFO, m)
 	}
 }
 
+// Warn logs a warning-level message.
 func (l *Logger) Warn(m *LogMessage) {
 	if l.shouldLog(LEVEL_WARN) {
 		l.log(LEVEL_WARN, m)
 	}
 }
 
+// Warning is an alias for Warn.
 func (l *Logger) Warning(m *LogMessage) {
 	l.Warn(m)
 }
 
+// Error logs an error-level message.
 func (l *Logger) Error(m *LogMessage) {
 	if l.shouldLog(LEVEL_ERROR) {
 		l.log(LEVEL_ERROR, m)
 	}
 }
 
+// Fatal logs a fatal-level message.
 func (l *Logger) Fatal(m *LogMessage) {
 	if l.shouldLog(LEVEL_FATAL) {
 		l.log(LEVEL_FATAL, m)
 	}
 }
 
+// Critical logs a critical-level message and exits the application.
 func (l *Logger) Critical(m *LogMessage) {
 	l.Fatal(m)
 	os.Exit(1)
 }
 
-func (l *Logger) shouldLog(level int) bool {
-	return level >= l.minLogLevel
-}
-
-func (l *Logger) SetFormat(format string) *Logger {
-	l.format = format
-	return l
-}
-
-func (l *Logger) SetMinLogLevel(level int) *Logger {
-	l.minLogLevel = level
-	return l
-}
-
-func (l *Logger) SetFieldName(field, name string) *Logger {
-	fieldNames[field] = name
-	return l
-}
-
-func (l *Logger) SetShowCaller(show bool) *Logger {
-	l.showCaller = show
-	return l
-}
-
+// getCaller retrieves the file and line number of the caller.
 func getCaller() string {
-	_, file, line, ok := runtime.Caller(3)
+	// Skip 3 stack frames: getCaller -> log -> [Debug|Info|...]
+	const depth = 3
+	_, file, line, ok := runtime.Caller(depth)
 	if !ok {
 		return "unknown:0"
 	}

@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/goccy/go-json"
@@ -21,14 +20,7 @@ const (
 	healthCheckQueryStr = `{ __typename }`
 )
 
-var (
-	ctxPool = sync.Pool{
-		New: func() interface{} {
-			return new(fiber.Ctx)
-		},
-	}
-)
-
+// StartHTTPProxy initializes and starts the HTTP proxy server.
 func StartHTTPProxy() {
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Starting the HTTP proxy",
@@ -71,15 +63,18 @@ func StartHTTPProxy() {
 	}
 }
 
+// proxyTheRequestToDefault proxies the request to the default GraphQL endpoint.
 func proxyTheRequestToDefault(c *fiber.Ctx) error {
 	return proxyTheRequest(c, cfg.Server.HostGraphQL)
 }
 
+// AddRequestUUID adds a unique request UUID to the context.
 func AddRequestUUID(c *fiber.Ctx) error {
 	c.Locals("request_uuid", uuid.NewString())
 	return c.Next()
 }
 
+// checkAllowedURLs checks if the requested URL is allowed.
 func checkAllowedURLs(c *fiber.Ctx) bool {
 	if len(allowedUrls) == 0 {
 		return true
@@ -89,6 +84,7 @@ func checkAllowedURLs(c *fiber.Ctx) bool {
 	return ok
 }
 
+// healthCheck performs a health check on the GraphQL server.
 func healthCheck(c *fiber.Ctx) error {
 	if len(cfg.Server.HealthcheckGraphQL) > 0 {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
@@ -103,16 +99,17 @@ func healthCheck(c *fiber.Ctx) error {
 				Pairs:   map[string]interface{}{"error": err.Error()},
 			})
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
-			return c.Status(500).SendString("Can't reach the GraphQL server with {__typename} query")
+			return c.Status(fiber.StatusInternalServerError).SendString("Can't reach the GraphQL server with {__typename} query")
 		}
 	}
 
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Health check returning OK",
 	})
-	return c.Status(200).SendString("Health check OK")
+	return c.Status(fiber.StatusOK).SendString("Health check OK")
 }
 
+// processGraphQLRequest handles the incoming GraphQL requests.
 func processGraphQLRequest(c *fiber.Ctx) error {
 	startTime := time.Now()
 
@@ -124,7 +121,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	}
 
 	if checkIfUserIsBanned(c, extractedUserID) {
-		return c.Status(403).SendString("User is banned")
+		return c.Status(fiber.StatusForbidden).SendString("User is banned")
 	}
 
 	if cfg.Client.RoleFromHeader != "" {
@@ -139,13 +136,13 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 			Pairs:   map[string]interface{}{"user_id": extractedUserID, "role_name": extractedRoleName},
 		})
 		if !rateLimitedRequest(extractedUserID, extractedRoleName) {
-			return c.Status(429).SendString("Rate limit exceeded, try again later")
+			return c.Status(fiber.StatusTooManyRequests).SendString("Rate limit exceeded, try again later")
 		}
 	}
 
-	parsedResult := parseGraphQLQuery(c)
+	parsedResult := parseGraphQLQuery(c) // Ensure this function is defined elsewhere
 	if parsedResult.shouldBlock {
-		return c.Status(403).SendString("Request blocked")
+		return c.Status(fiber.StatusForbidden).SendString("Request blocked")
 	}
 
 	if parsedResult.shouldIgnore {
@@ -208,7 +205,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 				Pairs:   map[string]interface{}{"error": err.Error()},
 			})
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
-			return c.Status(500).SendString("Can't proxy the request - try again later")
+			return c.Status(fiber.StatusInternalServerError).SendString("Can't proxy the request - try again later")
 		}
 	}
 
@@ -217,6 +214,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	return nil
 }
 
+// proxyAndCacheTheRequest proxies and caches the request if needed.
 func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int, currentEndpoint string) error {
 	if err := proxyTheRequest(c, currentEndpoint); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
@@ -224,7 +222,7 @@ func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int,
 			Pairs:   map[string]interface{}{"error": err.Error()},
 		})
 		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
-		return c.Status(500).SendString("Can't proxy the request - try again later")
+		return c.Status(fiber.StatusInternalServerError).SendString("Can't proxy the request - try again later")
 	}
 
 	libpack_cache.CacheStoreWithTTL(queryCacheHash, c.Response().Body(), time.Duration(cacheTime)*time.Second)
@@ -232,6 +230,7 @@ func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int,
 	return c.Send(c.Response().Body())
 }
 
+// logAndMonitorRequest logs and monitors the request processing.
 func logAndMonitorRequest(c *fiber.Ctx, userID, opType, opName string, wasCached bool, duration time.Duration, startTime time.Time) {
 	labels := map[string]string{
 		"op_type": opType,
