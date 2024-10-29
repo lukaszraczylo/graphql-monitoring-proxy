@@ -18,7 +18,7 @@ require (
 	github.com/lukaszraczylo/go-simple-graphql v1.2.29
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/stretchr/testify v1.9.0
-	github.com/valyala/fasthttp v1.56.0
+	github.com/valyala/fasthttp v1.57.0
 )
 
 require (
