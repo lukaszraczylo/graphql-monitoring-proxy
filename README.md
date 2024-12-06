@@ -40,7 +40,7 @@ I wanted to monitor the queries and responses of our graphql endpoint. Still, we
 
 You should always try to stick to the latest and greatest version of the graphql-proxy to ensure that it's as much bug-free as possible. Following list will be kept to the maximum of five "most important" bugs and enhancements included in the latest versions.
 
-* **06/12/2024 - 0.24.2** - Fixes the bug where deeply nested introspection queries were blocked despite of being present on the whitelist. GraphQL proxy will now inspect the queries in depth to find any possible nested introspections.
+* **06/12/2024 - 0.25.12** - Fixes the bug where deeply nested introspection queries were blocked despite of being present on the whitelist. GraphQL proxy will now inspect the queries in depth to find any possible nested introspections.
 
 * **20/08/2024 - 0.23.21+** - Fixes the bug when timeouts were not respected on proxy-graphql line. Affected versions before that were timeouting after 30 seconds which was set as default ( thanks to Jurica Železnjak for reporting ). It also provides a temporary fix for running within kubernetes deployment, when graphql server ( for example - hasura ) took more time to start than the proxy, causing avalanche of errors with "can't proxy the request".
 
