@@ -32,7 +32,8 @@ func prepareQueriesAndExemptions() {
 
 	// Process allowed introspection queries
 	for _, q := range cfg.Security.IntrospectionAllowed {
-			introspectionAllowedQueries[strings.ToLower(strings.TrimSpace(q))] = struct{}{}
+		cleanQuery := strings.Trim(strings.TrimSpace(q), `"`)
+		introspectionAllowedQueries[strings.ToLower(cleanQuery)] = struct{}{}
 	}
 
 	// Process allowed URLs
