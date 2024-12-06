@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/goccy/go-json"
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -431,4 +432,61 @@ func createTestContext(body string) *fiber.Ctx {
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	ctx.Request().SetBody([]byte(body))
 	return ctx
+}
+
+func (suite *Tests) Test_DeepIntrospectionQueries() {
+	tests := []struct {
+			name     string
+			query    string
+			allowed  []string
+			expected bool
+	}{
+			{
+					name: "deeply nested single introspection",
+					query: "query { users { profiles { settings { preferences { __typename } } } } }",
+					allowed:  []string{},
+					expected: true,
+			},
+			{
+					name: "multiple nested introspections",
+					query: "query { users { __typename profiles { __schema settings { __type } } } }",
+					allowed:  []string{},
+					expected: true,
+			},
+			{
+					name: "nested with selective allowlist",
+					query: "query { users { __typename profiles { __schema settings { __type } } } }",
+					allowed:  []string{"__typename"},
+					expected: true,
+			},
+			{
+					name: "deeply nested with full allowlist",
+					query: "query { users { __typename profiles { __schema settings { __type } } } }",
+					allowed:  []string{"__typename", "__schema", "__type"},
+					expected: false,
+			},
+	}
+
+	for _, tt := range tests {
+			suite.Run(tt.name, func() {
+					cfg.Security.BlockIntrospection = true
+					cfg.Security.IntrospectionAllowed = tt.allowed
+					introspectionAllowedQueries = make(map[string]struct{})
+					for _, q := range tt.allowed {
+							introspectionAllowedQueries[strings.ToLower(q)] = struct{}{}
+					}
+					body := map[string]interface{}{
+							"query": tt.query,
+					}
+					bodyBytes, _ := json.Marshal(body)
+					ctx := fiber.New().AcquireCtx(&fasthttp.RequestCtx{})
+					ctx.Request().SetBody(bodyBytes)
+					parseGraphQLQuery(ctx)
+					if tt.expected {
+							suite.Equal(403, ctx.Response().StatusCode())
+					} else {
+							suite.Equal(200, ctx.Response().StatusCode())
+					}
+			})
+	}
 }

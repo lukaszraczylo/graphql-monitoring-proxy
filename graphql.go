@@ -184,11 +184,20 @@ func checkSelections(c *fiber.Ctx, selections []ast.Selection) bool {
 									return true
 							}
 					}
+					// Check nested selections even if current field is allowed
 					if sel.SelectionSet != nil {
 							if checkSelections(c, sel.GetSelectionSet().Selections) {
 									return true
 							}
 					}
+			case *ast.InlineFragment:
+					if sel.SelectionSet != nil {
+							if checkSelections(c, sel.GetSelectionSet().Selections) {
+									return true
+							}
+					}
+			case *ast.FragmentSpread:
+					// If we need to handle fragment spreads, additional logic would go here
 			}
 	}
 	return false
