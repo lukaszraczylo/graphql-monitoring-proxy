@@ -28,11 +28,11 @@ var (
 
 func prepareQueriesAndExemptions() {
 	for _, q := range cfg.Security.IntrospectionAllowed {
-		introspectionAllowedQueries[strings.ToLower(q)] = struct{}{}
+			introspectionAllowedQueries[strings.ToLower(q)] = struct{}{}
 	}
 
 	for _, u := range cfg.Server.AllowURLs {
-		allowedUrls[u] = struct{}{}
+			allowedUrls[u] = struct{}{}
 	}
 }
 
@@ -184,7 +184,6 @@ func checkSelections(c *fiber.Ctx, selections []ast.Selection) bool {
 									return true
 							}
 					}
-					// Check nested selections even if current field is allowed
 					if sel.SelectionSet != nil {
 							if checkSelections(c, sel.GetSelectionSet().Selections) {
 									return true
@@ -196,8 +195,6 @@ func checkSelections(c *fiber.Ctx, selections []ast.Selection) bool {
 									return true
 							}
 					}
-			case *ast.FragmentSpread:
-					// If we need to handle fragment spreads, additional logic would go here
 			}
 	}
 	return false

@@ -465,6 +465,18 @@ func (suite *Tests) Test_DeepIntrospectionQueries() {
 					allowed:  []string{"__typename", "__schema", "__type"},
 					expected: false,
 			},
+			{
+				name: "deeply nested with repeated item from allowlist",
+				query: "query PreloadStaticData {\n  scenario {\n    id\n    name\n    __typename\n  }\n  impact {\n    id\n    description\n    __typename\n  }\n  likelihood {\n    id\n    description\n    __typename\n  }\n  consequence {\n    name\n    __typename\n  }\n  risk_categories {\n    name\n    abbreviation\n    __typename\n  }\n  mitigation {\n    name\n    __typename\n  }\n}",
+				allowed: []string{"__type", "__typename"},
+				expected: false,
+			},
+			{
+				name: "deeply nested with repeated item denied",
+				query: "query PreloadStaticData {\n  scenario {\n    id\n    name\n    __typename\n  }\n  impact {\n    id\n    description\n    __typename\n  }\n  likelihood {\n    id\n    description\n    __typename\n  }\n  consequence {\n    name\n    __typename\n  }\n  risk_categories {\n    name\n    abbreviation\n    __typename\n  }\n  mitigation {\n    name\n    __typename\n  }\n}",
+				allowed: []string{},
+				expected: true,
+			},
 	}
 
 	for _, tt := range tests {
