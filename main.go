@@ -125,7 +125,7 @@ func parseConfig() {
 		go enableApi()
 		go enableHasuraEventCleaner()
 	})
-	prepareQueriesAndExemptions() // Ensure this function is defined elsewhere
+	prepareQueriesAndExemptions()
 }
 
 func main() {
