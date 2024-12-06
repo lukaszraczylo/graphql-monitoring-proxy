@@ -141,7 +141,7 @@ func (suite *Tests) Test_getDetailsFromEnv() {
 	}
 }
 
-func TestIntrospectionEnvironmentConfig(t *testing.T) {
+func (suite *Tests) TestIntrospectionEnvironmentConfig() {
 	// Save original env vars
 	oldEnv := make(map[string]string)
 	varsToSave := []string{
@@ -215,10 +215,26 @@ func TestIntrospectionEnvironmentConfig(t *testing.T) {
 					}`,
 			wantBlocked: false,
 		},
+		{
+			name: "multiple allowed queries with one of them blocked",
+			envVars: map[string]string{
+				"BLOCK_SCHEMA_INTROSPECTION": "true",
+				"ALLOWED_INTROSPECTION":      "__schema",
+			},
+			query: `{
+							__schema {
+									types {
+											name
+											__typename
+									}
+							}
+					}`,
+			wantBlocked: true,
+		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		suite.Run(tt.name, func() {
 			// Set test env vars
 			for k, v := range tt.envVars {
 				os.Setenv(k, v)
@@ -236,27 +252,10 @@ func TestIntrospectionEnvironmentConfig(t *testing.T) {
 			ctx.Request().SetBody([]byte(fmt.Sprintf(`{"query": %q}`, tt.query)))
 
 			result := parseGraphQLQuery(ctx)
-
-			if result.shouldBlock != tt.wantBlocked {
-				t.Errorf("query blocked = %v, want %v", result.shouldBlock, tt.wantBlocked)
-			}
-
-			// Clean up test env vars
+			assert.Equal(tt.wantBlocked, result.shouldBlock)
 			for k := range tt.envVars {
 				os.Unsetenv(k)
 			}
 		})
 	}
-}
-
-func TestMain(m *testing.M) {
-	// Setup test environment
-	os.Setenv("LOG_LEVEL", "error") // Reduce noise in tests
-
-	// Run tests
-	code := m.Run()
-
-	// Cleanup
-	os.Unsetenv("LOG_LEVEL")
-	os.Exit(code)
 }
