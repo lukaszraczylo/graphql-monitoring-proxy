@@ -3,9 +3,12 @@ package main
 import (
 	"fmt"
 	"strings"
+	"testing"
 
 	"github.com/goccy/go-json"
 	fiber "github.com/gofiber/fiber/v2"
+	"github.com/graphql-go/graphql/language/ast"
+	"github.com/graphql-go/graphql/language/parser"
 	"github.com/valyala/fasthttp"
 )
 
@@ -436,69 +439,173 @@ func createTestContext(body string) *fiber.Ctx {
 
 func (suite *Tests) Test_DeepIntrospectionQueries() {
 	tests := []struct {
-			name     string
-			query    string
-			allowed  []string
-			expected bool
+		name     string
+		query    string
+		allowed  []string
+		expected bool
 	}{
-			{
-					name: "deeply nested single introspection",
-					query: "query { users { profiles { settings { preferences { __typename } } } } }",
-					allowed:  []string{},
-					expected: true,
-			},
-			{
-					name: "multiple nested introspections",
-					query: "query { users { __typename profiles { __schema settings { __type } } } }",
-					allowed:  []string{},
-					expected: true,
-			},
-			{
-					name: "nested with selective allowlist",
-					query: "query { users { __typename profiles { __schema settings { __type } } } }",
-					allowed:  []string{"__typename"},
-					expected: true,
-			},
-			{
-					name: "deeply nested with full allowlist",
-					query: "query { users { __typename profiles { __schema settings { __type } } } }",
-					allowed:  []string{"__typename", "__schema", "__type"},
-					expected: false,
-			},
-			{
-				name: "deeply nested with repeated item from allowlist",
-				query: "query PreloadStaticData {\n  scenario {\n    id\n    name\n    __typename\n  }\n  impact {\n    id\n    description\n    __typename\n  }\n  likelihood {\n    id\n    description\n    __typename\n  }\n  consequence {\n    name\n    __typename\n  }\n  risk_categories {\n    name\n    abbreviation\n    __typename\n  }\n  mitigation {\n    name\n    __typename\n  }\n}",
-				allowed: []string{"__type", "__typename"},
-				expected: false,
-			},
-			{
-				name: "deeply nested with repeated item denied",
-				query: "query PreloadStaticData {\n  scenario {\n    id\n    name\n    __typename\n  }\n  impact {\n    id\n    description\n    __typename\n  }\n  likelihood {\n    id\n    description\n    __typename\n  }\n  consequence {\n    name\n    __typename\n  }\n  risk_categories {\n    name\n    abbreviation\n    __typename\n  }\n  mitigation {\n    name\n    __typename\n  }\n}",
-				allowed: []string{},
-				expected: true,
-			},
+		{
+			name:     "deeply nested single introspection",
+			query:    "query { users { profiles { settings { preferences { __typename } } } } }",
+			allowed:  []string{},
+			expected: true,
+		},
+		{
+			name:     "multiple nested introspections",
+			query:    "query { users { __typename profiles { __schema settings { __type } } } }",
+			allowed:  []string{},
+			expected: true,
+		},
+		{
+			name:     "nested with selective allowlist",
+			query:    "query { users { __typename profiles { __schema settings { __type } } } }",
+			allowed:  []string{"__typename"},
+			expected: true,
+		},
+		{
+			name:     "deeply nested with full allowlist",
+			query:    "query { users { __typename profiles { __schema settings { __type } } } }",
+			allowed:  []string{"__typename", "__schema", "__type"},
+			expected: false,
+		},
+		{
+			name:     "deeply nested with repeated item from allowlist",
+			query:    "query PreloadStaticData {\n  scenario {\n    id\n    name\n    __typename\n  }\n  impact {\n    id\n    description\n    __typename\n  }\n  likelihood {\n    id\n    description\n    __typename\n  }\n  consequence {\n    name\n    __typename\n  }\n  risk_categories {\n    name\n    abbreviation\n    __typename\n  }\n  mitigation {\n    name\n    __typename\n  }\n}",
+			allowed:  []string{"__type", "__typename"},
+			expected: false,
+		},
+		{
+			name:     "deeply nested with repeated item denied",
+			query:    "query PreloadStaticData {\n  scenario {\n    id\n    name\n    __typename\n  }\n  impact {\n    id\n    description\n    __typename\n  }\n  likelihood {\n    id\n    description\n    __typename\n  }\n  consequence {\n    name\n    __typename\n  }\n  risk_categories {\n    name\n    abbreviation\n    __typename\n  }\n  mitigation {\n    name\n    __typename\n  }\n}",
+			allowed:  []string{},
+			expected: true,
+		},
 	}
 
 	for _, tt := range tests {
-			suite.Run(tt.name, func() {
-					cfg.Security.BlockIntrospection = true
-					cfg.Security.IntrospectionAllowed = tt.allowed
-					introspectionAllowedQueries = make(map[string]struct{})
-					for _, q := range tt.allowed {
-							introspectionAllowedQueries[strings.ToLower(q)] = struct{}{}
-					}
-					body := map[string]interface{}{
-							"query": tt.query,
-					}
-					bodyBytes, _ := json.Marshal(body)
-					ctx := fiber.New().AcquireCtx(&fasthttp.RequestCtx{})
-					ctx.Request().SetBody(bodyBytes)
-					parseGraphQLQuery(ctx)
-					if tt.expected {
-							suite.Equal(403, ctx.Response().StatusCode())
-					} else {
-							suite.Equal(200, ctx.Response().StatusCode())
-					}
-			})
+		suite.Run(tt.name, func() {
+			cfg.Security.BlockIntrospection = true
+			cfg.Security.IntrospectionAllowed = tt.allowed
+			introspectionAllowedQueries = make(map[string]struct{})
+			for _, q := range tt.allowed {
+				introspectionAllowedQueries[strings.ToLower(q)] = struct{}{}
+			}
+			body := map[string]interface{}{
+				"query": tt.query,
+			}
+			bodyBytes, _ := json.Marshal(body)
+			ctx := fiber.New().AcquireCtx(&fasthttp.RequestCtx{})
+			ctx.Request().SetBody(bodyBytes)
+			parseGraphQLQuery(ctx)
+			if tt.expected {
+				suite.Equal(403, ctx.Response().StatusCode())
+			} else {
+				suite.Equal(200, ctx.Response().StatusCode())
+			}
+		})
+	}
+}
+
+func TestIntrospectionQueryHandling(t *testing.T) {
+	tests := []struct {
+		name               string
+		blockIntrospection bool
+		allowedQueries     []string
+		query              string
+		wantBlocked        bool
+	}{
+		{
+			name:               "allows __typename when in allowed list",
+			blockIntrospection: true,
+			allowedQueries:     []string{"__typename"},
+			query: `{
+							users {
+									id
+									name
+									__typename
+							}
+					}`,
+			wantBlocked: false,
+		},
+		{
+			name:               "case insensitive matching for allowed queries",
+			blockIntrospection: true,
+			allowedQueries:     []string{"__TYPENAME"},
+			query: `{
+							users {
+									__typename
+							}
+					}`,
+			wantBlocked: false,
+		},
+		{
+			name:               "blocks other introspection queries",
+			blockIntrospection: true,
+			allowedQueries:     []string{"__typename"},
+			query: `{
+							__schema {
+									types {
+											name
+									}
+							}
+					}`,
+			wantBlocked: true,
+		},
+		{
+			name:               "allows multiple __typename occurrences",
+			blockIntrospection: true,
+			allowedQueries:     []string{"__typename"},
+			query: `{
+							users {
+									__typename
+									posts {
+											__typename
+									}
+							}
+					}`,
+			wantBlocked: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup config
+			cfg = &config{
+				Security: struct {
+					IntrospectionAllowed []string
+					BlockIntrospection   bool
+				}{
+					IntrospectionAllowed: tt.allowedQueries,
+					BlockIntrospection:   tt.blockIntrospection,
+				},
+			}
+
+			// Initialize allowed queries
+			prepareQueriesAndExemptions()
+
+			// Parse query
+			p, err := parser.Parse(parser.ParseParams{Source: tt.query})
+			if err != nil {
+				t.Fatalf("failed to parse query: %v", err)
+			}
+
+			// Create mock fiber context
+			app := fiber.New()
+			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(ctx)
+
+			// Check selections
+			var blocked bool
+			for _, def := range p.Definitions {
+				if op, ok := def.(*ast.OperationDefinition); ok {
+					blocked = checkSelections(ctx, op.GetSelectionSet().Selections)
+					break
+				}
+			}
+
+			if blocked != tt.wantBlocked {
+				t.Errorf("checkSelections() blocked = %v, want %v", blocked, tt.wantBlocked)
+			}
+		})
 	}
 }

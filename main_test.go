@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	assertions "github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+	"github.com/valyala/fasthttp"
 )
 
 type Tests struct {
@@ -137,4 +139,124 @@ func (suite *Tests) Test_getDetailsFromEnv() {
 			assert.Equal(tt.expected, result)
 		})
 	}
+}
+
+func TestIntrospectionEnvironmentConfig(t *testing.T) {
+	// Save original env vars
+	oldEnv := make(map[string]string)
+	varsToSave := []string{
+		"BLOCK_SCHEMA_INTROSPECTION",
+		"ALLOWED_INTROSPECTION",
+		"GMP_BLOCK_SCHEMA_INTROSPECTION",
+		"GMP_ALLOWED_INTROSPECTION",
+	}
+	for _, env := range varsToSave {
+		if val, exists := os.LookupEnv(env); exists {
+			oldEnv[env] = val
+			os.Unsetenv(env)
+		}
+	}
+	defer func() {
+		// Restore original env vars
+		for k, v := range oldEnv {
+			os.Setenv(k, v)
+		}
+	}()
+
+	tests := []struct {
+		name         string
+		envVars      map[string]string
+		query        string
+		wantBlocked  bool
+		wantEndpoint string
+	}{
+		{
+			name: "basic typename allowed",
+			envVars: map[string]string{
+				"BLOCK_SCHEMA_INTROSPECTION": "true",
+				"ALLOWED_INTROSPECTION":      "__typename",
+			},
+			query: `{
+							users {
+									id
+									__typename
+							}
+					}`,
+			wantBlocked: false,
+		},
+		{
+			name: "GMP prefix takes precedence",
+			envVars: map[string]string{
+				"BLOCK_SCHEMA_INTROSPECTION":     "false",
+				"GMP_BLOCK_SCHEMA_INTROSPECTION": "true",
+				"ALLOWED_INTROSPECTION":          "__type",
+				"GMP_ALLOWED_INTROSPECTION":      "__typename",
+			},
+			query: `{
+							users {
+									__typename
+							}
+					}`,
+			wantBlocked: false,
+		},
+		{
+			name: "multiple allowed queries",
+			envVars: map[string]string{
+				"BLOCK_SCHEMA_INTROSPECTION": "true",
+				"ALLOWED_INTROSPECTION":      "__typename,__schema",
+			},
+			query: `{
+							__schema {
+									types {
+											name
+											__typename
+									}
+							}
+					}`,
+			wantBlocked: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set test env vars
+			for k, v := range tt.envVars {
+				os.Setenv(k, v)
+			}
+
+			// Reset global config
+			cfg = nil
+			parseConfig()
+
+			// Create test request
+			app := fiber.New()
+			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(ctx)
+			ctx.Request().Header.SetMethod("POST")
+			ctx.Request().SetBody([]byte(fmt.Sprintf(`{"query": %q}`, tt.query)))
+
+			result := parseGraphQLQuery(ctx)
+
+			if result.shouldBlock != tt.wantBlocked {
+				t.Errorf("query blocked = %v, want %v", result.shouldBlock, tt.wantBlocked)
+			}
+
+			// Clean up test env vars
+			for k := range tt.envVars {
+				os.Unsetenv(k)
+			}
+		})
+	}
+}
+
+func TestMain(m *testing.M) {
+	// Setup test environment
+	os.Setenv("LOG_LEVEL", "error") // Reduce noise in tests
+
+	// Run tests
+	code := m.Run()
+
+	// Cleanup
+	os.Unsetenv("LOG_LEVEL")
+	os.Exit(code)
 }

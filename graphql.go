@@ -28,11 +28,11 @@ var (
 
 func prepareQueriesAndExemptions() {
 	for _, q := range cfg.Security.IntrospectionAllowed {
-			introspectionAllowedQueries[strings.ToLower(q)] = struct{}{}
+		introspectionAllowedQueries[strings.ToLower(strings.TrimSpace(q))] = struct{}{}
 	}
 
 	for _, u := range cfg.Server.AllowURLs {
-			allowedUrls[u] = struct{}{}
+		allowedUrls[u] = struct{}{}
 	}
 }
 
@@ -66,142 +66,142 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 
 	m := queryPool.Get().(map[string]interface{})
 	defer func() {
-			for k := range m {
-					delete(m, k)
-			}
-			queryPool.Put(m)
+		for k := range m {
+			delete(m, k)
+		}
+		queryPool.Put(m)
 	}()
 
 	if err := json.Unmarshal(c.Body(), &m); err != nil {
-			cfg.Logger.Error(&libpack_logger.LogMessage{
-					Message: "Can't unmarshal the request",
-					Pairs:   map[string]interface{}{"error": err.Error(), "body": string(c.Body())},
-			})
-			if ifNotInTest() {
-					cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
-			}
-			return res
+		cfg.Logger.Error(&libpack_logger.LogMessage{
+			Message: "Can't unmarshal the request",
+			Pairs:   map[string]interface{}{"error": err.Error(), "body": string(c.Body())},
+		})
+		if ifNotInTest() {
+			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
+		}
+		return res
 	}
 
 	query, ok := m["query"].(string)
 	if !ok {
-			cfg.Logger.Error(&libpack_logger.LogMessage{
-					Message: "Can't find the query",
-					Pairs:   map[string]interface{}{"m_val": m},
-			})
-			if ifNotInTest() {
-					cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
-			}
-			return res
+		cfg.Logger.Error(&libpack_logger.LogMessage{
+			Message: "Can't find the query",
+			Pairs:   map[string]interface{}{"m_val": m},
+		})
+		if ifNotInTest() {
+			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
+		}
+		return res
 	}
 
 	p, err := parser.Parse(parser.ParseParams{Source: query})
 	if err != nil {
-			cfg.Logger.Error(&libpack_logger.LogMessage{
-					Message: "Can't parse the query",
-					Pairs:   map[string]interface{}{"query": query, "m_val": m},
-			})
-			if ifNotInTest() {
-					cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
-			}
-			return res
+		cfg.Logger.Error(&libpack_logger.LogMessage{
+			Message: "Can't parse the query",
+			Pairs:   map[string]interface{}{"query": query, "m_val": m},
+		})
+		if ifNotInTest() {
+			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+		}
+		return res
 	}
 
 	res.shouldIgnore = false
 	res.operationName = "undefined"
 
 	for _, d := range p.Definitions {
-			if oper, ok := d.(*ast.OperationDefinition); ok {
-					if res.operationType == "" {
-							res.operationType = strings.ToLower(oper.Operation)
-							if oper.Name != nil {
-									res.operationName = oper.Name.Value
-							}
-					}
-
-					if cfg.Server.HostGraphQLReadOnly != "" {
-							if res.operationType == "" || res.operationType != "mutation" {
-									res.activeEndpoint = cfg.Server.HostGraphQLReadOnly
-							}
-					}
-
-					if res.operationType == "mutation" && cfg.Server.ReadOnlyMode {
-							cfg.Logger.Warning(&libpack_logger.LogMessage{
-									Message: "Mutation blocked - server in read-only mode",
-									Pairs:   map[string]interface{}{"query": query},
-							})
-							if ifNotInTest() {
-									cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
-							}
-							_ = c.Status(403).SendString("The server is in read-only mode")
-							res.shouldBlock = true
-							resultPool.Put(res)
-							return res
-					}
-
-					for _, dir := range oper.Directives {
-							if dir.Name.Value == "cached" {
-									res.cacheRequest = true
-									for _, arg := range dir.Arguments {
-											switch arg.Name.Value {
-											case "ttl":
-													if v, ok := arg.Value.GetValue().(string); ok {
-															res.cacheTime, _ = strconv.Atoi(v)
-													}
-											case "refresh":
-													if v, ok := arg.Value.GetValue().(bool); ok {
-															res.cacheRefresh = v
-													}
-											}
-									}
-							}
-					}
-
-					if cfg.Security.BlockIntrospection {
-							if checkSelections(c, oper.GetSelectionSet().Selections) {
-									_ = c.Status(403).SendString("Introspection queries are not allowed")
-									res.shouldBlock = true
-									resultPool.Put(res)
-									return res
-							}
-					}
+		if oper, ok := d.(*ast.OperationDefinition); ok {
+			if res.operationType == "" {
+				res.operationType = strings.ToLower(oper.Operation)
+				if oper.Name != nil {
+					res.operationName = oper.Name.Value
+				}
 			}
+
+			if cfg.Server.HostGraphQLReadOnly != "" {
+				if res.operationType == "" || res.operationType != "mutation" {
+					res.activeEndpoint = cfg.Server.HostGraphQLReadOnly
+				}
+			}
+
+			if res.operationType == "mutation" && cfg.Server.ReadOnlyMode {
+				cfg.Logger.Warning(&libpack_logger.LogMessage{
+					Message: "Mutation blocked - server in read-only mode",
+					Pairs:   map[string]interface{}{"query": query},
+				})
+				if ifNotInTest() {
+					cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
+				}
+				_ = c.Status(403).SendString("The server is in read-only mode")
+				res.shouldBlock = true
+				resultPool.Put(res)
+				return res
+			}
+
+			for _, dir := range oper.Directives {
+				if dir.Name.Value == "cached" {
+					res.cacheRequest = true
+					for _, arg := range dir.Arguments {
+						switch arg.Name.Value {
+						case "ttl":
+							if v, ok := arg.Value.GetValue().(string); ok {
+								res.cacheTime, _ = strconv.Atoi(v)
+							}
+						case "refresh":
+							if v, ok := arg.Value.GetValue().(bool); ok {
+								res.cacheRefresh = v
+							}
+						}
+					}
+				}
+			}
+
+			if cfg.Security.BlockIntrospection {
+				if checkSelections(c, oper.GetSelectionSet().Selections) {
+					_ = c.Status(403).SendString("Introspection queries are not allowed")
+					res.shouldBlock = true
+					resultPool.Put(res)
+					return res
+				}
+			}
+		}
 	}
 	return res
 }
 
 func checkSelections(c *fiber.Ctx, selections []ast.Selection) bool {
 	for _, s := range selections {
-			switch sel := s.(type) {
-			case *ast.Field:
-					fieldName := strings.ToLower(sel.Name.Value)
-					if _, exists := introspectionQueries[fieldName]; exists {
-							if len(cfg.Security.IntrospectionAllowed) > 0 {
-									// If this field is allowed, don't block and continue checking other fields
-									if _, allowed := introspectionAllowedQueries[fieldName]; allowed {
-											if sel.SelectionSet != nil {
-													if checkSelections(c, sel.GetSelectionSet().Selections) {
-															return true
-													}
-											}
-											continue
-									}
-									return true
-							}
-							return true
-					}
-					if sel.SelectionSet != nil {
+		switch sel := s.(type) {
+		case *ast.Field:
+			fieldName := strings.ToLower(sel.Name.Value)
+			if _, exists := introspectionQueries[fieldName]; exists {
+				if len(cfg.Security.IntrospectionAllowed) > 0 {
+					// If this field is allowed, don't block and continue checking other fields
+					if _, allowed := introspectionAllowedQueries[fieldName]; allowed {
+						if sel.SelectionSet != nil {
 							if checkSelections(c, sel.GetSelectionSet().Selections) {
-									return true
+								return true
 							}
+						}
+						continue
 					}
-			case *ast.InlineFragment:
-					if sel.SelectionSet != nil {
-							if checkSelections(c, sel.GetSelectionSet().Selections) {
-									return true
-							}
-					}
+					return true
+				}
+				return true
 			}
+			if sel.SelectionSet != nil {
+				if checkSelections(c, sel.GetSelectionSet().Selections) {
+					return true
+				}
+			}
+		case *ast.InlineFragment:
+			if sel.SelectionSet != nil {
+				if checkSelections(c, sel.GetSelectionSet().Selections) {
+					return true
+				}
+			}
+		}
 	}
 	return false
 }
