@@ -177,12 +177,18 @@ func checkSelections(c *fiber.Ctx, selections []ast.Selection) bool {
 					fieldName := strings.ToLower(sel.Name.Value)
 					if _, exists := introspectionQueries[fieldName]; exists {
 							if len(cfg.Security.IntrospectionAllowed) > 0 {
-									if _, allowed := introspectionAllowedQueries[fieldName]; !allowed {
-											return true
+									// If this field is allowed, don't block and continue checking other fields
+									if _, allowed := introspectionAllowedQueries[fieldName]; allowed {
+											if sel.SelectionSet != nil {
+													if checkSelections(c, sel.GetSelectionSet().Selections) {
+															return true
+													}
+											}
+											continue
 									}
-							} else {
 									return true
 							}
+							return true
 					}
 					if sel.SelectionSet != nil {
 							if checkSelections(c, sel.GetSelectionSet().Selections) {
