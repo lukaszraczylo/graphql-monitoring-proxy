@@ -408,6 +408,8 @@ func (suite *Tests) Test_checkIfContainsIntrospection() {
 		{"allowed introspection", "__schema", []string{"__schema"}, false},
 		{"disallowed introspection", "__type", []string{"__schema"}, true},
 		{"non-introspection query", "normalQuery", []string{}, false},
+		{"allowed introspection with deep nesting of __typename", "{__schema {queryType {fields {name description __typename}}}}", []string{"__schema", "__typename"}, false},
+		{"disallowed introspection with deep nesting of __typename", "{__type {queryType {fields {name description __typename}}}}", []string{"__type"}, true},
 	}
 
 	for _, tt := range tests {

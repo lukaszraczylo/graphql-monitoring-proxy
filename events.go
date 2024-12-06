@@ -96,7 +96,7 @@ func cleanEvents(pool *pgxpool.Pool) {
 			Message: "Failed to execute some queries",
 			Pairs: map[string]interface{}{
 				"failed_queries": failedQueries,
-				"errors":        errMsgs,
+				"errors":         errMsgs,
 			},
 		})
 	}
