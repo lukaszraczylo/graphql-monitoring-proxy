@@ -30,7 +30,7 @@ func createFasthttpClient(timeout int) *fasthttp.Client {
 		WriteTimeout:                  time.Duration(timeout) * time.Second,
 		MaxIdleConnDuration:           time.Duration(timeout) * time.Second,
 		MaxConnDuration:               time.Duration(timeout) * time.Second,
-		DisableHeaderNamesNormalizing: true,
+		DisableHeaderNamesNormalizing: false,
 	}
 }
 
