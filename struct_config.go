@@ -16,8 +16,8 @@ type config struct {
 		Enable   bool
 		Endpoint string
 	}
-	Api        struct{ BannedUsersFile string }
-	Client     struct {
+	Api    struct{ BannedUsersFile string }
+	Client struct {
 		GQLClient        *graphql.BaseClient
 		FastProxyClient  *fasthttp.Client
 		JWTUserClaimPath string

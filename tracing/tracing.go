@@ -18,7 +18,7 @@ import (
 
 type TracingSetup struct {
 	tracerProvider *sdktrace.TracerProvider
-	tracer        trace.Tracer
+	tracer         trace.Tracer
 }
 
 type TraceSpanInfo struct {
@@ -68,7 +68,7 @@ func NewTracing(ctx context.Context, endpoint string) (*TracingSetup, error) {
 
 	return &TracingSetup{
 		tracerProvider: tracerProvider,
-		tracer:        tracer,
+		tracer:         tracer,
 	}, nil
 }
 

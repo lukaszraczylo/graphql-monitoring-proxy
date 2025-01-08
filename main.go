@@ -18,9 +18,9 @@ import (
 )
 
 var (
-	cfg     *config
-	once    sync.Once
-	tracer  *libpack_tracing.TracingSetup
+	cfg    *config
+	once   sync.Once
+	tracer *libpack_tracing.TracingSetup
 )
 
 // getDetailsFromEnv retrieves the value from the environment or returns the default.
