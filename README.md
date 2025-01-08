@@ -14,6 +14,7 @@ This project is in active use by [telegram-bot.app](https://telegram-bot.app), a
   - [Endpoints](#endpoints)
   - [Features](#features)
   - [Configuration](#configuration)
+  - [Tracing](#tracing)
   - [Speed](#speed)
     - [Caching](#caching)
     - [Read-only endpoint](#read-only-endpoint)
@@ -107,6 +108,7 @@ In this case, both proxy and websockets will be available under the `/v1/graphql
 | monitor    | Extracting user id from JWT token and adding it as a label to metrics |
 | monitor    | Extracting the query name and type and adding it as a label to metrics|
 | monitor    | Calculating the query duration and adding it to the metrics           |
+| monitor    | OpenTelemetry tracing support with configurable endpoint              |
 | speed      | Caching the queries, together with per-query cache and TTL            |
 | speed      | Support for READ ONLY graphql endpoint                                |
 | security   | Blocking schema introspection                                         |
@@ -155,6 +157,26 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `HASURA_EVENT_CLEANER`   | Enable the hasura event cleaner          | `false`                    |
 | `HASURA_EVENT_CLEANER_OLDER_THAN` | The interval for the hasura event cleaner (in days) | `1`                  |
 | `HASURA_EVENT_METADATA_DB` | URL to the hasura metadata database    | `postgresql://localhost:5432/hasura` |
+| `ENABLE_TRACE`            | Enable OpenTelemetry tracing           | `false`                    |
+| `TRACE_ENDPOINT`          | OpenTelemetry collector endpoint       | `localhost:4317`           |
+
+### Tracing
+
+The proxy supports OpenTelemetry tracing to help monitor and debug requests. When enabled, it will create spans for each proxied request and send them to the configured OpenTelemetry collector.
+
+To use tracing:
+
+1. Enable tracing by setting `ENABLE_TRACE=true`
+2. Configure the OpenTelemetry collector endpoint using `TRACE_ENDPOINT` (defaults to `localhost:4317`)
+3. Include trace context in your requests using the `X-Trace-Span` header with the following format:
+
+```json
+{
+  "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+}
+```
+
+The proxy will extract the trace context from the header and create child spans for each request, allowing you to trace requests through your system.
 
 ### Speed
 

@@ -3,17 +3,21 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
 	"net/url"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/avast/retry-go/v4"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/proxy"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
+	libpack_tracing "github.com/lukaszraczylo/graphql-monitoring-proxy/tracing"
 	"github.com/valyala/fasthttp"
 )
 
@@ -36,6 +40,30 @@ func createFasthttpClient(timeout int) *fasthttp.Client {
 
 // proxyTheRequest handles the request proxying logic.
 func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
+	var span trace.Span
+	ctx := context.Background()
+
+	if cfg.Tracing.Enable && tracer != nil {
+		// Extract trace information from header
+		if traceHeader := c.Get("X-Trace-Span"); traceHeader != "" {
+			spanInfo, err := libpack_tracing.ParseTraceHeader(traceHeader)
+			if err != nil {
+				cfg.Logger.Warning(&libpack_logger.LogMessage{
+					Message: "Failed to parse trace header",
+					Pairs:   map[string]interface{}{"error": err.Error()},
+				})
+			} else {
+				if spanCtx, err := tracer.ExtractSpanContext(spanInfo); err == nil {
+					ctx = trace.ContextWithSpanContext(ctx, spanCtx)
+				}
+			}
+		}
+
+		// Start a new span
+		span, ctx = tracer.StartSpan(ctx, "proxy_request")
+		defer span.End()
+	}
+
 	if !checkAllowedURLs(c) {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Request blocked",
