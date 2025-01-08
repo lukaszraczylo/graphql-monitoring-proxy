@@ -162,7 +162,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 		}
 	}
 
-	wasCached := false
+	wasCached := false //nolint:ineffassign
 
 	if parsedResult.cacheRefresh {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
