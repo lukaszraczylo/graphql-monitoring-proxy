@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 	"strings"
@@ -13,11 +14,13 @@ import (
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
+	libpack_tracing "github.com/lukaszraczylo/graphql-monitoring-proxy/tracing"
 )
 
 var (
-	cfg  *config
-	once sync.Once
+	cfg    *config
+	once   sync.Once
+	tracer *libpack_tracing.TracingSetup
 )
 
 // getDetailsFromEnv retrieves the value from the environment or returns the default.
@@ -102,7 +105,37 @@ func parseConfig() {
 	c.HasuraEventCleaner.Enable = getDetailsFromEnv("HASURA_EVENT_CLEANER", false)
 	c.HasuraEventCleaner.ClearOlderThan = getDetailsFromEnv("HASURA_EVENT_CLEANER_OLDER_THAN", 1)
 	c.HasuraEventCleaner.EventMetadataDb = getDetailsFromEnv("HASURA_EVENT_METADATA_DB", "")
+	// Tracing configuration
+	c.Tracing.Enable = getDetailsFromEnv("ENABLE_TRACE", false)
+	c.Tracing.Endpoint = getDetailsFromEnv("TRACE_ENDPOINT", "localhost:4317")
 	cfg = &c
+
+	// Initialize tracing if enabled
+	if cfg.Tracing.Enable {
+		if cfg.Tracing.Endpoint == "" {
+			cfg.Logger.Warning(&libpack_logging.LogMessage{
+				Message: "Tracing endpoint not configured, using default localhost:4317",
+			})
+			cfg.Tracing.Endpoint = "localhost:4317"
+		}
+
+		var err error
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		tracer, err = libpack_tracing.NewTracing(ctx, cfg.Tracing.Endpoint)
+		if err != nil {
+			cfg.Logger.Error(&libpack_logging.LogMessage{
+				Message: "Failed to initialize tracing",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
+		} else {
+			cfg.Logger.Info(&libpack_logging.LogMessage{
+				Message: "Tracing initialized",
+				Pairs:   map[string]interface{}{"endpoint": cfg.Tracing.Endpoint},
+			})
+		}
+	}
 
 	// Initialize cache if enabled
 	if cfg.Cache.CacheEnable || cfg.Cache.CacheRedisEnable {
@@ -133,6 +166,16 @@ func main() {
 	StartMonitoringServer()
 	time.Sleep(5 * time.Second)
 	StartHTTPProxy()
+
+	// Cleanup tracing on exit
+	if tracer != nil {
+		if err := tracer.Shutdown(context.Background()); err != nil {
+			cfg.Logger.Error(&libpack_logging.LogMessage{
+				Message: "Error shutting down tracer",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
+		}
+	}
 }
 
 // ifNotInTest checks if the program is not running in a test environment.

@@ -12,8 +12,12 @@ type config struct {
 	Logger     *libpack_logging.Logger
 	LogLevel   string
 	Monitoring *libpack_monitoring.MetricsSetup
-	Api        struct{ BannedUsersFile string }
-	Client     struct {
+	Tracing    struct {
+		Enable   bool
+		Endpoint string
+	}
+	Api    struct{ BannedUsersFile string }
+	Client struct {
 		GQLClient        *graphql.BaseClient
 		FastProxyClient  *fasthttp.Client
 		JWTUserClaimPath string

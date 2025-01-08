@@ -38,7 +38,7 @@ func prepareQueriesAndExemptions() {
 
 	// Process allowed URLs
 	for _, u := range cfg.Server.AllowURLs {
-			allowedUrls[u] = struct{}{}
+		allowedUrls[u] = struct{}{}
 	}
 }
 
@@ -178,33 +178,33 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 
 func checkSelections(c *fiber.Ctx, selections []ast.Selection) bool {
 	for _, s := range selections {
-			switch sel := s.(type) {
-			case *ast.Field:
-					fieldName := strings.ToLower(sel.Name.Value)
-					if _, exists := introspectionQueries[fieldName]; exists {
-							if len(cfg.Security.IntrospectionAllowed) > 0 {
-									_, allowed := introspectionAllowedQueries[fieldName]
-									if !allowed {
-											return true // Block if this field isn't allowed
-									}
-									// Even if this field is allowed, we need to check its nested selections
-							} else {
-									return true // Block if no allowlist exists
-							}
+		switch sel := s.(type) {
+		case *ast.Field:
+			fieldName := strings.ToLower(sel.Name.Value)
+			if _, exists := introspectionQueries[fieldName]; exists {
+				if len(cfg.Security.IntrospectionAllowed) > 0 {
+					_, allowed := introspectionAllowedQueries[fieldName]
+					if !allowed {
+						return true // Block if this field isn't allowed
 					}
-					// Always check nested selections
-					if sel.SelectionSet != nil {
-							if checkSelections(c, sel.GetSelectionSet().Selections) {
-									return true
-							}
-					}
-			case *ast.InlineFragment:
-					if sel.SelectionSet != nil {
-							if checkSelections(c, sel.GetSelectionSet().Selections) {
-									return true
-							}
-					}
+					// Even if this field is allowed, we need to check its nested selections
+				} else {
+					return true // Block if no allowlist exists
+				}
 			}
+			// Always check nested selections
+			if sel.SelectionSet != nil {
+				if checkSelections(c, sel.GetSelectionSet().Selections) {
+					return true
+				}
+			}
+		case *ast.InlineFragment:
+			if sel.SelectionSet != nil {
+				if checkSelections(c, sel.GetSelectionSet().Selections) {
+					return true
+				}
+			}
+		}
 	}
 	return false
 }
