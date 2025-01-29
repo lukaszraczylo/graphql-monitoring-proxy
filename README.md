@@ -351,3 +351,5 @@ graphql_proxy_cache_hit{microservice="graphql_proxy",pod="hasura-w-proxy-interna
 graphql_proxy_cache_hit{pod="hasura-w-proxy-internal-6b5f4b4bbb-9xwfc",microservice="graphql_proxy"} 1
 graphql_proxy_cache_miss{microservice="graphql_proxy",pod="hasura-w-proxy-internal-6b5f4b4bbb-9xwfc"} 23
 ```
+
+[EOF]
