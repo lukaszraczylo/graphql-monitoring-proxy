@@ -55,9 +55,9 @@ func Benchmark_NewLogger(b *testing.B) {
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				got := New()
+				logger := New()
 				if tt.triggers.ModLevel.Level != 0 {
-					got = got.SetMinLogLevel(tt.triggers.ModLevel.Level)
+					logger.SetMinLogLevel(tt.triggers.ModLevel.Level)
 				}
 			}
 		})

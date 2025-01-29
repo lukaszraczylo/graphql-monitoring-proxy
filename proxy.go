@@ -40,10 +40,9 @@ func createFasthttpClient(timeout int) *fasthttp.Client {
 
 // proxyTheRequest handles the request proxying logic.
 func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
-	var span trace.Span
-	ctx := context.Background()
-
 	if cfg.Tracing.Enable && tracer != nil {
+		var span trace.Span
+		spanCtx := context.Background()
 		// Extract trace information from header
 		if traceHeader := c.Get("X-Trace-Span"); traceHeader != "" {
 			spanInfo, err := libpack_tracing.ParseTraceHeader(traceHeader)
@@ -53,14 +52,14 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 					Pairs:   map[string]interface{}{"error": err.Error()},
 				})
 			} else {
-				if spanCtx, err := tracer.ExtractSpanContext(spanInfo); err == nil {
-					ctx = trace.ContextWithSpanContext(ctx, spanCtx)
+				if extractedSpanCtx, err := tracer.ExtractSpanContext(spanInfo); err == nil {
+					spanCtx = trace.ContextWithSpanContext(spanCtx, extractedSpanCtx)
 				}
 			}
 		}
 
 		// Start a new span
-		span, ctx = tracer.StartSpan(ctx, "proxy_request")
+		span, _ = tracer.StartSpan(spanCtx, "proxy_request")
 		defer span.End()
 	}
 
