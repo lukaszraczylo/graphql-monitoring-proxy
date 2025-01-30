@@ -65,10 +65,11 @@ func TestNewTracing(t *testing.T) {
 		assert.Contains(t, err.Error(), "endpoint cannot be empty")
 	})
 
-	t.Run("nil context", func(t *testing.T) {
-		_, err := NewTracing(nil, "localhost:4317")
-		assert.Error(t, err, "Expected error for nil context")
-		assert.Contains(t, err.Error(), "context cannot be nil")
+	t.Run("invalid context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel the context immediately
+		_, err := NewTracing(ctx, "localhost:4317")
+		assert.Error(t, err, "Expected error for invalid context")
 	})
 }
 

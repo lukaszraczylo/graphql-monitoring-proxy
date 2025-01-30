@@ -17,7 +17,6 @@ var sortedLabelKeysCache = struct {
 }{}
 
 func (ms *MetricsSetup) get_metrics_name(name string, labels map[string]string) string {
-	const unknownPodName = "unknown"
 	var buf bytes.Buffer
 
 	podName := getPodName()
