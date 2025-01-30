@@ -282,23 +282,15 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 		suite.Run(tt.name, func() {
 			cfg = &config{}
 			parseConfig()
-			ctx_headers := func() *fasthttp.RequestHeader {
-				h := fasthttp.RequestHeader{}
-				for k, v := range tt.suppliedQuery.headers {
-					h.Add(k, v)
-				}
-				return &h
-			}()
-
-			ctx_request := fasthttp.Request{
-				Header: *ctx_headers,
+			ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{})
+			
+			// Set headers
+			for k, v := range tt.suppliedQuery.headers {
+				ctx.Request().Header.Add(k, v)
 			}
 
-			ctx_request.AppendBody([]byte(tt.suppliedQuery.body))
-
-			ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{
-				Request: ctx_request,
-			})
+			// Set body
+			ctx.Request().AppendBody([]byte(tt.suppliedQuery.body))
 
 			// defer func() {
 			// 	cfg = &config{}
