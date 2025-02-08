@@ -12,8 +12,6 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 type TracingSetup struct {
@@ -27,23 +25,17 @@ type TraceSpanInfo struct {
 
 // NewTracing creates a new tracing setup with OTLP exporter
 func NewTracing(ctx context.Context, endpoint string) (*TracingSetup, error) {
-	if ctx == nil {
-		return nil, fmt.Errorf("context cannot be nil")
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("invalid context: %v", ctx.Err())
 	}
 	if endpoint == "" {
 		return nil, fmt.Errorf("endpoint cannot be empty")
 	}
 
-	conn, err := grpc.DialContext(ctx, endpoint,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
-		grpc.WithReturnConnectionError(),
+	exporter, err := otlptracegrpc.New(ctx,
+		otlptracegrpc.WithEndpoint(endpoint),
+		otlptracegrpc.WithInsecure(),
 	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gRPC connection to collector: %w", err)
-	}
-
-	exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create trace exporter: %w", err)
 	}
