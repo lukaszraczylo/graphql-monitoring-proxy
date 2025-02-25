@@ -2,3 +2,4 @@ graphql-proxy
 test.sh
 banned.json*
 dist/
+coverage.out
