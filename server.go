@@ -110,50 +110,73 @@ func healthCheck(c *fiber.Ctx) error {
 }
 
 // processGraphQLRequest handles the incoming GraphQL requests.
+// processGraphQLRequest handles the incoming GraphQL requests.
 func processGraphQLRequest(c *fiber.Ctx) error {
 	startTime := time.Now()
 
-	extractedUserID := "-"
-	extractedRoleName := "-"
-
-	if authorization := c.Get("Authorization"); authorization != "" && (len(cfg.Client.JWTUserClaimPath) > 0 || len(cfg.Client.JWTRoleClaimPath) > 0) {
-		extractedUserID, extractedRoleName = extractClaimsFromJWTHeader(authorization)
-	}
-
+	// Extract user information and check permissions
+	extractedUserID, extractedRoleName := extractUserInfo(c)
+	
+	// Check if user is banned
 	if checkIfUserIsBanned(c, extractedUserID) {
 		return c.Status(fiber.StatusForbidden).SendString("User is banned")
 	}
 
+	// Apply rate limiting if enabled
+	if cfg.Client.RoleRateLimit && !rateLimitedRequest(extractedUserID, extractedRoleName) {
+		return c.Status(fiber.StatusTooManyRequests).SendString("Rate limit exceeded, try again later")
+	}
+
+	// Parse the GraphQL query
+	parsedResult := parseGraphQLQuery(c)
+	if parsedResult.shouldBlock {
+		return c.Status(fiber.StatusForbidden).SendString("Request blocked")
+	}
+
+	// Handle non-GraphQL requests
+	if parsedResult.shouldIgnore {
+		return proxyTheRequest(c, parsedResult.activeEndpoint)
+	}
+
+	// Handle caching
+	wasCached, err := handleCaching(c, parsedResult, extractedUserID)
+	if err != nil {
+		return err
+	}
+
+	// Log and monitor the request
+	logAndMonitorRequest(c, extractedUserID, parsedResult.operationType, parsedResult.operationName, wasCached, time.Since(startTime), startTime)
+
+	return nil
+}
+
+// extractUserInfo extracts user ID and role from request headers
+func extractUserInfo(c *fiber.Ctx) (string, string) {
+	extractedUserID := "-"
+	extractedRoleName := "-"
+
+	// Extract from JWT if available
+	if authorization := c.Get("Authorization"); authorization != "" &&
+	   (len(cfg.Client.JWTUserClaimPath) > 0 || len(cfg.Client.JWTRoleClaimPath) > 0) {
+		extractedUserID, extractedRoleName = extractClaimsFromJWTHeader(authorization)
+	}
+
+	// Override role from header if configured
 	if cfg.Client.RoleFromHeader != "" {
 		if role := c.Get(cfg.Client.RoleFromHeader); role != "" {
 			extractedRoleName = role
 		}
 	}
 
-	if cfg.Client.RoleRateLimit {
-		cfg.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Rate limiting enabled",
-			Pairs:   map[string]interface{}{"user_id": extractedUserID, "role_name": extractedRoleName},
-		})
-		if !rateLimitedRequest(extractedUserID, extractedRoleName) {
-			return c.Status(fiber.StatusTooManyRequests).SendString("Rate limit exceeded, try again later")
-		}
-	}
+	return extractedUserID, extractedRoleName
+}
 
-	parsedResult := parseGraphQLQuery(c) // Ensure this function is defined elsewhere
-	if parsedResult.shouldBlock {
-		return c.Status(fiber.StatusForbidden).SendString("Request blocked")
-	}
-
-	if parsedResult.shouldIgnore {
-		cfg.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Request passed as-is - probably not a GraphQL",
-		})
-		return proxyTheRequest(c, parsedResult.activeEndpoint)
-	}
-
+// handleCaching manages the caching logic for GraphQL requests
+func handleCaching(c *fiber.Ctx, parsedResult *parseGraphQLQueryResult, userID string) (bool, error) {
+	// Calculate query hash for cache key
 	calculatedQueryHash := libpack_cache.CalculateHash(c)
-
+	
+	// Set cache time from header or default
 	if parsedResult.cacheTime == 0 {
 		if cacheQuery := c.Get("X-Cache-Graphql-Query"); cacheQuery != "" {
 			parsedResult.cacheTime, _ = strconv.Atoi(cacheQuery)
@@ -162,58 +185,38 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 		}
 	}
 
-	wasCached := false //nolint:ineffassign
-
+	// Handle cache refresh directive
 	if parsedResult.cacheRefresh {
-		cfg.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Cache refresh requested via query",
-			Pairs:   map[string]interface{}{"user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")},
-		})
 		libpack_cache.CacheDelete(calculatedQueryHash)
 	}
 
-	if parsedResult.cacheRequest || cfg.Cache.CacheEnable || cfg.Cache.CacheRedisEnable {
-		cfg.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Cache enabled",
-			Pairs:   map[string]interface{}{"via_query": parsedResult.cacheRequest, "via_env": cfg.Cache.CacheEnable},
-		})
-
-		if cachedResponse := libpack_cache.CacheLookup(calculatedQueryHash); cachedResponse != nil {
-			cfg.Monitoring.Increment(libpack_monitoring.MetricsCacheHit, nil)
-			cfg.Logger.Debug(&libpack_logger.LogMessage{
-				Message: "Cache hit",
-				Pairs:   map[string]interface{}{"hash": calculatedQueryHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")},
-			})
-			c.Set("X-Cache-Hit", "true")
-			wasCached = true
-			c.Set("Content-Type", "application/json")
-			return c.Send(cachedResponse)
-		}
-
-		cfg.Monitoring.Increment(libpack_monitoring.MetricsCacheMiss, nil)
-		cfg.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Cache miss",
-			Pairs:   map[string]interface{}{"hash": calculatedQueryHash, "user_id": extractedUserID, "request_uuid": c.Locals("request_uuid")},
-		})
-		if err := proxyAndCacheTheRequest(c, calculatedQueryHash, parsedResult.cacheTime, parsedResult.activeEndpoint); err != nil {
-			return err
-		}
-	} else {
+	// Check if caching is enabled
+	cacheEnabled := parsedResult.cacheRequest || cfg.Cache.CacheEnable || cfg.Cache.CacheRedisEnable
+	if !cacheEnabled {
+		// No caching, just proxy the request
 		if err := proxyTheRequest(c, parsedResult.activeEndpoint); err != nil {
-			cfg.Logger.Error(&libpack_logger.LogMessage{
-				Message: "Can't proxy the request",
-				Pairs:   map[string]interface{}{"error": err.Error()},
-			})
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
-			return c.Status(fiber.StatusInternalServerError).SendString("Can't proxy the request - try again later")
+			return false, c.Status(fiber.StatusInternalServerError).SendString("Can't proxy the request - try again later")
 		}
+		return false, nil
 	}
 
-	logAndMonitorRequest(c, extractedUserID, parsedResult.operationType, parsedResult.operationName, wasCached, time.Since(startTime), startTime)
+	// Try to get from cache
+	if cachedResponse := libpack_cache.CacheLookup(calculatedQueryHash); cachedResponse != nil {
+		cfg.Monitoring.Increment(libpack_monitoring.MetricsCacheHit, nil)
+		c.Set("X-Cache-Hit", "true")
+		c.Set("Content-Type", "application/json")
+		return true, c.Send(cachedResponse)
+	}
 
-	return nil
+	// Cache miss, proxy and cache
+	cfg.Monitoring.Increment(libpack_monitoring.MetricsCacheMiss, nil)
+	if err := proxyAndCacheTheRequest(c, calculatedQueryHash, parsedResult.cacheTime, parsedResult.activeEndpoint); err != nil {
+		return false, err
+	}
+	
+	return false, nil
 }
-
 // proxyAndCacheTheRequest proxies and caches the request if needed.
 func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int, currentEndpoint string) error {
 	if err := proxyTheRequest(c, currentEndpoint); err != nil {

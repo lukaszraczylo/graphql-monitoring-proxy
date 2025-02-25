@@ -4,8 +4,11 @@ import (
 	"context"
 	"flag"
 	"os"
+	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v2/middleware/proxy"
@@ -24,23 +27,32 @@ var (
 )
 
 // getDetailsFromEnv retrieves the value from the environment or returns the default.
+// It first checks for a prefixed environment variable (GMP_KEY), then falls back to the unprefixed version.
 func getDetailsFromEnv[T any](key string, defaultValue T) T {
-	var result any
-	envKey := "GMP_" + key
-	if _, ok := os.LookupEnv(envKey); !ok {
-		envKey = key
-	}
+	prefixedKey := "GMP_" + key
+	
 	switch v := any(defaultValue).(type) {
 	case string:
-		result = envutil.Getenv(envKey, v)
+		if val, ok := os.LookupEnv(prefixedKey); ok {
+			return any(val).(T)
+		}
+		return any(envutil.Getenv(key, v)).(T)
 	case int:
-		result = envutil.GetInt(envKey, v)
+		if val, ok := os.LookupEnv(prefixedKey); ok {
+			if intVal, err := strconv.Atoi(val); err == nil {
+				return any(intVal).(T)
+			}
+		}
+		return any(envutil.GetInt(key, v)).(T)
 	case bool:
-		result = envutil.GetBool(envKey, v)
+		if val, ok := os.LookupEnv(prefixedKey); ok {
+			boolVal := strings.ToLower(val) == "true" || val == "1"
+			return any(boolVal).(T)
+		}
+		return any(envutil.GetBool(key, v)).(T)
 	default:
-		result = defaultValue
+		return defaultValue
 	}
-	return result.(T)
 }
 
 // parseConfig loads and parses the configuration.
@@ -162,19 +174,81 @@ func parseConfig() {
 }
 
 func main() {
+	// Parse configuration
 	parseConfig()
-	StartMonitoringServer()
-	time.Sleep(5 * time.Second)
-	StartHTTPProxy()
-
-	// Cleanup tracing on exit
+	
+	// Setup graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	
+	// Create a wait group to manage goroutines
+	var wg sync.WaitGroup
+	
+	// Setup signal handling for graceful shutdown
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		cfg.Logger.Info(&libpack_logging.LogMessage{
+			Message: "Shutdown signal received, stopping services...",
+		})
+		cancel()
+	}()
+	
+	// Start monitoring server in a goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		StartMonitoringServer()
+	}()
+	
+	// Give monitoring server time to initialize
+	time.Sleep(2 * time.Second)
+	
+	// Start HTTP proxy in a goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		StartHTTPProxy()
+	}()
+	
+	// Wait for context cancellation
+	<-ctx.Done()
+	
+	// Perform cleanup
+	cfg.Logger.Info(&libpack_logging.LogMessage{
+		Message: "Shutting down services...",
+	})
+	
+	// Cleanup tracing
 	if tracer != nil {
-		if err := tracer.Shutdown(context.Background()); err != nil {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		
+		if err := tracer.Shutdown(shutdownCtx); err != nil {
 			cfg.Logger.Error(&libpack_logging.LogMessage{
 				Message: "Error shutting down tracer",
 				Pairs:   map[string]interface{}{"error": err.Error()},
 			})
 		}
+	}
+	
+	// Wait for all goroutines to finish (with timeout)
+	waitCh := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(waitCh)
+	}()
+	
+	select {
+	case <-waitCh:
+		cfg.Logger.Info(&libpack_logging.LogMessage{
+			Message: "All services shut down gracefully",
+		})
+	case <-time.After(10 * time.Second):
+		cfg.Logger.Warning(&libpack_logging.LogMessage{
+			Message: "Some services didn't shut down gracefully within timeout",
+		})
 	}
 }
 
