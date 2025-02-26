@@ -64,6 +64,12 @@ var fieldNames = map[string]string{
 	"message":   "message",
 }
 
+// osExit is a variable to allow mocking os.Exit in tests
+var osExit = os.Exit
+
+// exitMutex ensures thread-safe access to osExit
+var exitMutex sync.RWMutex
+
 // New creates a new Logger with default settings.
 func New() *Logger {
 	return &Logger{
@@ -194,7 +200,9 @@ func (l *Logger) Fatal(m *LogMessage) {
 // Critical logs a critical-level message and exits the application.
 func (l *Logger) Critical(m *LogMessage) {
 	l.Fatal(m)
-	os.Exit(1)
+	exitMutex.RLock()
+	defer exitMutex.RUnlock()
+	osExit(1)
 }
 
 // getCaller retrieves the file and line number of the caller.

@@ -21,9 +21,10 @@ import (
 )
 
 var (
-	cfg    *config
-	once   sync.Once
-	tracer *libpack_tracing.TracingSetup
+	cfg        *config
+	cfgMutex   sync.RWMutex
+	once       sync.Once
+	tracer     *libpack_tracing.TracingSetup
 )
 
 // getDetailsFromEnv retrieves the value from the environment or returns the default.
@@ -120,7 +121,10 @@ func parseConfig() {
 	// Tracing configuration
 	c.Tracing.Enable = getDetailsFromEnv("ENABLE_TRACE", false)
 	c.Tracing.Endpoint = getDetailsFromEnv("TRACE_ENDPOINT", "localhost:4317")
+	
+	cfgMutex.Lock()
 	cfg = &c
+	cfgMutex.Unlock()
 
 	// Initialize tracing if enabled
 	if cfg.Tracing.Enable {

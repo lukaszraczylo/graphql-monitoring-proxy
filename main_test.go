@@ -42,7 +42,13 @@ func (suite *Tests) SetupTest() {
 	parseConfig()
 	enableApi()
 	StartMonitoringServer()
-	cfg.Logger = libpack_logging.New().SetMinLogLevel(libpack_logging.GetLogLevel(getDetailsFromEnv("LOG_LEVEL", "info")))
+	
+	// Update logger with proper synchronization
+	logger := libpack_logging.New().SetMinLogLevel(libpack_logging.GetLogLevel(getDetailsFromEnv("LOG_LEVEL", "info")))
+	cfgMutex.Lock()
+	cfg.Logger = logger
+	cfgMutex.Unlock()
+	
 	// Setup environment variables here if needed
 	os.Setenv("GMP_TEST_STRING", "testValue")
 	os.Setenv("GMP_TEST_INT", "123")
@@ -62,7 +68,9 @@ func (suite *Tests) TearDownTest() {
 // func (suite *Tests) AfterTest(suiteName, testName string) {)
 
 func TestSuite(t *testing.T) {
+	cfgMutex.Lock()
 	cfg = &config{}
+	cfgMutex.Unlock()
 	parseConfig()
 	StartMonitoringServer()
 	suite.Run(t, new(Tests))
@@ -240,8 +248,10 @@ func (suite *Tests) TestIntrospectionEnvironmentConfig() {
 				os.Setenv(k, v)
 			}
 
-			// Reset global config
+			// Reset global config with proper synchronization
+			cfgMutex.Lock()
 			cfg = nil
+			cfgMutex.Unlock()
 			parseConfig()
 
 			// Create test request
