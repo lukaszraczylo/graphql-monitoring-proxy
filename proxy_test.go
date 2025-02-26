@@ -87,23 +87,21 @@ func (suite *Tests) Test_proxyTheRequest() {
 				cfg.Server.HostGraphQLReadOnly = tt.hostRO
 			}
 
-			ctx_headers := func() *fasthttp.RequestHeader {
-				h := fasthttp.RequestHeader{}
-				for k, v := range tt.headers {
-					h.Add(k, v)
-				}
-				return &h
-			}()
-
-			ctx_request := fasthttp.Request{
-				Header: *ctx_headers,
+			// Create a request context first
+			reqCtx := &fasthttp.RequestCtx{}
+			
+			// Set headers directly on the request
+			for k, v := range tt.headers {
+				reqCtx.Request.Header.Add(k, v)
 			}
-			ctx_request.SetBody([]byte(tt.body))
-			ctx_request.SetRequestURI(tt.path)
-			ctx_request.Header.SetMethod("POST")
-			ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{
-				Request: ctx_request,
-			})
+			
+			// Set the body and other request properties
+			reqCtx.Request.SetBody([]byte(tt.body))
+			reqCtx.Request.SetRequestURI(tt.path)
+			reqCtx.Request.Header.SetMethod("POST")
+			
+			// Create fiber context with the request context
+			ctx := suite.app.AcquireCtx(reqCtx)
 			res := parseGraphQLQuery(ctx)
 			assert.NotNil(ctx, "Fiber context is nil", tt.name)
 			err := proxyTheRequest(ctx, res.activeEndpoint)
