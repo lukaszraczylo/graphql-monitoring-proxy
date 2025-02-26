@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 )
+
 func TestStartSpanWithAttributes(t *testing.T) {
 	// Create a minimal tracing setup without actual connection
 	ts := &TracingSetup{
