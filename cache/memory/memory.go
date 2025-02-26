@@ -17,8 +17,8 @@ const CompressionThreshold = 1024 // 1KB
 const MaxCacheSize = 10000
 
 type CacheEntry struct {
-	ExpiresAt time.Time
-	Value     []byte
+	ExpiresAt  time.Time
+	Value      []byte
 	Compressed bool
 }
 
@@ -59,7 +59,7 @@ func (c *Cache) cleanupRoutine(globalTTL time.Duration) {
 
 	for range ticker.C {
 		c.CleanExpiredEntries()
-		
+
 		// Trigger GC if we have a lot of entries
 		if atomic.LoadInt64(&c.entryCount) > MaxCacheSize/2 {
 			runtime.GC()
@@ -74,7 +74,7 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 	}
 
 	expiresAt := time.Now().Add(ttl)
-	
+
 	// Only compress if the value is larger than the threshold
 	var entry CacheEntry
 	if len(value) > CompressionThreshold {
@@ -100,13 +100,13 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 			Compressed: false,
 		}
 	}
-	
+
 	// Check if this is a new entry
 	_, exists := c.entries.Load(key)
 	if !exists {
 		atomic.AddInt64(&c.entryCount, 1)
 	}
-	
+
 	c.entries.Store(key, entry)
 }
 
@@ -130,7 +130,7 @@ func (c *Cache) Get(key string) ([]byte, bool) {
 		}
 		return value, true
 	}
-	
+
 	return cacheEntry.Value, true
 }
 
@@ -156,7 +156,7 @@ func (c *Cache) compress(data []byte) ([]byte, error) {
 	var buf bytes.Buffer
 	w := c.compressPool.Get().(*gzip.Writer)
 	defer c.compressPool.Put(w)
-	
+
 	w.Reset(&buf)
 	if _, err := w.Write(data); err != nil {
 		return nil, err
@@ -170,7 +170,7 @@ func (c *Cache) compress(data []byte) ([]byte, error) {
 func (c *Cache) decompress(data []byte) ([]byte, error) {
 	r, ok := c.decompressPool.Get().(*gzip.Reader)
 	defer c.decompressPool.Put(r)
-	
+
 	if !ok || r == nil {
 		var err error
 		r, err = gzip.NewReader(bytes.NewReader(data))
@@ -182,7 +182,7 @@ func (c *Cache) decompress(data []byte) ([]byte, error) {
 			return nil, err
 		}
 	}
-	
+
 	defer r.Close()
 	return io.ReadAll(r)
 }
@@ -203,10 +203,10 @@ func (c *Cache) CleanExpiredEntries() {
 // evictOldest removes the oldest n entries from the cache
 func (c *Cache) evictOldest(n int) {
 	type keyExpiry struct {
-		key      string
+		key       string
 		expiresAt time.Time
 	}
-	
+
 	// Collect all entries with their expiry times
 	entries := make([]keyExpiry, 0, n*2)
 	c.entries.Range(func(k, v interface{}) bool {
@@ -215,7 +215,7 @@ func (c *Cache) evictOldest(n int) {
 		entries = append(entries, keyExpiry{key, entry.ExpiresAt})
 		return len(entries) < cap(entries)
 	})
-	
+
 	// Sort by expiry time (oldest first)
 	// Using a simple selection sort since we only need to find the n oldest
 	for i := 0; i < n && i < len(entries); i++ {
@@ -229,7 +229,7 @@ func (c *Cache) evictOldest(n int) {
 		if oldest != i {
 			entries[i], entries[oldest] = entries[oldest], entries[i]
 		}
-		
+
 		// Delete this entry
 		if _, exists := c.entries.LoadAndDelete(entries[i].key); exists {
 			atomic.AddInt64(&c.entryCount, -1)

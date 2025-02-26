@@ -43,7 +43,7 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 	// Setup tracing if enabled
 	var span trace.Span
 	ctx := setupTracing(c)
-	
+
 	if cfg.Tracing.Enable && tracer != nil {
 		span, ctx = tracer.StartSpan(ctx, "proxy_request")
 		defer span.End()
@@ -102,11 +102,11 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 // setupTracing extracts and sets up tracing context from request headers
 func setupTracing(c *fiber.Ctx) context.Context {
 	ctx := context.Background()
-	
+
 	if !cfg.Tracing.Enable || tracer == nil {
 		return ctx
 	}
-	
+
 	// Extract trace information from header
 	if traceHeader := c.Get("X-Trace-Span"); traceHeader != "" {
 		spanInfo, err := libpack_tracing.ParseTraceHeader(traceHeader)
@@ -119,7 +119,7 @@ func setupTracing(c *fiber.Ctx) context.Context {
 			ctx = trace.ContextWithSpanContext(ctx, spanCtx)
 		}
 	}
-	
+
 	return ctx
 }
 
@@ -158,7 +158,7 @@ func handleGzippedResponse(c *fiber.Ctx) error {
 	if !bytes.EqualFold(c.Response().Header.Peek("Content-Encoding"), []byte("gzip")) {
 		return nil
 	}
-	
+
 	// Create a pooled gzip reader
 	reader, err := gzip.NewReader(bytes.NewReader(c.Response().Body()))
 	if err != nil {

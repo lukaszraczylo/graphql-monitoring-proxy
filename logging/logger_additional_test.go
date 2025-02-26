@@ -59,33 +59,33 @@ func (suite *LoggerAdditionalTestSuite) TestSetFieldName() {
 	for k, v := range fieldNames {
 		originalFieldNames[k] = v
 	}
-	
+
 	// Restore original field names after test
 	defer func() {
 		for k, v := range originalFieldNames {
 			fieldNames[k] = v
 		}
 	}()
-	
+
 	// Test with custom field names
 	customTimestampField := "time"
 	customLevelField := "severity"
 	customMessageField := "text"
-	
+
 	suite.logger.SetFieldName("timestamp", customTimestampField)
 	suite.logger.SetFieldName("level", customLevelField)
 	suite.logger.SetFieldName("message", customMessageField)
-	
+
 	// Verify field names were changed
 	suite.assert.Equal(customTimestampField, fieldNames["timestamp"])
 	suite.assert.Equal(customLevelField, fieldNames["level"])
 	suite.assert.Equal(customMessageField, fieldNames["message"])
-	
+
 	// Test logging with custom field names
 	suite.output.Reset()
 	suite.logger.Info(&LogMessage{Message: "test custom fields"})
 	output := suite.output.String()
-	
+
 	// Check if custom field names are used in the output
 	suite.assert.Contains(output, customTimestampField)
 	suite.assert.Contains(output, customLevelField)
@@ -99,20 +99,20 @@ func (suite *LoggerAdditionalTestSuite) TestSetFieldName() {
 func (suite *LoggerAdditionalTestSuite) TestSetShowCaller() {
 	// Make sure caller info is disabled
 	suite.logger.SetShowCaller(false)
-	
+
 	// Test with caller info disabled
 	suite.output.Reset()
 	suite.logger.Info(&LogMessage{Message: "test without cal__ler"})
 	output := suite.output.String()
 	suite.assert.NotContains(output, "caller")
-	
+
 	// Test with caller info enabled
 	suite.output.Reset()
 	suite.logger.SetShowCaller(true)
 	suite.logger.Info(&LogMessage{Message: "test with caller"})
 	output = suite.output.String()
 	suite.assert.Contains(output, "caller")
-	
+
 	// Verify the caller info format (file:line)
 	suite.assert.Regexp(`"caller":"[^:]+:\d+"`, output)
 }
@@ -152,26 +152,26 @@ func (suite *LoggerAdditionalTestSuite) TestCritical() {
 	// Safely intercept os.Exit call with proper synchronization
 	exitMutex.Lock()
 	originalOsExit := osExit
-	
+
 	var exitCode int
 	osExit = func(code int) {
 		exitCode = code
 		// Don't actually exit
 	}
 	exitMutex.Unlock()
-	
+
 	// Ensure we restore the original osExit function
 	defer func() {
 		exitMutex.Lock()
 		osExit = originalOsExit
 		exitMutex.Unlock()
 	}()
-	
+
 	suite.output.Reset()
 	msg := &LogMessage{Message: "test critical"}
 	suite.logger.Critical(msg)
 	output := suite.output.String()
-	
+
 	suite.assert.Contains(output, "fatal")
 	suite.assert.Contains(output, "test critical")
 	suite.assert.Equal(1, exitCode)

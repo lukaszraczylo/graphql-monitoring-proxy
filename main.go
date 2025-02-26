@@ -21,17 +21,17 @@ import (
 )
 
 var (
-	cfg        *config
-	cfgMutex   sync.RWMutex
-	once       sync.Once
-	tracer     *libpack_tracing.TracingSetup
+	cfg      *config
+	cfgMutex sync.RWMutex
+	once     sync.Once
+	tracer   *libpack_tracing.TracingSetup
 )
 
 // getDetailsFromEnv retrieves the value from the environment or returns the default.
 // It first checks for a prefixed environment variable (GMP_KEY), then falls back to the unprefixed version.
 func getDetailsFromEnv[T any](key string, defaultValue T) T {
 	prefixedKey := "GMP_" + key
-	
+
 	switch v := any(defaultValue).(type) {
 	case string:
 		if val, ok := os.LookupEnv(prefixedKey); ok {
@@ -121,7 +121,7 @@ func parseConfig() {
 	// Tracing configuration
 	c.Tracing.Enable = getDetailsFromEnv("ENABLE_TRACE", false)
 	c.Tracing.Endpoint = getDetailsFromEnv("TRACE_ENDPOINT", "localhost:4317")
-	
+
 	cfgMutex.Lock()
 	cfg = &c
 	cfgMutex.Unlock()
@@ -180,14 +180,14 @@ func parseConfig() {
 func main() {
 	// Parse configuration
 	parseConfig()
-	
+
 	// Setup graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	// Create a wait group to manage goroutines
 	var wg sync.WaitGroup
-	
+
 	// Setup signal handling for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
@@ -198,37 +198,37 @@ func main() {
 		})
 		cancel()
 	}()
-	
+
 	// Start monitoring server in a goroutine
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		StartMonitoringServer()
 	}()
-	
+
 	// Give monitoring server time to initialize
 	time.Sleep(2 * time.Second)
-	
+
 	// Start HTTP proxy in a goroutine
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		StartHTTPProxy()
 	}()
-	
+
 	// Wait for context cancellation
 	<-ctx.Done()
-	
+
 	// Perform cleanup
 	cfg.Logger.Info(&libpack_logging.LogMessage{
 		Message: "Shutting down services...",
 	})
-	
+
 	// Cleanup tracing
 	if tracer != nil {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
-		
+
 		if err := tracer.Shutdown(shutdownCtx); err != nil {
 			cfg.Logger.Error(&libpack_logging.LogMessage{
 				Message: "Error shutting down tracer",
@@ -236,14 +236,14 @@ func main() {
 			})
 		}
 	}
-	
+
 	// Wait for all goroutines to finish (with timeout)
 	waitCh := make(chan struct{})
 	go func() {
 		wg.Wait()
 		close(waitCh)
 	}()
-	
+
 	select {
 	case <-waitCh:
 		cfg.Logger.Info(&libpack_logging.LogMessage{

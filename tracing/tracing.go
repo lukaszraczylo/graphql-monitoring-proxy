@@ -68,8 +68,8 @@ func NewTracing(ctx context.Context, endpoint string) (*TracingSetup, error) {
 			semconv.DeploymentEnvironment("production"),
 			attribute.String("application.type", "proxy"),
 		),
-		resource.WithHost(),      // Add host information
-		resource.WithOSType(),    // Add OS information
+		resource.WithHost(),       // Add host information
+		resource.WithOSType(),     // Add OS information
 		resource.WithProcessPID(), // Add process information
 	)
 	if err != nil {
@@ -87,7 +87,7 @@ func NewTracing(ctx context.Context, endpoint string) (*TracingSetup, error) {
 		sdktrace.WithResource(res),
 		sdktrace.WithSampler(sdktrace.TraceIDRatioBased(0.1)), // Sample 10% of traces
 	)
-	
+
 	// Set the global tracer provider and propagator
 	otel.SetTracerProvider(tracerProvider)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
@@ -138,7 +138,7 @@ func (ts *TracingSetup) StartSpan(ctx context.Context, name string) (trace.Span,
 		// Return a no-op span if tracing is not configured
 		return trace.SpanFromContext(ctx), ctx
 	}
-	
+
 	// Add common attributes to all spans
 	opts := []trace.SpanStartOption{
 		trace.WithAttributes(
@@ -146,7 +146,7 @@ func (ts *TracingSetup) StartSpan(ctx context.Context, name string) (trace.Span,
 			semconv.ServiceVersion("1.0"),
 		),
 	}
-	
+
 	ctx, span := ts.tracer.Start(ctx, name, opts...)
 	return span, ctx
 }
@@ -156,18 +156,18 @@ func (ts *TracingSetup) StartSpanWithAttributes(ctx context.Context, name string
 	if ts == nil || ts.tracer == nil {
 		return trace.SpanFromContext(ctx), ctx
 	}
-	
+
 	// Convert string attributes to KeyValue pairs
 	attributes := make([]attribute.KeyValue, 0, len(attrs)+2)
 	attributes = append(attributes,
 		semconv.ServiceName("graphql-monitoring-proxy"),
 		semconv.ServiceVersion("1.0"),
 	)
-	
+
 	for k, v := range attrs {
 		attributes = append(attributes, attribute.String(k, v))
 	}
-	
+
 	ctx, span := ts.tracer.Start(ctx, name, trace.WithAttributes(attributes...))
 	return span, ctx
 }

@@ -42,13 +42,13 @@ func (suite *Tests) SetupTest() {
 	parseConfig()
 	enableApi()
 	StartMonitoringServer()
-	
+
 	// Update logger with proper synchronization
 	logger := libpack_logging.New().SetMinLogLevel(libpack_logging.GetLogLevel(getDetailsFromEnv("LOG_LEVEL", "info")))
 	cfgMutex.Lock()
 	cfg.Logger = logger
 	cfgMutex.Unlock()
-	
+
 	// Setup environment variables here if needed
 	os.Setenv("GMP_TEST_STRING", "testValue")
 	os.Setenv("GMP_TEST_INT", "123")

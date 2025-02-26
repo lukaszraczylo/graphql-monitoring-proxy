@@ -116,7 +116,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 
 	// Extract user information and check permissions
 	extractedUserID, extractedRoleName := extractUserInfo(c)
-	
+
 	// Check if user is banned
 	if checkIfUserIsBanned(c, extractedUserID) {
 		return c.Status(fiber.StatusForbidden).SendString("User is banned")
@@ -157,7 +157,7 @@ func extractUserInfo(c *fiber.Ctx) (string, string) {
 
 	// Extract from JWT if available
 	if authorization := c.Get("Authorization"); authorization != "" &&
-	   (len(cfg.Client.JWTUserClaimPath) > 0 || len(cfg.Client.JWTRoleClaimPath) > 0) {
+		(len(cfg.Client.JWTUserClaimPath) > 0 || len(cfg.Client.JWTRoleClaimPath) > 0) {
 		extractedUserID, extractedRoleName = extractClaimsFromJWTHeader(authorization)
 	}
 
@@ -175,7 +175,7 @@ func extractUserInfo(c *fiber.Ctx) (string, string) {
 func handleCaching(c *fiber.Ctx, parsedResult *parseGraphQLQueryResult, userID string) (bool, error) {
 	// Calculate query hash for cache key
 	calculatedQueryHash := libpack_cache.CalculateHash(c)
-	
+
 	// Set cache time from header or default
 	if parsedResult.cacheTime == 0 {
 		if cacheQuery := c.Get("X-Cache-Graphql-Query"); cacheQuery != "" {
@@ -214,9 +214,10 @@ func handleCaching(c *fiber.Ctx, parsedResult *parseGraphQLQueryResult, userID s
 	if err := proxyAndCacheTheRequest(c, calculatedQueryHash, parsedResult.cacheTime, parsedResult.activeEndpoint); err != nil {
 		return false, err
 	}
-	
+
 	return false, nil
 }
+
 // proxyAndCacheTheRequest proxies and caches the request if needed.
 func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int, currentEndpoint string) error {
 	if err := proxyTheRequest(c, currentEndpoint); err != nil {

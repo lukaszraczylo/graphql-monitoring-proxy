@@ -15,11 +15,11 @@ func (suite *Tests) Test_loadRatelimitConfig() {
 	cfg = &config{}
 	parseConfig()
 	cfg.Logger = libpack_logger.New()
-	
+
 	// Create a temporary test ratelimit.json file
 	tempDir := os.TempDir()
 	testConfigPath := filepath.Join(tempDir, "test_ratelimit.json")
-	
+
 	testConfig := struct {
 		RateLimit map[string]RateLimitConfig `json:"ratelimit"`
 	}{
@@ -34,28 +34,28 @@ func (suite *Tests) Test_loadRatelimitConfig() {
 			},
 		},
 	}
-	
+
 	configData, err := json.Marshal(testConfig)
 	assert.NoError(err)
-	
+
 	err = os.WriteFile(testConfigPath, configData, 0644)
 	assert.NoError(err)
 	defer os.Remove(testConfigPath)
-	
+
 	// Test loading config from custom path
 	suite.Run("load from custom path", func() {
 		// Clear existing rate limits
 		rateLimitMu.Lock()
 		rateLimits = make(map[string]RateLimitConfig)
 		rateLimitMu.Unlock()
-		
+
 		err := loadConfigFromPath(testConfigPath)
 		assert.NoError(err)
-		
+
 		// Verify rate limits were loaded
 		rateLimitMu.RLock()
 		defer rateLimitMu.RUnlock()
-		
+
 		assert.Equal(2, len(rateLimits))
 		assert.Contains(rateLimits, "admin")
 		assert.Contains(rateLimits, "user")
@@ -64,24 +64,24 @@ func (suite *Tests) Test_loadRatelimitConfig() {
 		assert.NotNil(rateLimits["admin"].RateCounterTicker)
 		assert.NotNil(rateLimits["user"].RateCounterTicker)
 	})
-	
+
 	// Test loading config from non-existent path
 	suite.Run("load from non-existent path", func() {
 		err := loadConfigFromPath("/non/existent/path.json")
 		assert.Error(err)
 	})
-	
+
 	// Test loading config with invalid JSON
 	suite.Run("load invalid JSON", func() {
 		invalidPath := filepath.Join(tempDir, "invalid_ratelimit.json")
 		err := os.WriteFile(invalidPath, []byte("{invalid json}"), 0644)
 		assert.NoError(err)
 		defer os.Remove(invalidPath)
-		
+
 		err = loadConfigFromPath(invalidPath)
 		assert.Error(err)
 	})
-	
+
 	// Test with a temporary ratelimit.json file in the current directory
 	suite.Run("load from current directory", func() {
 		// Create a temporary ratelimit.json in current directory
@@ -89,23 +89,23 @@ func (suite *Tests) Test_loadRatelimitConfig() {
 		err := os.WriteFile(currentDirPath, configData, 0644)
 		assert.NoError(err)
 		defer os.Remove(currentDirPath)
-		
+
 		// Clear existing rate limits
 		rateLimitMu.Lock()
 		rateLimits = make(map[string]RateLimitConfig)
 		rateLimitMu.Unlock()
-		
+
 		// This should find the file in the current directory
 		err = loadRatelimitConfig()
 		assert.NoError(err)
-		
+
 		// Verify rate limits were loaded
 		rateLimitMu.RLock()
 		defer rateLimitMu.RUnlock()
-		
+
 		assert.Equal(2, len(rateLimits))
 	})
-	
+
 	// Test with all files missing
 	suite.Run("all files missing", func() {
 		// Save the original file if it exists
@@ -121,12 +121,12 @@ func (suite *Tests) Test_loadRatelimitConfig() {
 				os.WriteFile(currentDirPath, originalData, 0644)
 			}
 		}()
-		
+
 		// Clear existing rate limits
 		rateLimitMu.Lock()
 		rateLimits = make(map[string]RateLimitConfig)
 		rateLimitMu.Unlock()
-		
+
 		// This should fail as all files are missing
 		err = loadRatelimitConfig()
 		assert.Error(err)
@@ -139,11 +139,11 @@ func (suite *Tests) Test_rateLimitedRequest() {
 	cfg = &config{}
 	parseConfig()
 	cfg.Logger = libpack_logger.New()
-	
+
 	// Create test rate limits
 	rateLimitMu.Lock()
 	rateLimits = make(map[string]RateLimitConfig)
-	
+
 	// Admin role with high limit
 	adminCounter := goratecounter.NewRateCounter().WithConfig(goratecounter.RateCounterConfig{
 		Interval: 1 * time.Second,
@@ -153,7 +153,7 @@ func (suite *Tests) Test_rateLimitedRequest() {
 		Interval:          1 * time.Second,
 		Req:               100,
 	}
-	
+
 	// User role with low limit
 	userCounter := goratecounter.NewRateCounter().WithConfig(goratecounter.RateCounterConfig{
 		Interval: 1 * time.Second,
@@ -164,29 +164,29 @@ func (suite *Tests) Test_rateLimitedRequest() {
 		Req:               2, // Set very low for testing
 	}
 	rateLimitMu.Unlock()
-	
+
 	// Test non-existent role
 	suite.Run("non-existent role", func() {
 		allowed := rateLimitedRequest("test-user-1", "non-existent-role")
 		assert.True(allowed, "Unknown roles should return true")
 	})
-	
+
 	// Test admin role (high limit)
 	suite.Run("admin role within limit", func() {
 		allowed := rateLimitedRequest("admin-user", "admin")
 		assert.True(allowed, "Admin should be within rate limit")
 	})
-	
+
 	// Test user role (low limit)
 	suite.Run("user role within limit", func() {
 		// First request should be allowed
 		allowed := rateLimitedRequest("regular-user", "user")
 		assert.True(allowed, "First request should be within rate limit")
-		
+
 		// Second request should be allowed
 		allowed = rateLimitedRequest("regular-user", "user")
 		assert.True(allowed, "Second request should be within rate limit")
-		
+
 		// Third request should exceed limit
 		allowed = rateLimitedRequest("regular-user", "user")
 		assert.False(allowed, "Third request should exceed rate limit")

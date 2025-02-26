@@ -178,20 +178,20 @@ func checkSelections(c *fiber.Ctx, selections []ast.Selection) bool {
 	if len(selections) == 0 {
 		return false
 	}
-	
+
 	// Fast path: if no introspection blocking is configured, return immediately
 	if !cfg.Security.BlockIntrospection {
 		return false
 	}
-	
+
 	// Fast path: if there are no allowed introspection queries, check only top level
 	hasAllowList := len(cfg.Security.IntrospectionAllowed) > 0
-	
+
 	for _, s := range selections {
 		switch sel := s.(type) {
 		case *ast.Field:
 			fieldName := strings.ToLower(sel.Name.Value)
-			
+
 			// Check if this is an introspection query
 			if _, exists := introspectionQueries[fieldName]; exists {
 				if hasAllowList {
@@ -203,14 +203,14 @@ func checkSelections(c *fiber.Ctx, selections []ast.Selection) bool {
 					return true // Block if no allowlist exists
 				}
 			}
-			
+
 			// Check nested selections if present
 			if sel.SelectionSet != nil && len(sel.GetSelectionSet().Selections) > 0 {
 				if checkSelections(c, sel.GetSelectionSet().Selections) {
 					return true
 				}
 			}
-			
+
 		case *ast.InlineFragment:
 			// Check nested selections in fragments
 			if sel.SelectionSet != nil && len(sel.GetSelectionSet().Selections) > 0 {
@@ -220,18 +220,18 @@ func checkSelections(c *fiber.Ctx, selections []ast.Selection) bool {
 			}
 		}
 	}
-	
+
 	return false
 }
 
 func checkIfContainsIntrospection(c *fiber.Ctx, query string) bool {
 	blocked := false
-	
+
 	// Enable introspection blocking for tests
 	if !cfg.Security.BlockIntrospection {
 		cfg.Security.BlockIntrospection = true
 	}
-	
+
 	// Try parsing as a complete query first
 	p, err := parser.Parse(parser.ParseParams{Source: query})
 	if err == nil {

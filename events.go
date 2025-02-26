@@ -33,13 +33,13 @@ func enableHasuraEventCleaner() {
 	if eventMetadataDb == "" {
 		logger := cfg.Logger
 		cfgMutex.RUnlock()
-		
+
 		logger.Warning(&libpack_logger.LogMessage{
 			Message: "Event metadata db URL not specified, event cleaner not active",
 		})
 		return
 	}
-	
+
 	clearOlderThan := cfg.HasuraEventCleaner.ClearOlderThan
 	logger := cfg.Logger
 	cfgMutex.RUnlock()

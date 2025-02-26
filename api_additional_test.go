@@ -39,7 +39,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		bannedUsersIDsMutex.Lock()
 		bannedUsersIDs = make(map[string]string)
 		bannedUsersIDsMutex.Unlock()
-		
+
 		// Execute reloader once
 		go testPeriodicallyReloadBannedUsers()
 		<-done
@@ -52,7 +52,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		bannedUsersIDsMutex.RLock()
 		mapSize := len(bannedUsersIDs)
 		bannedUsersIDsMutex.RUnlock()
-		
+
 		// Verify map is still empty
 		assert.Equal(0, mapSize)
 	})
@@ -83,7 +83,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		value1 := bannedUsersIDs["test-user-reload-1"]
 		value2 := bannedUsersIDs["test-user-reload-2"]
 		bannedUsersIDsMutex.RUnlock()
-		
+
 		// Verify banned users map was loaded
 		assert.Equal(2, mapSize)
 		assert.Equal("reason reload 1", value1)
@@ -114,7 +114,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		mapSize := len(bannedUsersIDs)
 		initialValue := bannedUsersIDs["test-user-initial"]
 		bannedUsersIDsMutex.RUnlock()
-		
+
 		// Verify initial data was loaded
 		assert.Equal(1, mapSize)
 		assert.Equal("initial reason", initialValue)
@@ -139,7 +139,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		value2 := bannedUsersIDs["test-user-updated-2"]
 		_, exists := bannedUsersIDs["test-user-initial"]
 		bannedUsersIDsMutex.RUnlock()
-		
+
 		// Verify updated data was loaded
 		assert.Equal(2, mapSize)
 		assert.Equal("updated reason 1", value1)
