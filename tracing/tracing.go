@@ -15,7 +15,6 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 type TracingSetup struct {
@@ -36,25 +35,24 @@ func NewTracing(ctx context.Context, endpoint string) (*TracingSetup, error) {
 		return nil, fmt.Errorf("endpoint cannot be empty")
 	}
 
-	// Create a timeout context for connection establishment
-	dialCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	// Connect to the collector with improved options
-	conn, err := grpc.DialContext(dialCtx, endpoint,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
-		grpc.WithReturnConnectionError(),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(16*1024*1024)), // 16MB max message size
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gRPC connection to collector: %w", err)
+	// Validate endpoint format
+	// A simple validation to check if the endpoint has a reasonable format
+	// We're looking for hostname:port where port is a valid port number (0-65535)
+	var host string
+	var port int
+	if n, err := fmt.Sscanf(endpoint, "%s:%d", &host, &port); err != nil || n != 2 {
+		return nil, fmt.Errorf("invalid endpoint format: must be 'hostname:port'")
+	}
+	if port < 0 || port > 65535 {
+		return nil, fmt.Errorf("invalid port number: must be between 0 and 65535")
 	}
 
-	// Create the exporter
+	// Create the exporter directly with the endpoint
 	exporter, err := otlptracegrpc.New(ctx,
-		otlptracegrpc.WithGRPCConn(conn),
+		otlptracegrpc.WithEndpoint(endpoint),
+		otlptracegrpc.WithInsecure(),
 		otlptracegrpc.WithTimeout(5*time.Second),
+		otlptracegrpc.WithDialOption(grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(16*1024*1024))), // 16MB max message size
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create trace exporter: %w", err)

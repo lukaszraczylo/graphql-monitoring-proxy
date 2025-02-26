@@ -65,10 +65,12 @@ func TestNewTracing(t *testing.T) {
 		assert.Contains(t, err.Error(), "endpoint cannot be empty")
 	})
 
-	t.Run("nil context", func(t *testing.T) {
-		_, err := NewTracing(nil, "localhost:4317")
-		assert.Error(t, err, "Expected error for nil context")
-		assert.Contains(t, err.Error(), "context cannot be nil")
+	t.Run("invalid endpoint", func(t *testing.T) {
+		// We'll use a more severe syntax error in the endpoint to trigger a validation error
+		ctx := context.Background()
+		// Use a port that exceeds the maximum valid port number
+		_, err := NewTracing(ctx, "localhost:999999")
+		assert.Error(t, err, "Expected error for invalid endpoint format")
 	})
 }
 

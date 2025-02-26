@@ -42,10 +42,11 @@ func createFasthttpClient(timeout int) *fasthttp.Client {
 func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 	// Setup tracing if enabled
 	var span trace.Span
-	ctx := setupTracing(c)
+	var ctx context.Context
 
 	if cfg.Tracing.Enable && tracer != nil {
-		span, ctx = tracer.StartSpan(ctx, "proxy_request")
+		ctx = setupTracing(c)
+		span, _ = tracer.StartSpan(ctx, "proxy_request")
 		defer span.End()
 	}
 
