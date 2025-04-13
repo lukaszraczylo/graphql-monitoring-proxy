@@ -284,15 +284,15 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 			parseConfig()
 			// Create a context first, then modify its request directly
 			reqCtx := &fasthttp.RequestCtx{}
-			
+
 			// Set headers directly on the request
 			for k, v := range tt.suppliedQuery.headers {
 				reqCtx.Request.Header.Add(k, v)
 			}
-			
+
 			// Set the body
 			reqCtx.Request.AppendBody([]byte(tt.suppliedQuery.body))
-			
+
 			// Now create the fiber context with the request context
 			ctx := suite.app.AcquireCtx(reqCtx)
 

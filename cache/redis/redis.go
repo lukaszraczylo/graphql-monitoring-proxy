@@ -3,9 +3,8 @@ package libpack_cache_redis
 import (
 	"context"
 	"strings"
-	"time"
-
 	"sync"
+	"time"
 
 	redis "github.com/redis/go-redis/v9"
 )
@@ -93,4 +92,30 @@ func (c *RedisConfig) CountQueriesWithPattern(pattern string) int {
 		return 0
 	}
 	return len(keys)
+}
+
+// GetMemoryUsage returns an approximation of memory usage for Redis
+// For Redis, this is not as accurate as the memory cache implementation
+// as actual memory is managed by Redis server
+func (c *RedisConfig) GetMemoryUsage() int64 {
+	// We could attempt to get memory usage from Redis info
+	// but for now, we'll just return 0 since Redis manages its own memory
+	// and this information would require parsing the INFO command output
+	_, err := c.client.Info(c.ctx, "memory").Result()
+	if err != nil {
+		return 0
+	}
+
+	// Just return 0 as a placeholder since Redis manages its own memory
+	// In a production environment, you could parse the Redis INFO command result
+	// to extract actual "used_memory" value
+	return 0
+}
+
+// GetMaxMemorySize returns the configured max memory for Redis
+// In Redis, this would be the 'maxmemory' configuration value
+func (c *RedisConfig) GetMaxMemorySize() int64 {
+	// Return a default value as Redis manages its own memory limits
+	// In a production environment, you could get this from Redis config
+	return 0
 }

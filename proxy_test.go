@@ -9,7 +9,6 @@ import (
 )
 
 func (suite *Tests) Test_proxyTheRequest() {
-
 	supplied_headers := map[string]string{
 		"X-Forwarded-For": "127.0.0.1",
 		"Content-Type":    "application/json",
@@ -78,7 +77,6 @@ func (suite *Tests) Test_proxyTheRequest() {
 
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
-
 			cfg = &config{}
 			parseConfig()
 			cfg.Server.HostGraphQL = tt.host
@@ -89,17 +87,17 @@ func (suite *Tests) Test_proxyTheRequest() {
 
 			// Create a request context first
 			reqCtx := &fasthttp.RequestCtx{}
-			
+
 			// Set headers directly on the request
 			for k, v := range tt.headers {
 				reqCtx.Request.Header.Add(k, v)
 			}
-			
+
 			// Set the body and other request properties
 			reqCtx.Request.SetBody([]byte(tt.body))
 			reqCtx.Request.SetRequestURI(tt.path)
 			reqCtx.Request.Header.SetMethod("POST")
-			
+
 			// Create fiber context with the request context
 			ctx := suite.app.AcquireCtx(reqCtx)
 			res := parseGraphQLQuery(ctx)
@@ -116,7 +114,6 @@ func (suite *Tests) Test_proxyTheRequest() {
 }
 
 func (suite *Tests) Test_proxyTheRequestWithPayloads() {
-
 	tests := []struct {
 		name    string
 		payload string
@@ -161,7 +158,7 @@ func (suite *Tests) Test_proxyTheRequestWithTimeouts() {
 	originalTimeout := cfg.Client.ClientTimeout
 	defer func() {
 		cfg.Client.ClientTimeout = originalTimeout
-		cfg.Client.FastProxyClient = createFasthttpClient(cfg.Client.ClientTimeout)
+		cfg.Client.FastProxyClient = createFasthttpClient(cfg)
 	}()
 
 	// Create a mock server
@@ -206,7 +203,7 @@ func (suite *Tests) Test_proxyTheRequestWithTimeouts() {
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
 			cfg.Client.ClientTimeout = tt.clientTimeout
-			cfg.Client.FastProxyClient = createFasthttpClient(cfg.Client.ClientTimeout)
+			cfg.Client.FastProxyClient = createFasthttpClient(cfg)
 			cfg.Server.HostGraphQL = mockServer.URL
 
 			req := &fasthttp.Request{}
