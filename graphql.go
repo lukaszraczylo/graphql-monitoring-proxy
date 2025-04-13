@@ -163,7 +163,10 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 
 	// Get a result object from the pool and initialize it
 	res := resultPool.Get().(*parseGraphQLQueryResult)
-	*res = parseGraphQLQueryResult{shouldIgnore: true, activeEndpoint: cfg.Server.HostGraphQL}
+	*res = parseGraphQLQueryResult{shouldIgnore: true}
+
+	// Default to using the write endpoint
+	res.activeEndpoint = cfg.Server.HostGraphQL
 
 	// Get a map from the pool for JSON unmarshaling
 	m := queryPool.Get().(map[string]interface{})
@@ -224,19 +227,54 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 	res.shouldIgnore = false
 	res.operationName = "undefined"
 
-	// Process each definition in the query
+	// First scan for mutations - they take priority
+	hasMutation := false
+	var mutationName string
+
 	for _, d := range p.Definitions {
 		if oper, ok := d.(*ast.OperationDefinition); ok {
-			// Extract operation type and name
-			if res.operationType == "" {
-				res.operationType = strings.ToLower(oper.Operation)
+			operationType := strings.ToLower(oper.Operation)
+			if operationType == "mutation" {
+				hasMutation = true
+				res.operationType = "mutation"
 				if oper.Name != nil {
+					mutationName = oper.Name.Value
+					// Use mutation name immediately
+					res.operationName = mutationName
+				}
+				break // Found a mutation, no need to continue first pass
+			}
+		}
+	}
+
+	// Now process all definitions for other information
+	for _, d := range p.Definitions {
+		if oper, ok := d.(*ast.OperationDefinition); ok {
+			operationType := strings.ToLower(oper.Operation)
+
+			// If we already found a mutation, only update name if needed
+			if hasMutation {
+				// We already set operation type to mutation in first pass
+				// Only set name if we didn't find a mutation name earlier
+				if res.operationName == "undefined" && oper.Name != nil {
+					res.operationName = oper.Name.Value
+				}
+			} else {
+				// No mutation found, use the normal logic
+				if res.operationType == "" {
+					res.operationType = operationType
+				}
+
+				if res.operationName == "undefined" && oper.Name != nil {
 					res.operationName = oper.Name.Value
 				}
 			}
 
-			// Handle read-only endpoint routing
-			if cfg.Server.HostGraphQLReadOnly != "" && (res.operationType == "" || res.operationType != "mutation") {
+			// Handle endpoint routing - always use write endpoint for mutations
+			if res.operationType == "mutation" {
+				res.activeEndpoint = cfg.Server.HostGraphQL
+			} else if cfg.Server.HostGraphQLReadOnly != "" {
+				// Use read-only endpoint for non-mutation operations
 				res.activeEndpoint = cfg.Server.HostGraphQLReadOnly
 			}
 

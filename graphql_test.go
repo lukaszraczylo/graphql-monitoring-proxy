@@ -13,7 +13,6 @@ import (
 )
 
 func (suite *Tests) Test_parseGraphQLQuery() {
-
 	type results struct {
 		op_name      string
 		op_type      string
@@ -345,8 +344,9 @@ func (suite *Tests) Test_parseGraphQLQuery_complex() {
 		body := fmt.Sprintf(`{"query": %q}`, query)
 		ctx := createTestContext(body)
 		result := parseGraphQLQuery(ctx)
-		assert.Equal("query", result.operationType)
-		assert.Equal("GetUser", result.operationName)
+		// Since we now prioritize mutations when present in a GraphQL document with multiple operations
+		assert.Equal("mutation", result.operationType)
+		assert.Equal("UpdateUser", result.operationName)
 		assert.False(result.shouldBlock)
 	})
 

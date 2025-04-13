@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -125,10 +126,19 @@ func createStateChangeFunc(config *config) func(name string, from gobreaker.Stat
 			stateName = "closed"
 		}
 
-		// Update metrics
-		if cbStateGauge != nil {
-			cbStateGauge.Set(stateValue)
-		}
+		// Update metrics - we need to modify how we handle the gauge
+		// We can't directly call Set() on a gauge created with a callback
+		// So instead of directly setting the gauge, we'll recreate it with the new value
+		cbMutex.Lock()
+		// First nil out the existing gauge to avoid memory leaks
+		cbStateGauge = nil
+		// Then recreate it with the new value
+		cbStateGauge = config.Monitoring.RegisterMetricsGauge(
+			libpack_monitoring.MetricsCircuitState,
+			nil,
+			stateValue,
+		)
+		cbMutex.Unlock()
 
 		// Log state change
 		config.Logger.Info(&libpack_logger.LogMessage{
@@ -144,7 +154,9 @@ func createStateChangeFunc(config *config) func(name string, from gobreaker.Stat
 		cbMutex.Lock()
 		defer cbMutex.Unlock()
 
-		stateKey := fmt.Sprintf("circuit_state_%s", stateName)
+		// Replace hyphens with underscores to avoid validation errors
+		safeStateName := strings.ReplaceAll(stateName, "-", "_")
+		stateKey := fmt.Sprintf("circuit_state_%s", safeStateName)
 		if _, exists := cbFailCounters[stateKey]; !exists {
 			cbFailCounters[stateKey] = config.Monitoring.RegisterMetricsCounter(
 				stateKey,
@@ -167,6 +179,22 @@ func createFasthttpClient(clientConfig *config) *fasthttp.Client {
 		InsecureSkipVerify: clientConfig.Client.DisableTLSVerify,
 	}
 
+	// Calculate timeout values, ensuring they're always positive
+	clientTimeout := time.Duration(clientConfig.Client.ClientTimeout) * time.Second
+	if clientTimeout <= 0 {
+		clientTimeout = 30 * time.Second // Default timeout of 30 seconds
+	}
+
+	readTimeout := time.Duration(clientConfig.Client.ReadTimeout) * time.Second
+	if readTimeout <= 0 {
+		readTimeout = clientTimeout // Use client timeout if not set
+	}
+
+	writeTimeout := time.Duration(clientConfig.Client.WriteTimeout) * time.Second
+	if writeTimeout <= 0 {
+		writeTimeout = clientTimeout // Use client timeout if not set
+	}
+
 	return &fasthttp.Client{
 		Name:                     "graphql_proxy",
 		NoDefaultUserAgentHeader: true,
@@ -174,11 +202,18 @@ func createFasthttpClient(clientConfig *config) *fasthttp.Client {
 		// Control connection pool size to prevent overwhelming backend services
 		MaxConnsPerHost: clientConfig.Client.MaxConnsPerHost,
 		// Configure timeouts to handle different network scenarios
-		ReadTimeout:                   time.Duration(clientConfig.Client.ReadTimeout) * time.Second,
-		WriteTimeout:                  time.Duration(clientConfig.Client.WriteTimeout) * time.Second,
+		// Setting all timeout-related parameters to the same value to ensure
+		// the client timeout is properly enforced
+		ReadTimeout:                   clientTimeout,
+		WriteTimeout:                  clientTimeout,
 		MaxIdleConnDuration:           time.Duration(clientConfig.Client.MaxIdleConnDuration) * time.Second,
-		MaxConnDuration:               time.Duration(clientConfig.Client.ClientTimeout) * time.Second,
+		MaxConnDuration:               clientTimeout,
 		DisableHeaderNamesNormalizing: false,
+		// Performance tuning
+		ReadBufferSize:         4096,
+		WriteBufferSize:        4096,
+		MaxResponseBodySize:    1024 * 1024 * 10, // 10MB max response size
+		DisablePathNormalizing: false,
 	}
 }
 
