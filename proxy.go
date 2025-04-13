@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/url"
 	"strings"
 	"sync"
@@ -32,6 +33,11 @@ var (
 	ErrCircuitOpen = errors.New("circuit breaker is open")
 )
 
+// Default values for circuit breaker
+const (
+	defaultMaxRequestsInHalfOpen = 10 // Default maximum requests in half-open state
+)
+
 // Global circuit breaker
 var (
 	cb             *gobreaker.CircuitBreaker
@@ -39,6 +45,21 @@ var (
 	cbStateGauge   *metrics.Gauge
 	cbFailCounters map[string]*metrics.Counter
 )
+
+// safeUint32 converts an int to uint32 safely, handling negative values and values exceeding uint32 max
+func safeUint32(value int) uint32 {
+	// Handle negative values
+	if value < 0 {
+		return 0
+	}
+
+	// Handle values exceeding uint32 max
+	if value > math.MaxUint32 {
+		return math.MaxUint32
+	}
+
+	return uint32(value)
+}
 
 // initCircuitBreaker initializes the circuit breaker with configured settings
 func initCircuitBreaker(config *config) {
@@ -66,7 +87,7 @@ func initCircuitBreaker(config *config) {
 	// Create circuit breaker settings
 	cbSettings := gobreaker.Settings{
 		Name:          "graphql-proxy-circuit",
-		MaxRequests:   uint32(config.CircuitBreaker.MaxRequestsInHalfOpen),
+		MaxRequests:   safeMaxRequests(config.CircuitBreaker.MaxRequestsInHalfOpen),
 		Interval:      0, // No specific interval for counting failures
 		Timeout:       time.Duration(config.CircuitBreaker.Timeout) * time.Second,
 		ReadyToTrip:   createTripFunc(config),
@@ -90,7 +111,7 @@ func initCircuitBreaker(config *config) {
 func createTripFunc(config *config) func(counts gobreaker.Counts) bool {
 	return func(counts gobreaker.Counts) bool {
 		failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
-		shouldTrip := counts.ConsecutiveFailures >= uint32(config.CircuitBreaker.MaxFailures)
+		shouldTrip := counts.ConsecutiveFailures >= safeUint32(config.CircuitBreaker.MaxFailures)
 
 		if shouldTrip {
 			config.Logger.Warning(&libpack_logger.LogMessage{
@@ -471,4 +492,24 @@ func logDebugResponse(c *fiber.Ctx) {
 			"request_uuid":  c.Locals("request_uuid"),
 		},
 	})
+}
+
+// safeMaxRequests converts MaxRequestsInHalfOpen safely to uint32, providing a fallback value if out of bounds
+func safeMaxRequests(maxRequestsInHalfOpen int) uint32 {
+	// Check if value is invalid (negative or too large)
+	if maxRequestsInHalfOpen < 0 || maxRequestsInHalfOpen > math.MaxUint32 {
+		// Log warning and return a default value
+		if cfg != nil && cfg.Logger != nil {
+			cfg.Logger.Warning(&libpack_logger.LogMessage{
+				Message: "Invalid MaxRequestsInHalfOpen value, using default",
+				Pairs: map[string]interface{}{
+					"requested_value": maxRequestsInHalfOpen,
+					"default_value":   defaultMaxRequestsInHalfOpen,
+				},
+			})
+		}
+		return uint32(defaultMaxRequestsInHalfOpen)
+	}
+
+	return uint32(maxRequestsInHalfOpen)
 }
