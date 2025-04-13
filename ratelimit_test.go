@@ -38,7 +38,7 @@ func (suite *Tests) Test_loadRatelimitConfig() {
 	configData, err := json.Marshal(testConfig)
 	assert.NoError(err)
 
-	err = os.WriteFile(testConfigPath, configData, 0644)
+	err = os.WriteFile(testConfigPath, configData, 0o644)
 	assert.NoError(err)
 	defer os.Remove(testConfigPath)
 
@@ -74,7 +74,7 @@ func (suite *Tests) Test_loadRatelimitConfig() {
 	// Test loading config with invalid JSON
 	suite.Run("load invalid JSON", func() {
 		invalidPath := filepath.Join(tempDir, "invalid_ratelimit.json")
-		err := os.WriteFile(invalidPath, []byte("{invalid json}"), 0644)
+		err := os.WriteFile(invalidPath, []byte("{invalid json}"), 0o644)
 		assert.NoError(err)
 		defer os.Remove(invalidPath)
 
@@ -86,7 +86,7 @@ func (suite *Tests) Test_loadRatelimitConfig() {
 	suite.Run("load from current directory", func() {
 		// Create a temporary ratelimit.json in current directory
 		currentDirPath := "./ratelimit.json"
-		err := os.WriteFile(currentDirPath, configData, 0644)
+		err := os.WriteFile(currentDirPath, configData, 0o644)
 		assert.NoError(err)
 		defer os.Remove(currentDirPath)
 
@@ -118,7 +118,7 @@ func (suite *Tests) Test_loadRatelimitConfig() {
 		}
 		defer func() {
 			if originalExists == nil {
-				os.WriteFile(currentDirPath, originalData, 0644)
+				os.WriteFile(currentDirPath, originalData, 0o644)
 			}
 		}()
 
@@ -190,5 +190,82 @@ func (suite *Tests) Test_rateLimitedRequest() {
 		// Third request should exceed limit
 		allowed = rateLimitedRequest("regular-user", "user")
 		assert.False(allowed, "Third request should exceed rate limit")
+	})
+}
+
+func (suite *Tests) Test_RateLimitConfig_UnmarshalJSON() {
+	// Test unmarshaling of string-based intervals
+	suite.Run("unmarshal string intervals", func() {
+		// Test JSON with string-based intervals
+		jsonString := `{
+			"ratelimit": {
+				"admin": {
+					"req": 100,
+					"interval": "second"
+				},
+				"guest": {
+					"req": 5,
+					"interval": "minute"
+				},
+				"user": {
+					"req": 1000,
+					"interval": "hour"
+				},
+				"service": {
+					"req": 10000,
+					"interval": "day"
+				},
+				"custom": {
+					"req": 50,
+					"interval": "5s"
+				}
+			}
+		}`
+
+		var config struct {
+			RateLimit map[string]RateLimitConfig `json:"ratelimit"`
+		}
+
+		err := json.Unmarshal([]byte(jsonString), &config)
+		assert.NoError(err)
+
+		// Verify correct parsing of intervals
+		assert.Equal(time.Second, config.RateLimit["admin"].Interval)
+		assert.Equal(time.Minute, config.RateLimit["guest"].Interval)
+		assert.Equal(time.Hour, config.RateLimit["user"].Interval)
+		assert.Equal(24*time.Hour, config.RateLimit["service"].Interval)
+		assert.Equal(5*time.Second, config.RateLimit["custom"].Interval)
+
+		// Verify req values
+		assert.Equal(100, config.RateLimit["admin"].Req)
+		assert.Equal(5, config.RateLimit["guest"].Req)
+	})
+
+	// Test unmarshaling of invalid interval formats
+	suite.Run("unmarshal invalid intervals", func() {
+		// Test with an invalid interval format
+		jsonString := `{
+			"req": 100,
+			"interval": "invalid_format"
+		}`
+
+		var config RateLimitConfig
+		err := json.Unmarshal([]byte(jsonString), &config)
+		assert.Error(err)
+		assert.Contains(err.Error(), "invalid duration format")
+	})
+
+	// Test unmarshaling of numeric intervals
+	suite.Run("unmarshal numeric intervals", func() {
+		// Test with a numeric interval (seconds)
+		jsonString := `{
+			"req": 100,
+			"interval": 60
+		}`
+
+		var config RateLimitConfig
+		err := json.Unmarshal([]byte(jsonString), &config)
+		assert.NoError(err)
+		assert.Equal(60*time.Second, config.Interval)
 	})
 }

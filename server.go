@@ -36,7 +36,7 @@ type DependencyStatus struct {
 }
 
 // StartHTTPProxy initializes and starts the HTTP proxy server.
-func StartHTTPProxy() {
+func StartHTTPProxy() error {
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Starting the HTTP proxy",
 	})
@@ -67,16 +67,16 @@ func StartHTTPProxy() {
 	server.Get("/*", proxyTheRequestToDefault)
 
 	cfg.Logger.Info(&libpack_logger.LogMessage{
-		Message: "GraphQL proxy started",
+		Message: "GraphQL proxy starting",
 		Pairs:   map[string]interface{}{"port": cfg.Server.PortGraphQL},
 	})
 
 	if err := server.Listen(fmt.Sprintf(":%d", cfg.Server.PortGraphQL)); err != nil {
-		cfg.Logger.Critical(&libpack_logger.LogMessage{
-			Message: "Can't start the service",
-			Pairs:   map[string]interface{}{"port": cfg.Server.PortGraphQL, "error": err.Error()},
-		})
+		return fmt.Errorf("failed to start HTTP proxy server on port %d: %w",
+			cfg.Server.PortGraphQL, err)
 	}
+
+	return nil
 }
 
 // proxyTheRequestToDefault proxies the request to the default GraphQL endpoint.
@@ -218,7 +218,6 @@ func healthCheck(c *fiber.Ctx) error {
 	return c.Status(httpStatus).JSON(response)
 }
 
-// processGraphQLRequest handles the incoming GraphQL requests.
 // processGraphQLRequest handles the incoming GraphQL requests.
 func processGraphQLRequest(c *fiber.Ctx) error {
 	startTime := time.Now()

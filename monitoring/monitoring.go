@@ -57,7 +57,7 @@ func (ms *MetricsSetup) startPrometheusEndpoint() {
 	app.Get("/metrics", ms.metricsEndpoint)
 	if err := app.Listen(fmt.Sprintf(":%d", envutil.GetInt("MONITORING_PORT", 9393))); err != nil {
 		log.Critical(&libpack_logger.LogMessage{
-			Message: "Can't start the service",
+			Message: "Can't start the MONITORING service",
 			Pairs:   map[string]interface{}{"error": err},
 		})
 	}

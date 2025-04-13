@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"strconv"
@@ -217,7 +218,24 @@ func parseConfig() {
 		initCircuitBreaker(cfg)
 	}
 
-	loadRatelimitConfig()
+	// Load rate limit configuration with improved error handling
+	if err := loadRatelimitConfig(); err != nil {
+		// Log the error with clear guidance
+		detailedError := err.Error()
+		cfg.Logger.Error(&libpack_logging.LogMessage{
+			Message: "Failed to start service due to rate limit configuration error",
+			Pairs: map[string]interface{}{
+				"error": detailedError,
+			},
+		})
+
+		// If we're not in a test environment, print to stderr and exit if config error
+		if ifNotInTest() {
+			fmt.Fprintln(os.Stderr, "⚠️ CRITICAL ERROR: Rate limit configuration problem detected")
+			fmt.Fprintln(os.Stderr, detailedError)
+			os.Exit(1)
+		}
+	}
 	once.Do(func() {
 		go enableApi()
 		go enableHasuraEventCleaner()
@@ -250,22 +268,67 @@ func main() {
 		cancel()
 	}()
 
+	// Start monitoring server
+	cfg.Logger.Info(&libpack_logging.LogMessage{
+		Message: "Starting monitoring server...",
+		Pairs:   map[string]interface{}{"port": cfg.Server.PortMonitoring},
+	})
+
 	// Start monitoring server in a goroutine
 	wg.Add(1)
+	monitoringErrCh := make(chan error, 1)
 	go func() {
 		defer wg.Done()
-		StartMonitoringServer()
+		if err := StartMonitoringServer(); err != nil {
+			monitoringErrCh <- err
+		}
 	}()
 
 	// Give monitoring server time to initialize
-	time.Sleep(2 * time.Second)
+	select {
+	case err := <-monitoringErrCh:
+		cfg.Logger.Critical(&libpack_logging.LogMessage{
+			Message: "Failed to start monitoring server",
+			Pairs: map[string]interface{}{
+				"error": err.Error(),
+				"port":  cfg.Server.PortMonitoring,
+			},
+		})
+		os.Exit(1)
+	case <-time.After(2 * time.Second):
+		// Continue if no error received within timeout
+	}
+
+	// Start HTTP proxy
+	cfg.Logger.Info(&libpack_logging.LogMessage{
+		Message: "Starting HTTP proxy server...",
+		Pairs:   map[string]interface{}{"port": cfg.Server.PortGraphQL},
+	})
 
 	// Start HTTP proxy in a goroutine
 	wg.Add(1)
+	proxyErrCh := make(chan error, 1)
 	go func() {
 		defer wg.Done()
-		StartHTTPProxy()
+		if err := StartHTTPProxy(); err != nil {
+			proxyErrCh <- err
+		}
 	}()
+
+	// Block for a moment to check for immediate startup errors
+	select {
+	case err := <-proxyErrCh:
+		cfg.Logger.Critical(&libpack_logging.LogMessage{
+			Message: "Failed to start HTTP proxy server",
+			Pairs: map[string]interface{}{
+				"error": err.Error(),
+				"port":  cfg.Server.PortGraphQL,
+			},
+		})
+		os.Exit(1)
+	case <-time.After(1 * time.Second):
+		// Continue if no error received within timeout
+	}
 
 	// Wait for context cancellation
 	<-ctx.Done()
