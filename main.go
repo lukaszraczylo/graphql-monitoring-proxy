@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"strconv"
@@ -17,6 +18,7 @@ import (
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
+	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 	libpack_tracing "github.com/lukaszraczylo/graphql-monitoring-proxy/tracing"
 )
 
@@ -73,6 +75,8 @@ func parseConfig() {
 	// In-memory cache
 	c.Cache.CacheEnable = getDetailsFromEnv("ENABLE_GLOBAL_CACHE", false)
 	c.Cache.CacheTTL = getDetailsFromEnv("CACHE_TTL", 60)
+	c.Cache.CacheMaxMemorySize = getDetailsFromEnv("CACHE_MAX_MEMORY_SIZE", 100) // Default 100MB
+	c.Cache.CacheMaxEntries = getDetailsFromEnv("CACHE_MAX_ENTRIES", 10000)      // Default 10000 entries
 	// Redis cache
 	c.Cache.CacheRedisEnable = getDetailsFromEnv("ENABLE_REDIS_CACHE", false)
 	c.Cache.CacheRedisURL = getDetailsFromEnv("CACHE_REDIS_URL", "localhost:6379")
@@ -105,8 +109,23 @@ func parseConfig() {
 		}
 		return strings.Split(urls, ",")
 	}()
+
+	// Client timeout and connection configurations
 	c.Client.ClientTimeout = getDetailsFromEnv("PROXIED_CLIENT_TIMEOUT", 120)
-	c.Client.FastProxyClient = createFasthttpClient(c.Client.ClientTimeout)
+
+	// Configure HTTP connection pool and timeouts with sensible defaults
+	// MaxConnsPerHost limits parallel connections to prevent overwhelming backends
+	c.Client.MaxConnsPerHost = getDetailsFromEnv("MAX_CONNS_PER_HOST", 1024)
+	// Configure distinct timeout values for more granular control
+	c.Client.ReadTimeout = getDetailsFromEnv("CLIENT_READ_TIMEOUT", c.Client.ClientTimeout)
+	c.Client.WriteTimeout = getDetailsFromEnv("CLIENT_WRITE_TIMEOUT", c.Client.ClientTimeout)
+	// MaxIdleConnDuration controls how long connections stay in the pool
+	c.Client.MaxIdleConnDuration = getDetailsFromEnv("CLIENT_MAX_IDLE_CONN_DURATION", 300)
+	// Secure by default: TLS verification is enabled unless explicitly disabled
+	c.Client.DisableTLSVerify = getDetailsFromEnv("CLIENT_DISABLE_TLS_VERIFY", false)
+
+	// Create HTTP client with the optimized parameters
+	c.Client.FastProxyClient = createFasthttpClient(&c)
 	proxy.WithClient(c.Client.FastProxyClient) // Setting the global proxy client
 	// API configurations
 	c.Server.EnableApi = getDetailsFromEnv("ENABLE_API", false)
@@ -121,6 +140,15 @@ func parseConfig() {
 	// Tracing configuration
 	c.Tracing.Enable = getDetailsFromEnv("ENABLE_TRACE", false)
 	c.Tracing.Endpoint = getDetailsFromEnv("TRACE_ENDPOINT", "localhost:4317")
+
+	// Circuit Breaker configuration
+	c.CircuitBreaker.Enable = getDetailsFromEnv("ENABLE_CIRCUIT_BREAKER", false)
+	c.CircuitBreaker.MaxFailures = getDetailsFromEnv("CIRCUIT_MAX_FAILURES", 5)
+	c.CircuitBreaker.Timeout = getDetailsFromEnv("CIRCUIT_TIMEOUT_SECONDS", 30)
+	c.CircuitBreaker.MaxRequestsInHalfOpen = getDetailsFromEnv("CIRCUIT_MAX_HALF_OPEN_REQUESTS", 2)
+	c.CircuitBreaker.ReturnCachedOnOpen = getDetailsFromEnv("CIRCUIT_RETURN_CACHED_ON_OPEN", true)
+	c.CircuitBreaker.TripOnTimeouts = getDetailsFromEnv("CIRCUIT_TRIP_ON_TIMEOUTS", true)
+	c.CircuitBreaker.TripOn5xx = getDetailsFromEnv("CIRCUIT_TRIP_ON_5XX", true)
 
 	cfgMutex.Lock()
 	cfg = &c
@@ -165,16 +193,57 @@ func parseConfig() {
 			cacheConfig.Redis.URL = cfg.Cache.CacheRedisURL
 			cacheConfig.Redis.Password = cfg.Cache.CacheRedisPassword
 			cacheConfig.Redis.DB = cfg.Cache.CacheRedisDB
+		} else {
+			// Memory cache configurations
+			cacheConfig.Memory.MaxMemorySize = int64(cfg.Cache.CacheMaxMemorySize) * 1024 * 1024 // Convert MB to bytes
+			cacheConfig.Memory.MaxEntries = int64(cfg.Cache.CacheMaxEntries)
+			cfg.Logger.Info(&libpack_logging.LogMessage{
+				Message: "Configuring memory cache with limits",
+				Pairs: map[string]interface{}{
+					"max_memory_mb": cfg.Cache.CacheMaxMemorySize,
+					"max_entries":   cfg.Cache.CacheMaxEntries,
+				},
+			})
 		}
 		libpack_cache.EnableCache(cacheConfig)
+
+		// Start memory monitoring for in-memory cache if it's not Redis
+		if !cfg.Cache.CacheRedisEnable {
+			go startCacheMemoryMonitoring()
+		}
 	}
 
-	loadRatelimitConfig()
+	// Initialize circuit breaker if enabled
+	if cfg.CircuitBreaker.Enable {
+		initCircuitBreaker(cfg)
+	}
+
+	// Load rate limit configuration with improved error handling
+	if err := loadRatelimitConfig(); err != nil {
+		// Log the error with clear guidance
+		detailedError := err.Error()
+		cfg.Logger.Error(&libpack_logging.LogMessage{
+			Message: "Failed to start service due to rate limit configuration error",
+			Pairs: map[string]interface{}{
+				"error": detailedError,
+			},
+		})
+
+		// If we're not in a test environment, print to stderr and exit if config error
+		if ifNotInTest() {
+			fmt.Fprintln(os.Stderr, "⚠️ CRITICAL ERROR: Rate limit configuration problem detected")
+			fmt.Fprintln(os.Stderr, detailedError)
+			os.Exit(1)
+		}
+	}
 	once.Do(func() {
 		go enableApi()
 		go enableHasuraEventCleaner()
 	})
 	prepareQueriesAndExemptions()
+
+	// Initialize GraphQL parsing optimizations
+	initGraphQLParsing()
 }
 
 func main() {
@@ -199,22 +268,67 @@ func main() {
 		cancel()
 	}()
 
+	// Start monitoring server
+	cfg.Logger.Info(&libpack_logging.LogMessage{
+		Message: "Starting monitoring server...",
+		Pairs:   map[string]interface{}{"port": cfg.Server.PortMonitoring},
+	})
+
 	// Start monitoring server in a goroutine
 	wg.Add(1)
+	monitoringErrCh := make(chan error, 1)
 	go func() {
 		defer wg.Done()
-		StartMonitoringServer()
+		if err := StartMonitoringServer(); err != nil {
+			monitoringErrCh <- err
+		}
 	}()
 
 	// Give monitoring server time to initialize
-	time.Sleep(2 * time.Second)
+	select {
+	case err := <-monitoringErrCh:
+		cfg.Logger.Critical(&libpack_logging.LogMessage{
+			Message: "Failed to start monitoring server",
+			Pairs: map[string]interface{}{
+				"error": err.Error(),
+				"port":  cfg.Server.PortMonitoring,
+			},
+		})
+		os.Exit(1)
+	case <-time.After(2 * time.Second):
+		// Continue if no error received within timeout
+	}
+
+	// Start HTTP proxy
+	cfg.Logger.Info(&libpack_logging.LogMessage{
+		Message: "Starting HTTP proxy server...",
+		Pairs:   map[string]interface{}{"port": cfg.Server.PortGraphQL},
+	})
 
 	// Start HTTP proxy in a goroutine
 	wg.Add(1)
+	proxyErrCh := make(chan error, 1)
 	go func() {
 		defer wg.Done()
-		StartHTTPProxy()
+		if err := StartHTTPProxy(); err != nil {
+			proxyErrCh <- err
+		}
 	}()
+
+	// Block for a moment to check for immediate startup errors
+	select {
+	case err := <-proxyErrCh:
+		cfg.Logger.Critical(&libpack_logging.LogMessage{
+			Message: "Failed to start HTTP proxy server",
+			Pairs: map[string]interface{}{
+				"error": err.Error(),
+				"port":  cfg.Server.PortGraphQL,
+			},
+		})
+		os.Exit(1)
+	case <-time.After(1 * time.Second):
+		// Continue if no error received within timeout
+	}
 
 	// Wait for context cancellation
 	<-ctx.Done()
@@ -253,6 +367,60 @@ func main() {
 		cfg.Logger.Warning(&libpack_logging.LogMessage{
 			Message: "Some services didn't shut down gracefully within timeout",
 		})
+	}
+}
+
+// startCacheMemoryMonitoring polls memory cache usage and updates metrics
+func startCacheMemoryMonitoring() {
+	// Check every few seconds (more frequent than cleanup routine)
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	cfg.Logger.Info(&libpack_logging.LogMessage{
+		Message: "Starting memory cache monitoring",
+	})
+
+	// Create initial metrics
+	cfg.Monitoring.RegisterMetricsGauge(libpack_monitoring.MetricsCacheMemoryLimit, nil,
+		float64(libpack_cache.GetCacheMaxMemorySize()))
+
+	for range ticker.C {
+		// Skip if monitoring not initialized or cache not initialized
+		if cfg.Monitoring == nil || !libpack_cache.IsCacheInitialized() {
+			continue
+		}
+
+		// Get current memory usage
+		memoryUsage := libpack_cache.GetCacheMemoryUsage()
+		memoryLimit := libpack_cache.GetCacheMaxMemorySize()
+
+		// Update metrics
+		cfg.Monitoring.RegisterMetricsGauge(libpack_monitoring.MetricsCacheMemoryUsage, nil,
+			float64(memoryUsage))
+
+		cfg.Monitoring.RegisterMetricsGauge(libpack_monitoring.MetricsCacheMemoryLimit, nil,
+			float64(memoryLimit))
+
+		// Calculate percentage (protect against division by zero)
+		var percentUsed float64
+		if memoryLimit > 0 {
+			percentUsed = float64(memoryUsage) / float64(memoryLimit) * 100.0
+		}
+
+		cfg.Monitoring.RegisterMetricsGauge(libpack_monitoring.MetricsCacheMemoryPercent, nil,
+			percentUsed)
+
+		// Log if memory usage is high (over 80%)
+		if percentUsed > 80.0 {
+			cfg.Logger.Warning(&libpack_logging.LogMessage{
+				Message: "Memory cache usage is high",
+				Pairs: map[string]interface{}{
+					"memory_usage_bytes": memoryUsage,
+					"memory_limit_bytes": memoryLimit,
+					"percent_used":       percentUsed,
+				},
+			})
+		}
 	}
 }
 

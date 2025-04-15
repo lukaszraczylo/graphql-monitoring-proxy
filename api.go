@@ -39,7 +39,7 @@ func enableApi() {
 
 	if err := apiserver.Listen(fmt.Sprintf(":%d", cfg.Server.ApiPort)); err != nil {
 		cfg.Logger.Critical(&libpack_logger.LogMessage{
-			Message: "Can't start the service",
+			Message: "Can't start the API service",
 			Pairs:   map[string]interface{}{"port": cfg.Server.ApiPort},
 		})
 	}
@@ -177,7 +177,7 @@ func storeBannedUsers() error {
 		return err
 	}
 
-	if err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0644); err != nil {
+	if err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0o644); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't write banned users to file",
 			Pairs:   map[string]interface{}{"error": err.Error()},
@@ -194,7 +194,7 @@ func loadBannedUsers() {
 			Message: "Banned users file doesn't exist - creating it",
 			Pairs:   map[string]interface{}{"file": cfg.Api.BannedUsersFile},
 		})
-		if err := os.WriteFile(cfg.Api.BannedUsersFile, []byte("{}"), 0644); err != nil {
+		if err := os.WriteFile(cfg.Api.BannedUsersFile, []byte("{}"), 0o644); err != nil {
 			cfg.Logger.Error(&libpack_logger.LogMessage{
 				Message: "Can't create and write to the file",
 				Pairs:   map[string]interface{}{"error": err.Error()},
