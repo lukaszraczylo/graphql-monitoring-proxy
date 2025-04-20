@@ -70,6 +70,9 @@ var (
 	rateLimitMu sync.RWMutex
 )
 
+// Variable to hold the current load config function - allows for testing
+var loadConfigFunc = loadConfigFromPath
+
 // loadRatelimitConfig loads the rate limit configurations from file
 func loadRatelimitConfig() error {
 	paths := []string{"/go/src/app/ratelimit.json", "./ratelimit.json", "./static/app/default-ratelimit.json"}
@@ -77,7 +80,7 @@ func loadRatelimitConfig() error {
 
 	// Try each path and collect detailed error information
 	for _, path := range paths {
-		if err := loadConfigFromPath(path); err == nil {
+		if err := loadConfigFunc(path); err == nil {
 			return nil
 		} else {
 			// Store the specific error for this path

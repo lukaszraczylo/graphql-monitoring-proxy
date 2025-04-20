@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -108,29 +109,34 @@ func (suite *Tests) Test_loadRatelimitConfig() {
 
 	// Test with all files missing
 	suite.Run("all files missing", func() {
-		// Save the original file if it exists
-		currentDirPath := "./ratelimit.json"
-		_, originalExists := os.Stat(currentDirPath)
-		var originalData []byte
-		if originalExists == nil {
-			originalData, _ = os.ReadFile(currentDirPath)
-			os.Remove(currentDirPath)
-		}
+		// Save the original load function and restore it when done
+		originalLoadFunc := loadConfigFunc
 		defer func() {
-			if originalExists == nil {
-				os.WriteFile(currentDirPath, originalData, 0o644)
-			}
+			loadConfigFunc = originalLoadFunc
 		}()
+
+		// Replace with a mock function that always returns "file does not exist" error
+		loadConfigFunc = func(string) error {
+			return fmt.Errorf("file does not exist")
+		}
 
 		// Clear existing rate limits
 		rateLimitMu.Lock()
 		rateLimits = make(map[string]RateLimitConfig)
 		rateLimitMu.Unlock()
 
-		// This should fail as all files are missing
+		// This should fail as our mock returns errors for all paths
 		err = loadRatelimitConfig()
 		assert.Error(err)
-		assert.Equal(os.ErrNotExist, err)
+
+		// The error should be a RateLimitConfigError
+		configErr, ok := err.(*RateLimitConfigError)
+		assert.True(ok, "Expected *RateLimitConfigError but got %T", err)
+
+		// All path errors should contain our mock error message
+		for _, errMsg := range configErr.PathErrors {
+			assert.Equal("file does not exist", errMsg)
+		}
 	})
 }
 
