@@ -19,6 +19,7 @@ require (
 	github.com/lukaszraczylo/go-ratecounter v0.1.12
 	github.com/lukaszraczylo/go-simple-graphql v1.2.57
 	github.com/redis/go-redis/v9 v9.7.3
+	github.com/sony/gobreaker v1.0.0
 	github.com/stretchr/testify v1.10.0
 	github.com/valyala/fasthttp v1.60.0
 	go.opentelemetry.io/otel v1.35.0

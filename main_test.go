@@ -10,7 +10,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/memory"
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
-	assertions "github.com/stretchr/testify/assert"
+	testifyassert "github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/valyala/fasthttp"
 )
@@ -20,15 +20,19 @@ type Tests struct {
 	app *fiber.App
 }
 
-var (
-	assert *assertions.Assertions
-)
+// Global assertions instance used across tests
+var assertInstance *testifyassert.Assertions
+
+// For backward compatibility with existing tests
+var assert *testifyassert.Assertions
 
 func (suite *Tests) BeforeTest(suiteName, testName string) {
 }
 
 func (suite *Tests) SetupTest() {
-	assert = assertions.New(suite.T())
+	assertInstance = testifyassert.New(suite.T())
+	// Initialize the global assert variable for existing tests
+	assert = assertInstance
 	suite.app = fiber.New(
 		fiber.Config{
 			DisableStartupMessage: true,

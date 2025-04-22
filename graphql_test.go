@@ -13,7 +13,6 @@ import (
 )
 
 func (suite *Tests) Test_parseGraphQLQuery() {
-
 	type results struct {
 		op_name      string
 		op_type      string
@@ -284,15 +283,15 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 			parseConfig()
 			// Create a context first, then modify its request directly
 			reqCtx := &fasthttp.RequestCtx{}
-			
+
 			// Set headers directly on the request
 			for k, v := range tt.suppliedQuery.headers {
 				reqCtx.Request.Header.Add(k, v)
 			}
-			
+
 			// Set the body
 			reqCtx.Request.AppendBody([]byte(tt.suppliedQuery.body))
-			
+
 			// Now create the fiber context with the request context
 			ctx := suite.app.AcquireCtx(reqCtx)
 
@@ -345,8 +344,9 @@ func (suite *Tests) Test_parseGraphQLQuery_complex() {
 		body := fmt.Sprintf(`{"query": %q}`, query)
 		ctx := createTestContext(body)
 		result := parseGraphQLQuery(ctx)
-		assert.Equal("query", result.operationType)
-		assert.Equal("GetUser", result.operationName)
+		// Since we now prioritize mutations when present in a GraphQL document with multiple operations
+		assert.Equal("mutation", result.operationType)
+		assert.Equal("UpdateUser", result.operationName)
 		assert.False(result.shouldBlock)
 	})
 
