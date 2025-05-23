@@ -83,11 +83,12 @@ func (ms *MetricsSetup) ListActiveMetrics() []string {
 
 func (ms *MetricsSetup) RegisterMetricsGauge(metric_name string, labels map[string]string, val float64) *metrics.Gauge {
 	if err := validate_metrics_name(metric_name); err != nil {
-		log.Critical(&libpack_logger.LogMessage{
-			Message: "RegisterMetricsGauge() error",
-			Pairs:   map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name},
+		log.Error(&libpack_logger.LogMessage{
+			Message: "RegisterMetricsGauge() error - invalid metric name",
+			Pairs:   map[string]interface{}{"error": err.Error(), "metric_name": metric_name},
 		})
-		return nil
+		// Return a dummy gauge instead of nil to prevent panics
+		return &metrics.Gauge{}
 	}
 	return ms.metrics_set_custom.GetOrCreateGauge(ms.get_metrics_name(metric_name, labels), func() float64 {
 		return val
@@ -96,11 +97,12 @@ func (ms *MetricsSetup) RegisterMetricsGauge(metric_name string, labels map[stri
 
 func (ms *MetricsSetup) RegisterMetricsCounter(metric_name string, labels map[string]string) *metrics.Counter {
 	if err := validate_metrics_name(metric_name); err != nil {
-		log.Critical(&libpack_logger.LogMessage{
-			Message: "RegisterMetricsCounter() error",
-			Pairs:   map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name},
+		log.Error(&libpack_logger.LogMessage{
+			Message: "RegisterMetricsCounter() error - invalid metric name",
+			Pairs:   map[string]interface{}{"error": err.Error(), "metric_name": metric_name},
 		})
-		return nil
+		// Return a dummy counter instead of nil to prevent panics
+		return &metrics.Counter{}
 	}
 	if metric_name == MetricsSucceeded || metric_name == MetricsFailed || metric_name == MetricsSkipped {
 		return ms.metrics_set.GetOrCreateCounter(ms.get_metrics_name(metric_name, labels))
@@ -110,33 +112,36 @@ func (ms *MetricsSetup) RegisterMetricsCounter(metric_name string, labels map[st
 
 func (ms *MetricsSetup) RegisterFloatCounter(metric_name string, labels map[string]string) *metrics.FloatCounter {
 	if err := validate_metrics_name(metric_name); err != nil {
-		log.Critical(&libpack_logger.LogMessage{
-			Message: "RegisterFloatCounter() error",
-			Pairs:   map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name},
+		log.Error(&libpack_logger.LogMessage{
+			Message: "RegisterFloatCounter() error - invalid metric name",
+			Pairs:   map[string]interface{}{"error": err.Error(), "metric_name": metric_name},
 		})
-		return nil
+		// Return a dummy float counter instead of nil to prevent panics
+		return &metrics.FloatCounter{}
 	}
 	return ms.metrics_set_custom.GetOrCreateFloatCounter(ms.get_metrics_name(metric_name, labels))
 }
 
 func (ms *MetricsSetup) RegisterMetricsSummary(metric_name string, labels map[string]string) *metrics.Summary {
 	if err := validate_metrics_name(metric_name); err != nil {
-		log.Critical(&libpack_logger.LogMessage{
-			Message: "RegisterMetricsSummary() error",
-			Pairs:   map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name},
+		log.Error(&libpack_logger.LogMessage{
+			Message: "RegisterMetricsSummary() error - invalid metric name",
+			Pairs:   map[string]interface{}{"error": err.Error(), "metric_name": metric_name},
 		})
-		return nil
+		// Return a dummy summary instead of nil to prevent panics
+		return &metrics.Summary{}
 	}
 	return ms.metrics_set_custom.GetOrCreateSummary(ms.get_metrics_name(metric_name, labels))
 }
 
 func (ms *MetricsSetup) RegisterMetricsHistogram(metric_name string, labels map[string]string) *metrics.Histogram {
 	if err := validate_metrics_name(metric_name); err != nil {
-		log.Critical(&libpack_logger.LogMessage{
-			Message: "RegisterMetricsHistogram() error",
-			Pairs:   map[string]interface{}{"_error": "Invalid metric name", "_metric_name": metric_name},
+		log.Error(&libpack_logger.LogMessage{
+			Message: "RegisterMetricsHistogram() error - invalid metric name",
+			Pairs:   map[string]interface{}{"error": err.Error(), "metric_name": metric_name},
 		})
-		return nil
+		// Return a dummy histogram instead of nil to prevent panics
+		return &metrics.Histogram{}
 	}
 	return ms.metrics_set_custom.GetOrCreateHistogram(ms.get_metrics_name(metric_name, labels))
 }

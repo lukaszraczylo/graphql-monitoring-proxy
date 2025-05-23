@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sync"
@@ -73,7 +74,12 @@ func checkIfUserIsBanned(c *fiber.Ctx, userID string) bool {
 			Message: "User is banned",
 			Pairs:   map[string]interface{}{"user_id": userID},
 		})
-		c.Status(fiber.StatusForbidden).SendString("User is banned")
+		if err := c.Status(fiber.StatusForbidden).SendString("User is banned"); err != nil {
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Failed to send banned user response",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
+		}
 	}
 	return found
 }
@@ -163,7 +169,14 @@ func storeBannedUsers() error {
 	if err := lockFile(fileLock); err != nil {
 		return err
 	}
-	defer fileLock.Unlock()
+	defer func() {
+		if err := fileLock.Unlock(); err != nil {
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Failed to unlock file",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
+		}
+	}()
 
 	bannedUsersIDsMutex.RLock()
 	data, err := json.Marshal(bannedUsersIDs)
@@ -211,7 +224,14 @@ func loadBannedUsers() {
 		})
 		return
 	}
-	defer fileLock.Unlock()
+	defer func() {
+		if err := fileLock.Unlock(); err != nil {
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Failed to unlock file",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
+		}
+	}()
 
 	data, err := os.ReadFile(cfg.Api.BannedUsersFile)
 	if err != nil {
@@ -237,23 +257,61 @@ func loadBannedUsers() {
 }
 
 func lockFile(fileLock *flock.Flock) error {
-	if err := fileLock.Lock(); err != nil {
+	// Add timeout to prevent indefinite blocking
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Try to acquire lock with timeout
+	lockChan := make(chan error, 1)
+	go func() {
+		lockChan <- fileLock.Lock()
+	}()
+
+	select {
+	case err := <-lockChan:
+		if err != nil {
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Can't lock the file",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
+			return err
+		}
+		return nil
+	case <-ctx.Done():
 		cfg.Logger.Error(&libpack_logger.LogMessage{
-			Message: "Can't lock the file",
-			Pairs:   map[string]interface{}{"error": err.Error()},
+			Message: "File lock timeout",
+			Pairs:   map[string]interface{}{"timeout": "30s"},
 		})
-		return err
+		return fmt.Errorf("file lock timeout after 30 seconds")
 	}
-	return nil
 }
 
 func lockFileRead(fileLock *flock.Flock) error {
-	if err := fileLock.RLock(); err != nil {
+	// Add timeout to prevent indefinite blocking
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Try to acquire read lock with timeout
+	lockChan := make(chan error, 1)
+	go func() {
+		lockChan <- fileLock.RLock()
+	}()
+
+	select {
+	case err := <-lockChan:
+		if err != nil {
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Can't lock the file for reading",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
+			return err
+		}
+		return nil
+	case <-ctx.Done():
 		cfg.Logger.Error(&libpack_logger.LogMessage{
-			Message: "Can't lock the file for reading",
-			Pairs:   map[string]interface{}{"error": err.Error()},
+			Message: "File read lock timeout",
+			Pairs:   map[string]interface{}{"timeout": "30s"},
 		})
-		return err
+		return fmt.Errorf("file read lock timeout after 30 seconds")
 	}
-	return nil
 }

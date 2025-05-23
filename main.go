@@ -110,17 +110,49 @@ func parseConfig() {
 		return strings.Split(urls, ",")
 	}()
 
-	// Client timeout and connection configurations
-	c.Client.ClientTimeout = getDetailsFromEnv("PROXIED_CLIENT_TIMEOUT", 120)
+	// Client timeout and connection configurations with bounds checking
+	clientTimeout := getDetailsFromEnv("PROXIED_CLIENT_TIMEOUT", 120)
+	if clientTimeout < 1 || clientTimeout > 3600 { // 1 second to 1 hour max
+		c.Logger.Warning(&libpack_logging.LogMessage{
+			Message: "Invalid client timeout, using default",
+			Pairs:   map[string]interface{}{"requested": clientTimeout, "default": 120},
+		})
+		clientTimeout = 120
+	}
+	c.Client.ClientTimeout = clientTimeout
 
 	// Configure HTTP connection pool and timeouts with sensible defaults
 	// MaxConnsPerHost limits parallel connections to prevent overwhelming backends
-	c.Client.MaxConnsPerHost = getDetailsFromEnv("MAX_CONNS_PER_HOST", 1024)
-	// Configure distinct timeout values for more granular control
-	c.Client.ReadTimeout = getDetailsFromEnv("CLIENT_READ_TIMEOUT", c.Client.ClientTimeout)
-	c.Client.WriteTimeout = getDetailsFromEnv("CLIENT_WRITE_TIMEOUT", c.Client.ClientTimeout)
+	maxConns := getDetailsFromEnv("MAX_CONNS_PER_HOST", 1024)
+	if maxConns < 1 || maxConns > 10000 { // Reasonable bounds
+		c.Logger.Warning(&libpack_logging.LogMessage{
+			Message: "Invalid max connections per host, using default",
+			Pairs:   map[string]interface{}{"requested": maxConns, "default": 1024},
+		})
+		maxConns = 1024
+	}
+	c.Client.MaxConnsPerHost = maxConns
+
+	// Configure distinct timeout values for more granular control with bounds checking
+	readTimeout := getDetailsFromEnv("CLIENT_READ_TIMEOUT", c.Client.ClientTimeout)
+	if readTimeout < 1 || readTimeout > 3600 {
+		readTimeout = c.Client.ClientTimeout
+	}
+	c.Client.ReadTimeout = readTimeout
+
+	writeTimeout := getDetailsFromEnv("CLIENT_WRITE_TIMEOUT", c.Client.ClientTimeout)
+	if writeTimeout < 1 || writeTimeout > 3600 {
+		writeTimeout = c.Client.ClientTimeout
+	}
+	c.Client.WriteTimeout = writeTimeout
+
 	// MaxIdleConnDuration controls how long connections stay in the pool
-	c.Client.MaxIdleConnDuration = getDetailsFromEnv("CLIENT_MAX_IDLE_CONN_DURATION", 300)
+	idleDuration := getDetailsFromEnv("CLIENT_MAX_IDLE_CONN_DURATION", 300)
+	if idleDuration < 1 || idleDuration > 7200 { // 1 second to 2 hours max
+		idleDuration = 300
+	}
+	c.Client.MaxIdleConnDuration = idleDuration
+
 	// Secure by default: TLS verification is enabled unless explicitly disabled
 	c.Client.DisableTLSVerify = getDetailsFromEnv("CLIENT_DISABLE_TLS_VERIFY", false)
 
@@ -130,7 +162,18 @@ func parseConfig() {
 	// API configurations
 	c.Server.EnableApi = getDetailsFromEnv("ENABLE_API", false)
 	c.Server.ApiPort = getDetailsFromEnv("API_PORT", 9090)
-	c.Api.BannedUsersFile = getDetailsFromEnv("BANNED_USERS_FILE", "/go/src/app/banned_users.json")
+
+	// Validate and sanitize banned users file path to prevent path traversal
+	bannedUsersFile := getDetailsFromEnv("BANNED_USERS_FILE", "/go/src/app/banned_users.json")
+	if validatedPath, err := validateFilePath(bannedUsersFile); err != nil {
+		c.Logger.Error(&libpack_logging.LogMessage{
+			Message: "Invalid banned users file path, using default",
+			Pairs:   map[string]interface{}{"requested": bannedUsersFile, "error": err.Error()},
+		})
+		c.Api.BannedUsersFile = "/go/src/app/banned_users.json"
+	} else {
+		c.Api.BannedUsersFile = validatedPath
+	}
 	c.Server.PurgeOnCrawl = getDetailsFromEnv("PURGE_METRICS_ON_CRAWL", false)
 	c.Server.PurgeEvery = getDetailsFromEnv("PURGE_METRICS_ON_TIMER", 0)
 	// Hasura event cleaner
@@ -380,9 +423,14 @@ func startCacheMemoryMonitoring() {
 		Message: "Starting memory cache monitoring",
 	})
 
-	// Create initial metrics
+	// Use mutex to protect concurrent access to metrics registration
+	var metricsMutex sync.Mutex
+
+	// Create initial metrics with proper synchronization
+	metricsMutex.Lock()
 	cfg.Monitoring.RegisterMetricsGauge(libpack_monitoring.MetricsCacheMemoryLimit, nil,
 		float64(libpack_cache.GetCacheMaxMemorySize()))
+	metricsMutex.Unlock()
 
 	for range ticker.C {
 		// Skip if monitoring not initialized or cache not initialized
@@ -390,11 +438,12 @@ func startCacheMemoryMonitoring() {
 			continue
 		}
 
-		// Get current memory usage
+		// Get current memory usage atomically
 		memoryUsage := libpack_cache.GetCacheMemoryUsage()
 		memoryLimit := libpack_cache.GetCacheMaxMemorySize()
 
-		// Update metrics
+		// Update metrics with proper synchronization
+		metricsMutex.Lock()
 		cfg.Monitoring.RegisterMetricsGauge(libpack_monitoring.MetricsCacheMemoryUsage, nil,
 			float64(memoryUsage))
 
@@ -409,6 +458,7 @@ func startCacheMemoryMonitoring() {
 
 		cfg.Monitoring.RegisterMetricsGauge(libpack_monitoring.MetricsCacheMemoryPercent, nil,
 			percentUsed)
+		metricsMutex.Unlock()
 
 		// Log if memory usage is high (over 80%)
 		if percentUsed > 80.0 {
@@ -422,6 +472,45 @@ func startCacheMemoryMonitoring() {
 			})
 		}
 	}
+}
+
+// validateFilePath validates and sanitizes file paths to prevent path traversal attacks
+func validateFilePath(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("empty file path")
+	}
+
+	// Check for path traversal attempts
+	if strings.Contains(path, "..") {
+		return "", fmt.Errorf("path traversal detected")
+	}
+
+	// Check for null bytes
+	if strings.Contains(path, "\x00") {
+		return "", fmt.Errorf("null byte in path")
+	}
+
+	// Ensure path is absolute or within allowed directories
+	allowedPrefixes := []string{
+		"/go/src/app/",
+		"./",
+		"/tmp/",
+		"/var/tmp/",
+	}
+
+	isAllowed := false
+	for _, prefix := range allowedPrefixes {
+		if strings.HasPrefix(path, prefix) {
+			isAllowed = true
+			break
+		}
+	}
+
+	if !isAllowed {
+		return "", fmt.Errorf("path not in allowed directories")
+	}
+
+	return path, nil
 }
 
 // ifNotInTest checks if the program is not running in a test environment.

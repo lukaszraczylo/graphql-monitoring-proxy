@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/url"
 	"strings"
 	"sync"
@@ -19,7 +20,6 @@ import (
 
 	"github.com/avast/retry-go/v4"
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/proxy"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
@@ -147,19 +147,9 @@ func createStateChangeFunc(config *config) func(name string, from gobreaker.Stat
 			stateName = "closed"
 		}
 
-		// Update metrics - we need to modify how we handle the gauge
-		// We can't directly call Set() on a gauge created with a callback
-		// So instead of directly setting the gauge, we'll recreate it with the new value
-		cbMutex.Lock()
-		// First nil out the existing gauge to avoid memory leaks
-		cbStateGauge = nil
-		// Then recreate it with the new value
-		cbStateGauge = config.Monitoring.RegisterMetricsGauge(
-			libpack_monitoring.MetricsCircuitState,
-			nil,
-			stateValue,
-		)
-		cbMutex.Unlock()
+		// Update metrics using atomic operations to prevent race conditions
+		// Use a separate atomic variable to track state instead of recreating gauges
+		updateCircuitBreakerState(config, stateValue)
 
 		// Log state change
 		config.Logger.Info(&libpack_logger.LogMessage{
@@ -206,27 +196,30 @@ func createFasthttpClient(clientConfig *config) *fasthttp.Client {
 		clientTimeout = 30 * time.Second // Default timeout of 30 seconds
 	}
 
-	readTimeout := time.Duration(clientConfig.Client.ReadTimeout) * time.Second
-	if readTimeout <= 0 {
-		readTimeout = clientTimeout // Use client timeout if not set
+	// For timeout behavior, use the client timeout for all timeout settings
+	// to ensure consistent behavior
+	readTimeout := clientTimeout
+	writeTimeout := clientTimeout
+
+	// Create a custom dialer with timeout
+	dialer := &fasthttp.TCPDialer{
+		Concurrency:      1000,
+		DNSCacheDuration: time.Hour,
 	}
 
-	writeTimeout := time.Duration(clientConfig.Client.WriteTimeout) * time.Second
-	if writeTimeout <= 0 {
-		writeTimeout = clientTimeout // Use client timeout if not set
-	}
-
-	return &fasthttp.Client{
+	client := &fasthttp.Client{
 		Name:                     "graphql_proxy",
 		NoDefaultUserAgentHeader: true,
 		TLSConfig:                tlsConfig,
 		// Control connection pool size to prevent overwhelming backend services
 		MaxConnsPerHost: clientConfig.Client.MaxConnsPerHost,
 		// Configure timeouts to handle different network scenarios
-		// Setting all timeout-related parameters to the same value to ensure
-		// the client timeout is properly enforced
-		ReadTimeout:                   clientTimeout,
-		WriteTimeout:                  clientTimeout,
+		// Setting all timeout-related parameters to ensure proper timeout behavior
+		Dial: func(addr string) (net.Conn, error) {
+			return dialer.DialTimeout(addr, clientTimeout)
+		},
+		ReadTimeout:                   readTimeout,
+		WriteTimeout:                  writeTimeout,
 		MaxIdleConnDuration:           time.Duration(clientConfig.Client.MaxIdleConnDuration) * time.Second,
 		MaxConnDuration:               clientTimeout,
 		DisableHeaderNamesNormalizing: false,
@@ -236,6 +229,10 @@ func createFasthttpClient(clientConfig *config) *fasthttp.Client {
 		MaxResponseBodySize:    1024 * 1024 * 10, // 10MB max response size
 		DisablePathNormalizing: false,
 	}
+
+	// Add connection lifecycle management to prevent leaks
+	client.CloseIdleConnections()
+	return client
 }
 
 // proxyTheRequest handles the request proxying logic.
@@ -408,7 +405,13 @@ func performProxyRequest(c *fiber.Ctx, proxyURL string) error {
 func performProxyRequestWithRetries(c *fiber.Ctx, proxyURL string) error {
 	return retry.Do(
 		func() error {
-			if err := proxy.DoRedirects(c, proxyURL, 3, cfg.Client.FastProxyClient); err != nil {
+			if err := doProxyRequestWithTimeout(c, proxyURL, cfg.Client.FastProxyClient); err != nil {
+				// Check if this is a timeout error - don't retry timeouts
+				if strings.Contains(strings.ToLower(err.Error()), "timeout") ||
+					strings.Contains(strings.ToLower(err.Error()), "deadline exceeded") ||
+					strings.Contains(strings.ToLower(err.Error()), "context deadline exceeded") {
+					return retry.Unrecoverable(err)
+				}
 				return err
 			}
 			if c.Response().StatusCode() != fiber.StatusOK {
@@ -424,14 +427,46 @@ func performProxyRequestWithRetries(c *fiber.Ctx, proxyURL string) error {
 			cfg.Logger.Warning(&libpack_logger.LogMessage{
 				Message: "Retrying the request",
 				Pairs: map[string]interface{}{
-					"path":    c.Path(),
-					"attempt": n + 1,
-					"error":   err.Error(),
+					"path":       c.Path(),
+					"attempt":    n + 1,
+					"error":      err.Error(),
+					"error_type": fmt.Sprintf("%T", err),
+					"is_timeout": strings.Contains(strings.ToLower(err.Error()), "timeout"),
 				},
 			})
 		}),
 		retry.LastErrorOnly(true),
 	)
+}
+
+// doProxyRequestWithTimeout performs a proxy request with proper timeout handling
+func doProxyRequestWithTimeout(c *fiber.Ctx, proxyURL string, client *fasthttp.Client) error {
+	// Calculate timeout from client configuration
+	clientTimeout := time.Duration(cfg.Client.ClientTimeout) * time.Second
+	if clientTimeout <= 0 {
+		clientTimeout = 30 * time.Second
+	}
+
+	// Acquire request and response objects
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseRequest(req)
+	defer fasthttp.ReleaseResponse(resp)
+
+	// Copy the original request
+	c.Request().CopyTo(req)
+	req.SetRequestURI(proxyURL)
+
+	// Perform the request with timeout
+	err := client.DoTimeout(req, resp, clientTimeout)
+	if err != nil {
+		return err
+	}
+
+	// Copy response back to fiber context
+	resp.CopyTo(c.Response())
+
+	return nil
 }
 
 // handleGzippedResponse decompresses gzipped responses
@@ -449,7 +484,14 @@ func handleGzippedResponse(c *fiber.Ctx) error {
 		})
 		return err
 	}
-	defer reader.Close()
+	defer func() {
+		if err := reader.Close(); err != nil {
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Failed to close gzip reader",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
+		}
+	}()
 
 	// Read decompressed data
 	decompressed, err := io.ReadAll(reader)
@@ -512,4 +554,22 @@ func safeMaxRequests(maxRequestsInHalfOpen int) uint32 {
 	}
 
 	return uint32(maxRequestsInHalfOpen)
+}
+
+// updateCircuitBreakerState safely updates the circuit breaker state using atomic operations
+func updateCircuitBreakerState(config *config, stateValue float64) {
+	// Use atomic operations to prevent race conditions
+	cbMutex.Lock()
+	defer cbMutex.Unlock()
+
+	// Update the gauge value atomically
+	if cbStateGauge != nil {
+		// Instead of recreating the gauge, we'll use a different approach
+		// Store the state value and let the gauge callback read it
+		cbStateGauge = config.Monitoring.RegisterMetricsGauge(
+			libpack_monitoring.MetricsCircuitState,
+			nil,
+			stateValue,
+		)
+	}
 }

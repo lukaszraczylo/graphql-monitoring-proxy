@@ -168,22 +168,37 @@ func healthCheck(c *fiber.Ctx) error {
 			Status: "up",
 		}
 
-		// Try to validate Redis connection
+		// Implement proper Redis connectivity test
 		redisAccessible := false
+		var redisError error
 
 		if libpack_cache.IsCacheInitialized() {
-			// Just try to access Redis by calling the function
-			_ = libpack_cache.CacheGetQueries()
-			// The CacheGetQueries function will return 0 if there's an error connecting to Redis
-			// But we need to differentiate between "0 queries" and "connection error"
-			// Let's try a simple countQueries operation which will fail if Redis is inaccessible
-			redisAccessible = true
+			// Try a simple Redis operation to test connectivity
+			testKey := "health_check_test"
+			testValue := []byte("test")
+
+			// Try to set and get a test value
+			libpack_cache.CacheStore(testKey, testValue)
+			retrievedValue := libpack_cache.CacheLookup(testKey)
+
+			if retrievedValue != nil && string(retrievedValue) == "test" {
+				redisAccessible = true
+				// Clean up test key
+				libpack_cache.CacheDelete(testKey)
+			} else {
+				redisError = fmt.Errorf("redis test operation failed")
+			}
+		} else {
+			redisError = fmt.Errorf("cache not initialized")
 		}
 
 		redisStatus.ResponseTime = time.Since(startTime).Milliseconds()
 
 		if !redisAccessible {
 			errorMsg := "Failed to connect to Redis"
+			if redisError != nil {
+				errorMsg = redisError.Error()
+			}
 			redisStatus.Status = "down"
 			redisStatus.Error = &errorMsg
 			response.Status = "unhealthy"
@@ -192,6 +207,7 @@ func healthCheck(c *fiber.Ctx) error {
 				Message: "Health check: Can't connect to Redis",
 				Pairs: map[string]interface{}{
 					"server":           cfg.Cache.CacheRedisURL,
+					"error":            errorMsg,
 					"response_time_ms": redisStatus.ResponseTime,
 				},
 			})

@@ -25,12 +25,12 @@ func (suite *Tests) TestGzipHandling() {
 		var buf bytes.Buffer
 		gzipWriter := gzip.NewWriter(&buf)
 		payload := `{"data":{"test":"gzipped response"}}`
-		gzipWriter.Write([]byte(payload))
-		gzipWriter.Close()
+		_, _ = gzipWriter.Write([]byte(payload))
+		_ = gzipWriter.Close()
 
 		// Send the gzipped data
 		w.WriteHeader(http.StatusOK)
-		w.Write(buf.Bytes())
+		_, _ = w.Write(buf.Bytes())
 	}))
 	defer server.Close()
 
@@ -83,7 +83,7 @@ func (suite *Tests) TestInvalidGzipHandling() {
 
 		// Send invalid gzip data
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("This is not valid gzip data"))
+		_, _ = w.Write([]byte("This is not valid gzip data"))
 	}))
 	defer server.Close()
 
@@ -130,7 +130,7 @@ func (suite *Tests) TestErrorPropagation() {
 			name: "5xx_error",
 			serverHandler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte(`{"errors":[{"message":"Internal server error"}]}`))
+				_, _ = w.Write([]byte(`{"errors":[{"message":"Internal server error"}]}`))
 			},
 			expectedError: "received non-200 response",
 		},
@@ -138,7 +138,7 @@ func (suite *Tests) TestErrorPropagation() {
 			name: "malformed_json_response",
 			serverHandler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{malformed json`))
+				_, _ = w.Write([]byte(`{malformed json`))
 			},
 			expectedError: "", // No error expected, as we don't validate JSON format
 		},
@@ -242,7 +242,7 @@ func (suite *Tests) TestTimeout() {
 		// Sleep longer than the client timeout
 		time.Sleep(3 * time.Second)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"data":{"test":"response"}}`))
+		_, _ = w.Write([]byte(`{"data":{"test":"response"}}`))
 	}))
 	defer server.Close()
 
@@ -277,7 +277,9 @@ func (suite *Tests) TestTimeout() {
 
 	// Verify timeout error handling
 	assert.NotNil(err, "proxyTheRequest should return error on timeout")
-	assert.Contains(err.Error(), "timeout", "Error should mention timeout")
+	if err != nil {
+		assert.Contains(err.Error(), "timeout", "Error should mention timeout")
+	}
 }
 
 // TestLargeResponseHandling tests handling of large responses
@@ -293,7 +295,7 @@ func (suite *Tests) TestLargeResponseHandling() {
 		// Set headers and send response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write(largeResponse)
+		_, _ = w.Write(largeResponse)
 	}))
 	defer server.Close()
 
@@ -334,7 +336,7 @@ func (suite *Tests) TestLargeResponseHandling() {
 func createGzippedData(data []byte) []byte {
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)
-	gw.Write(data)
-	gw.Close()
+	_, _ = gw.Write(data)
+	_ = gw.Close()
 	return buf.Bytes()
 }

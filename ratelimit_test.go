@@ -41,7 +41,7 @@ func (suite *Tests) Test_loadRatelimitConfig() {
 
 	err = os.WriteFile(testConfigPath, configData, 0o644)
 	assert.NoError(err)
-	defer os.Remove(testConfigPath)
+	defer func() { _ = os.Remove(testConfigPath) }()
 
 	// Test loading config from custom path
 	suite.Run("load from custom path", func() {
@@ -77,7 +77,7 @@ func (suite *Tests) Test_loadRatelimitConfig() {
 		invalidPath := filepath.Join(tempDir, "invalid_ratelimit.json")
 		err := os.WriteFile(invalidPath, []byte("{invalid json}"), 0o644)
 		assert.NoError(err)
-		defer os.Remove(invalidPath)
+		defer func() { _ = os.Remove(invalidPath) }()
 
 		err = loadConfigFromPath(invalidPath)
 		assert.Error(err)
@@ -89,7 +89,7 @@ func (suite *Tests) Test_loadRatelimitConfig() {
 		currentDirPath := "./ratelimit.json"
 		err := os.WriteFile(currentDirPath, configData, 0o644)
 		assert.NoError(err)
-		defer os.Remove(currentDirPath)
+		defer func() { _ = os.Remove(currentDirPath) }()
 
 		// Clear existing rate limits
 		rateLimitMu.Lock()
@@ -171,10 +171,10 @@ func (suite *Tests) Test_rateLimitedRequest() {
 	}
 	rateLimitMu.Unlock()
 
-	// Test non-existent role
+	// Test non-existent role - should be denied for security
 	suite.Run("non-existent role", func() {
 		allowed := rateLimitedRequest("test-user-1", "non-existent-role")
-		assert.True(allowed, "Unknown roles should return true")
+		assert.False(allowed, "Unknown roles should be denied for security")
 	})
 
 	// Test admin role (high limit)

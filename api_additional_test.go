@@ -32,8 +32,8 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 	// Run the test with initial empty banned users file
 	suite.Run("reload with empty file", func() {
 		// Clear existing file if any
-		os.Remove(cfg.Api.BannedUsersFile)
-		os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
+		_ = os.Remove(cfg.Api.BannedUsersFile)
+		_ = os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
 
 		// Ensure banned users map is empty
 		bannedUsersIDsMutex.Lock()
@@ -65,7 +65,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 			"test-user-reload-2": "reason reload 2",
 		}
 		data, _ := json.Marshal(testData)
-		err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0644)
+		err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0o644)
 		assert.NoError(err)
 
 		// Clear the banned users map
@@ -97,7 +97,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 			"test-user-initial": "initial reason",
 		}
 		data, _ := json.Marshal(initialData)
-		err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0644)
+		err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0o644)
 		assert.NoError(err)
 
 		// Clear the banned users map
@@ -125,7 +125,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 			"test-user-updated-2": "updated reason 2",
 		}
 		data, _ = json.Marshal(updatedData)
-		err = os.WriteFile(cfg.Api.BannedUsersFile, data, 0644)
+		err = os.WriteFile(cfg.Api.BannedUsersFile, data, 0o644)
 		assert.NoError(err)
 
 		// Execute reloader again to load updated data
@@ -148,8 +148,8 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 	})
 
 	// Cleanup
-	os.Remove(cfg.Api.BannedUsersFile)
-	os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
+	_ = os.Remove(cfg.Api.BannedUsersFile)
+	_ = os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
 }
 
 // This is a better approach instead of the ticker-based test
@@ -166,10 +166,10 @@ func (suite *Tests) Test_LoadUnloadBannedUsers() {
 		"user2": "reason2",
 	}
 	data, _ := json.Marshal(initialData)
-	err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0644)
+	err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0o644)
 	assert.NoError(err)
-	defer os.Remove(cfg.Api.BannedUsersFile)
-	defer os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
+	defer func() { _ = os.Remove(cfg.Api.BannedUsersFile) }()
+	defer func() { _ = os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile)) }()
 
 	// Test loading banned users
 	suite.Run("load banned users", func() {

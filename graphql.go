@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/goccy/go-json"
@@ -27,13 +28,12 @@ var (
 	introspectionAllowedQueries = make(map[string]struct{})
 	allowedUrls                 = make(map[string]struct{})
 
-	// Cache for parsed GraphQL queries to avoid reparsing
+	// Cache for parsed GraphQL queries to avoid reparsing - using sync.Map for thread safety
 	parsedQueryCache = sync.Map{}
 
 	// Maximum size for parsed query cache
 	maxQueryCacheSize = 1000
-	currentCacheSize  = 0
-	queryCacheMutex   = sync.RWMutex{}
+	currentCacheSize  int64 // Use atomic operations for this
 )
 
 func prepareQueriesAndExemptions() {
@@ -98,31 +98,93 @@ func initGraphQLParsing() {
 	maxQueryCacheSize = runtime.GOMAXPROCS(0) * 250
 }
 
-// Store a parsed document in the cache
+// Store a parsed document in the cache with LRU eviction
 func cacheQuery(queryText string, document *ast.Document) {
-	queryCacheMutex.Lock()
-	defer queryCacheMutex.Unlock()
+	// Use atomic operations for cache size tracking
+	currentSize := atomic.LoadInt64(&currentCacheSize)
 
-	// Check if we need to clean up the cache
-	if currentCacheSize >= maxQueryCacheSize {
-		// Simple eviction: clear the whole cache when it becomes too large
-		// In a production system, you might want a more sophisticated LRU strategy
-		parsedQueryCache = sync.Map{}
-		currentCacheSize = 0
+	// Check if we need to evict entries (implement LRU-like behavior)
+	if currentSize >= int64(maxQueryCacheSize) {
+		evictOldestQueries(int64(maxQueryCacheSize / 4)) // Evict 25% of entries
 	}
 
-	// Store the document in the cache
-	parsedQueryCache.Store(queryText, document)
-	currentCacheSize++
+	// Store the document in the cache with timestamp for LRU
+	cacheEntry := &CachedQuery{
+		Document:  document,
+		Timestamp: time.Now(),
+	}
+
+	// Only increment if this is a new entry
+	if _, exists := parsedQueryCache.LoadOrStore(queryText, cacheEntry); !exists {
+		atomic.AddInt64(&currentCacheSize, 1)
+	}
+}
+
+// CachedQuery represents a cached GraphQL query with timestamp for LRU
+type CachedQuery struct {
+	Document  *ast.Document
+	Timestamp time.Time
+}
+
+// evictOldestQueries implements LRU eviction by removing oldest entries
+func evictOldestQueries(numToEvict int64) {
+	type queryEntry struct {
+		key       string
+		timestamp time.Time
+	}
+
+	var entries []queryEntry
+
+	// Collect all entries with their timestamps
+	parsedQueryCache.Range(func(key, value interface{}) bool {
+		if keyStr, ok := key.(string); ok {
+			if cachedQuery, ok := value.(*CachedQuery); ok {
+				entries = append(entries, queryEntry{
+					key:       keyStr,
+					timestamp: cachedQuery.Timestamp,
+				})
+			}
+		}
+		return true
+	})
+
+	// Sort by timestamp (oldest first) and evict
+	if len(entries) > 0 {
+		// Simple selection sort for oldest entries
+		evicted := int64(0)
+		for i := 0; i < len(entries) && evicted < numToEvict; i++ {
+			oldest := i
+			for j := i + 1; j < len(entries); j++ {
+				if entries[j].timestamp.Before(entries[oldest].timestamp) {
+					oldest = j
+				}
+			}
+			// Swap and delete
+			if oldest != i {
+				entries[i], entries[oldest] = entries[oldest], entries[i]
+			}
+
+			if _, existed := parsedQueryCache.LoadAndDelete(entries[i].key); existed {
+				atomic.AddInt64(&currentCacheSize, -1)
+				evicted++
+			}
+		}
+	}
 }
 
 // Check if we have a cached parsed query
 func getCachedQuery(queryText string) *ast.Document {
-	if doc, found := parsedQueryCache.Load(queryText); found {
-		if cfg != nil && cfg.Monitoring != nil {
-			cfg.Monitoring.Increment(libpack_monitoring.MetricsGraphQLCacheHit, nil)
+	if entry, found := parsedQueryCache.Load(queryText); found {
+		if cachedQuery, ok := entry.(*CachedQuery); ok {
+			// Update timestamp for LRU
+			cachedQuery.Timestamp = time.Now()
+			parsedQueryCache.Store(queryText, cachedQuery)
+
+			if cfg != nil && cfg.Monitoring != nil {
+				cfg.Monitoring.Increment(libpack_monitoring.MetricsGraphQLCacheHit, nil)
+			}
+			return cachedQuery.Document
 		}
-		return doc.(*ast.Document)
 	}
 
 	if cfg != nil && cfg.Monitoring != nil {
@@ -165,6 +227,11 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 	res := resultPool.Get().(*parseGraphQLQueryResult)
 	*res = parseGraphQLQueryResult{shouldIgnore: true}
 
+	// Ensure we return the result to the pool on function exit
+	defer func() {
+		resultPool.Put(res)
+	}()
+
 	// Default to using the write endpoint
 	res.activeEndpoint = cfg.Server.HostGraphQL
 
@@ -177,6 +244,25 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 		}
 		queryPool.Put(m)
 	}()
+
+	// Add comprehensive input validation
+	bodySize := len(c.Body())
+
+	// Validate query size to prevent DoS attacks
+	if bodySize > 1024*1024 { // 1MB limit
+		if ifNotInTest() {
+			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
+		}
+		return res
+	}
+
+	// Validate minimum size
+	if bodySize < 2 { // At least "{}"
+		if ifNotInTest() {
+			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
+		}
+		return res
+	}
 
 	// Unmarshal the request body
 	if err := json.Unmarshal(c.Body(), &m); err != nil {
@@ -285,7 +371,6 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 				}
 				_ = c.Status(403).SendString("The server is in read-only mode")
 				res.shouldBlock = true
-				resultPool.Put(res)
 				return res
 			}
 
@@ -296,7 +381,6 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 			if cfg.Security.BlockIntrospection && checkSelections(c, oper.GetSelectionSet().Selections) {
 				_ = c.Status(403).SendString("Introspection queries are not allowed")
 				res.shouldBlock = true
-				resultPool.Put(res)
 				return res
 			}
 		}

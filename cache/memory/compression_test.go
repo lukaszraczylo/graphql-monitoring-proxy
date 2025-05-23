@@ -124,8 +124,8 @@ func TestUncompressibleData(t *testing.T) {
 	// Try to compress it directly to see if it actually would reduce size
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)
-	gw.Write(value)
-	gw.Close()
+	_, _ = gw.Write(value)
+	_ = gw.Close()
 	compressedDirectly := buf.Bytes()
 
 	// Now use the cache's Set method

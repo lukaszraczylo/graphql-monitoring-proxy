@@ -125,7 +125,15 @@ func CacheLookup(hash string) []byte {
 				})
 				return nil
 			}
-			defer reader.Close()
+			// Ensure reader is always closed, even on error
+			defer func() {
+				if closeErr := reader.Close(); closeErr != nil {
+					config.Logger.Error(&libpack_logger.LogMessage{
+						Message: "Failed to close gzip reader",
+						Pairs:   map[string]interface{}{"error": closeErr.Error(), "hash": hash},
+					})
+				}
+			}()
 
 			decompressed, err := io.ReadAll(reader)
 			if err != nil {
@@ -151,7 +159,17 @@ func CacheDelete(hash string) {
 		Message: "Deleting data from cache",
 		Pairs:   map[string]interface{}{"hash": hash},
 	})
-	atomic.AddInt64(&cacheStats.CachedQueries, -1)
+	// Use atomic operations with validation to prevent inconsistent statistics
+	for {
+		current := atomic.LoadInt64(&cacheStats.CachedQueries)
+		if current <= 0 {
+			break // Don't go below zero
+		}
+		if atomic.CompareAndSwapInt64(&cacheStats.CachedQueries, current, current-1) {
+			break
+		}
+		// Retry if CAS failed due to concurrent modification
+	}
 	config.Client.Delete(hash)
 }
 

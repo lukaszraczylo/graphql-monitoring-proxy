@@ -166,7 +166,7 @@ func (suite *Tests) Test_proxyTheRequestWithTimeouts() {
 		sleepDuration, _ := time.ParseDuration(r.Header.Get("X-Sleep-Duration"))
 		time.Sleep(sleepDuration)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"data":{"test":"response"}}`))
+		_, _ = w.Write([]byte(`{"data":{"test":"response"}}`))
 	}))
 	defer mockServer.Close()
 

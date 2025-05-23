@@ -95,7 +95,7 @@ func (suite *Tests) TestClientTimeoutBehavior() {
 		// Return a simple JSON response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"data":{"test":"response"}}`))
+		_, _ = w.Write([]byte(`{"data":{"test":"response"}}`))
 	}))
 	defer server.Close()
 
@@ -160,7 +160,9 @@ func (suite *Tests) TestClientTimeoutBehavior() {
 			// Verify timeout behavior
 			if tc.shouldTimeout {
 				assert.NotNil(err, "Request should timeout")
-				assert.Contains(err.Error(), "timeout", "Error should mention timeout")
+				if err != nil {
+					assert.Contains(err.Error(), "timeout", "Error should mention timeout")
+				}
 			} else {
 				assert.Nil(err, "Request should not timeout")
 				assert.Equal(fiber.StatusOK, ctx.Response().StatusCode(), "Status should be 200 OK")
@@ -188,7 +190,7 @@ func (suite *Tests) TestConcurrentRequestHandling() {
 		// Return a response with the request number
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fmt.Sprintf(`{"data":{"request":%d}}`, currentRequest)))
+		_, _ = fmt.Fprintf(w, `{"data":{"request":%d}}`, currentRequest)
 	}))
 	defer server.Close()
 
@@ -296,7 +298,7 @@ func (suite *Tests) TestMaxConcurrentConnections() {
 		// Sleep for a significant time to keep connections open
 		time.Sleep(2 * time.Second)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"data":{"test":"response"}}`))
+		_, _ = w.Write([]byte(`{"data":{"test":"response"}}`))
 	}))
 	defer server.Close()
 
@@ -462,7 +464,7 @@ func (suite *Tests) TestVariousResponseTypes() {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", tc.contentType)
 				w.WriteHeader(tc.statusCode)
-				w.Write([]byte(tc.responseBody))
+				_, _ = w.Write([]byte(tc.responseBody))
 			}))
 			defer server.Close()
 

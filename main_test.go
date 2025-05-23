@@ -45,7 +45,7 @@ func (suite *Tests) SetupTest() {
 	libpack_cache.New(5 * time.Minute)
 	parseConfig()
 	enableApi()
-	StartMonitoringServer()
+	_ = StartMonitoringServer()
 
 	// Update logger with proper synchronization
 	logger := libpack_logging.New().SetMinLogLevel(libpack_logging.GetLogLevel(getDetailsFromEnv("LOG_LEVEL", "info")))
@@ -54,19 +54,19 @@ func (suite *Tests) SetupTest() {
 	cfgMutex.Unlock()
 
 	// Setup environment variables here if needed
-	os.Setenv("GMP_TEST_STRING", "testValue")
-	os.Setenv("GMP_TEST_INT", "123")
-	os.Setenv("GMP_TEST_BOOL", "true")
-	os.Setenv("NON_GMP_TEST_INT", "31337")
+	_ = os.Setenv("GMP_TEST_STRING", "testValue")
+	_ = os.Setenv("GMP_TEST_INT", "123")
+	_ = os.Setenv("GMP_TEST_BOOL", "true")
+	_ = os.Setenv("NON_GMP_TEST_INT", "31337")
 }
 
 // TearDownTest is run after each test to clean up
 func (suite *Tests) TearDownTest() {
 	// Clean up environment variables here if needed
-	os.Unsetenv("GMP_TEST_STRING")
-	os.Unsetenv("GMP_TEST_INT")
-	os.Unsetenv("GMP_TEST_BOOL")
-	os.Unsetenv("NON_GMP_TEST_INT")
+	_ = os.Unsetenv("GMP_TEST_STRING")
+	_ = os.Unsetenv("GMP_TEST_INT")
+	_ = os.Unsetenv("GMP_TEST_BOOL")
+	_ = os.Unsetenv("NON_GMP_TEST_INT")
 }
 
 // func (suite *Tests) AfterTest(suiteName, testName string) {)
@@ -76,7 +76,7 @@ func TestSuite(t *testing.T) {
 	cfg = &config{}
 	cfgMutex.Unlock()
 	parseConfig()
-	StartMonitoringServer()
+	_ = StartMonitoringServer()
 	suite.Run(t, new(Tests))
 }
 
@@ -144,8 +144,8 @@ func (suite *Tests) Test_getDetailsFromEnv() {
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
 			if tt.envValue != "" {
-				os.Setenv("GMP_"+tt.key, tt.envValue)
-				defer os.Unsetenv("GMP_" + tt.key)
+				_ = os.Setenv("GMP_"+tt.key, tt.envValue)
+				defer func() { _ = os.Unsetenv("GMP_" + tt.key) }()
 			}
 			result := getDetailsFromEnv(tt.key, tt.defaultValue)
 			assert.Equal(tt.expected, result)
@@ -165,13 +165,13 @@ func (suite *Tests) TestIntrospectionEnvironmentConfig() {
 	for _, env := range varsToSave {
 		if val, exists := os.LookupEnv(env); exists {
 			oldEnv[env] = val
-			os.Unsetenv(env)
+			_ = os.Unsetenv(env)
 		}
 	}
 	defer func() {
 		// Restore original env vars
 		for k, v := range oldEnv {
-			os.Setenv(k, v)
+			_ = os.Setenv(k, v)
 		}
 	}()
 
@@ -249,7 +249,7 @@ func (suite *Tests) TestIntrospectionEnvironmentConfig() {
 		suite.Run(tt.name, func() {
 			// Set test env vars
 			for k, v := range tt.envVars {
-				os.Setenv(k, v)
+				_ = os.Setenv(k, v)
 			}
 
 			// Reset global config with proper synchronization
@@ -268,7 +268,7 @@ func (suite *Tests) TestIntrospectionEnvironmentConfig() {
 			result := parseGraphQLQuery(ctx)
 			assert.Equal(tt.wantBlocked, result.shouldBlock)
 			for k := range tt.envVars {
-				os.Unsetenv(k)
+				_ = os.Unsetenv(k)
 			}
 		})
 	}

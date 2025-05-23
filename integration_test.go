@@ -64,7 +64,7 @@ func (suite *Tests) TestCachingAndCircuitBreakerInteraction() {
 		// Return configured response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(responseStatus)
-		w.Write([]byte(responseBody))
+		_, _ = w.Write([]byte(responseBody))
 	}))
 	defer server.Close()
 
@@ -269,7 +269,7 @@ func (suite *Tests) TestGzipHandlingAndCachingInteraction() {
 
 		// Create a gzipped response with query-specific data
 		reqBody := make([]byte, r.ContentLength)
-		r.Body.Read(reqBody)
+		_, _ = r.Body.Read(reqBody)
 		var queryStr string
 		if strings.Contains(string(reqBody), "query1") {
 			queryStr = "query1"
@@ -284,7 +284,7 @@ func (suite *Tests) TestGzipHandlingAndCachingInteraction() {
 
 		// Send the gzipped data
 		w.WriteHeader(http.StatusOK)
-		w.Write(gzipped)
+		_, _ = w.Write(gzipped)
 	}))
 	defer server.Close()
 

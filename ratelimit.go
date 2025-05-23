@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/goccy/go-json"
@@ -68,6 +69,8 @@ func (r *RateLimitConfig) UnmarshalJSON(data []byte) error {
 var (
 	rateLimits  = make(map[string]RateLimitConfig)
 	rateLimitMu sync.RWMutex
+	// Use atomic.Value for safe concurrent config swapping
+	rateLimitConfigAtomic atomic.Value
 )
 
 // Variable to hold the current load config function - allows for testing
@@ -172,8 +175,11 @@ func loadConfigFromPath(path string) error {
 		newRateLimits[key] = value
 	}
 
+	// Use atomic swap for thread-safe configuration updates
 	rateLimitMu.Lock()
 	rateLimits = newRateLimits
+	// Store the new config atomically
+	rateLimitConfigAtomic.Store(newRateLimits)
 	rateLimitMu.Unlock()
 
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
@@ -185,18 +191,34 @@ func loadConfigFromPath(path string) error {
 
 // rateLimitedRequest checks if a request should be rate-limited
 func rateLimitedRequest(userID, userRole string) bool {
+	// Try to get config from atomic value first for better performance
+	if configInterface := rateLimitConfigAtomic.Load(); configInterface != nil {
+		if config, ok := configInterface.(map[string]RateLimitConfig); ok {
+			if roleConfig, exists := config[userRole]; exists && roleConfig.RateCounterTicker != nil {
+				return checkRateLimit(userID, userRole, roleConfig)
+			}
+		}
+	}
+
+	// Fallback to mutex-protected access
 	rateLimitMu.RLock()
 	roleConfig, ok := rateLimits[userRole]
 	rateLimitMu.RUnlock()
 
 	if !ok || roleConfig.RateCounterTicker == nil {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Rate limit role not found or ticker not initialized",
+			Message: "Rate limit role not found or ticker not initialized - defaulting to deny",
 			Pairs:   map[string]interface{}{"user_role": userRole},
 		})
-		return true
+		// Default to deny when config not found (security fix)
+		return false
 	}
 
+	return checkRateLimit(userID, userRole, roleConfig)
+}
+
+// checkRateLimit performs the actual rate limit check
+func checkRateLimit(userID, userRole string, roleConfig RateLimitConfig) bool {
 	roleConfig.RateCounterTicker.Incr(1)
 	tickerRate := roleConfig.RateCounterTicker.GetRate()
 

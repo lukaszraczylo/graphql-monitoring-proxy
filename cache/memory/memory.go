@@ -3,6 +3,7 @@ package libpack_cache_memory
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"io"
 	"runtime"
 	"sync"
@@ -40,6 +41,9 @@ type Cache struct {
 	memoryUsage    int64 // Total memory usage in bytes
 	maxMemorySize  int64 // Maximum memory usage in bytes
 	maxCacheSize   int64 // Maximum number of entries (for backward compatibility)
+	// Add context for graceful shutdown
+	ctx    context.Context
+	cancel context.CancelFunc
 	sync.RWMutex
 }
 
@@ -49,10 +53,15 @@ func New(globalTTL time.Duration) *Cache {
 
 // NewWithSize creates a new cache with the specified memory size limit and entry count limit
 func NewWithSize(globalTTL time.Duration, maxMemorySize int64, maxCacheSize int64) *Cache {
+	// Create context for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+
 	cache := &Cache{
 		globalTTL:     globalTTL,
 		maxMemorySize: maxMemorySize,
 		maxCacheSize:  maxCacheSize,
+		ctx:           ctx,
+		cancel:        cancel,
 		compressPool: sync.Pool{
 			New: func() interface{} {
 				return gzip.NewWriter(nil)
@@ -66,7 +75,7 @@ func NewWithSize(globalTTL time.Duration, maxMemorySize int64, maxCacheSize int6
 		},
 	}
 
-	// Start cleanup routine
+	// Start cleanup routine with context cancellation
 	go cache.cleanupRoutine(globalTTL)
 	return cache
 }
@@ -76,14 +85,27 @@ func (c *Cache) cleanupRoutine(globalTTL time.Duration) {
 	ticker := time.NewTicker(globalTTL / 4)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		c.CleanExpiredEntries()
+	for {
+		select {
+		case <-c.ctx.Done():
+			// Context cancelled, exit gracefully
+			return
+		case <-ticker.C:
+			c.CleanExpiredEntries()
 
-		// Trigger GC if we have a lot of entries or memory usage
-		if atomic.LoadInt64(&c.entryCount) > c.maxCacheSize/2 ||
-			atomic.LoadInt64(&c.memoryUsage) > c.maxMemorySize/2 {
-			runtime.GC()
+			// Trigger GC if we have a lot of entries or memory usage
+			if atomic.LoadInt64(&c.entryCount) > c.maxCacheSize/2 ||
+				atomic.LoadInt64(&c.memoryUsage) > c.maxMemorySize/2 {
+				runtime.GC()
+			}
 		}
+	}
+}
+
+// Shutdown gracefully stops the cache cleanup routine
+func (c *Cache) Shutdown() {
+	if c.cancel != nil {
+		c.cancel()
 	}
 }
 
@@ -230,7 +252,9 @@ func (c *Cache) decompress(data []byte) ([]byte, error) {
 		}
 	}
 
-	defer r.Close()
+	defer func() {
+		_ = r.Close() // Ignore error in defer cleanup
+	}()
 	return io.ReadAll(r)
 }
 
