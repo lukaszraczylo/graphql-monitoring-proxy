@@ -17,7 +17,12 @@ This project is in active use by [telegram-bot.app](https://telegram-bot.app), a
   - [Tracing](#tracing)
   - [Speed](#speed)
     - [Caching](#caching)
+    - [Memory-Aware Caching](#memory-aware-caching)
     - [Read-only endpoint](#read-only-endpoint)
+  - [Resilience](#resilience)
+    - [Circuit Breaker Pattern](#circuit-breaker-pattern)
+    - [Enhanced HTTP Client](#enhanced-http-client)
+    - [GraphQL Parsing Optimizations](#graphql-parsing-optimizations)
   - [Maintenance](#maintenance)
     - [Hasura event cleaner](#hasura-event-cleaner)
   - [Security](#security)
@@ -111,6 +116,9 @@ In this case, both proxy and websockets will be available under the `/v1/graphql
 | monitor    | OpenTelemetry tracing support with configurable endpoint              |
 | speed      | Caching the queries, together with per-query cache and TTL            |
 | speed      | Support for READ ONLY graphql endpoint                                |
+| speed      | Memory-aware caching with compression and eviction                    |
+| resilience | Circuit breaker pattern for fault tolerance                           |
+| resilience | Optimized HTTP client with granular timeout controls                  |
 | security   | Blocking schema introspection                                         |
 | security   | Rate limiting queries based on user role                              |
 | security   | Blocking mutations in read-only mode                                  |
@@ -138,10 +146,24 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `ROLE_RATE_LIMIT`         | Enable request rate limiting based on role| `false`                   |
 | `ENABLE_GLOBAL_CACHE`     | Enable the cache                        | `false`                    |
 | `CACHE_TTL`               | The cache TTL                           | `60`                       |
+| `CACHE_MAX_MEMORY_SIZE`   | Maximum memory size for cache in MB     | `100`                      |
+| `CACHE_MAX_ENTRIES`       | Maximum number of entries in cache      | `10000`                    |
 | `ENABLE_REDIS_CACHE`      | Enable distributed Redis cache          | `false`                    |
 | `CACHE_REDIS_URL`         | URL to redis server / cluster endpoint  | `localhost:6379`           |
 | `CACHE_REDIS_PASSWORD`    | Redis connection password               | ``                         |
 | `CACHE_REDIS_DB`          | Redis DB id                             | `0`                        |
+| `ENABLE_CIRCUIT_BREAKER`  | Enable circuit breaker pattern          | `false`                    |
+| `CIRCUIT_MAX_FAILURES`    | Failures before circuit trips           | `5`                        |
+| `CIRCUIT_TIMEOUT_SECONDS` | Seconds circuit stays open              | `30`                       |
+| `CIRCUIT_MAX_HALF_OPEN_REQUESTS` | Max requests in half-open state  | `2`                        |
+| `CIRCUIT_RETURN_CACHED_ON_OPEN` | Return cached responses when open | `true`                     |
+| `CIRCUIT_TRIP_ON_TIMEOUTS` | Trip circuit breaker on timeouts       | `true`                     |
+| `CIRCUIT_TRIP_ON_5XX`     | Trip circuit breaker on 5XX responses   | `true`                     |
+| `CLIENT_READ_TIMEOUT`     | HTTP client read timeout in seconds     | ``                         |
+| `CLIENT_WRITE_TIMEOUT`    | HTTP client write timeout in seconds    | ``                         |
+| `CLIENT_MAX_IDLE_CONN_DURATION` | Max idle connection duration in seconds | `300`                |
+| `MAX_CONNS_PER_HOST`      | Maximum connections per host            | `1024`                     |
+| `CLIENT_DISABLE_TLS_VERIFY` | Disable TLS verification              | `false`                    |
 | `LOG_LEVEL`               | The log level                           | `info`                     |
 | `BLOCK_SCHEMA_INTROSPECTION`| Blocks the schema introspection       | `false`                    |
 | `ALLOWED_INTROSPECTION`  | Allow only certain queries in introspection | ``                  |
@@ -201,6 +223,44 @@ query MyProducts @cached(refresh: true) {
 }
 ```
 
+#### Memory-Aware Caching
+
+Starting with version `0.26.0`, the memory cache implementation has been enhanced with memory-aware features to prevent out-of-memory situations:
+
+- **Memory limits**: Set maximum memory usage via `CACHE_MAX_MEMORY_SIZE` (default: 100MB)
+- **Entry limits**: Set maximum number of entries via `CACHE_MAX_ENTRIES` (default: 10,000)
+- **Smart eviction**: When limits are reached, the cache will automatically evict the least recently used entries
+- **Compression**: Large cache entries are automatically compressed to reduce memory footprint
+- **Memory monitoring**: Memory usage is tracked and reported in metrics
+
+Example configurations:
+
+*Basic memory-aware caching:*
+```bash
+GMP_ENABLE_GLOBAL_CACHE=true
+GMP_CACHE_TTL=60
+GMP_CACHE_MAX_MEMORY_SIZE=100
+GMP_CACHE_MAX_ENTRIES=10000
+```
+
+*High-performance caching for large responses:*
+```bash
+GMP_ENABLE_GLOBAL_CACHE=true
+GMP_CACHE_TTL=300
+GMP_CACHE_MAX_MEMORY_SIZE=500
+GMP_CACHE_MAX_ENTRIES=5000
+```
+
+*Resource-constrained environment:*
+```bash
+GMP_ENABLE_GLOBAL_CACHE=true
+GMP_CACHE_TTL=120
+GMP_CACHE_MAX_MEMORY_SIZE=50
+GMP_CACHE_MAX_ENTRIES=1000
+```
+
+These features ensure the cache runs efficiently even under high load and with large response payloads. The memory-aware cache prevents memory leaks and resource exhaustion while maintaining performance benefits.
+
 Since version `0.5.30` the cache is gzipped in the memory, which should optimise the memory usage quite significantly.
 Since version `0.15.48` the you can also use the distributed Redis cache.
 
@@ -209,6 +269,99 @@ Since version `0.15.48` the you can also use the distributed Redis cache.
 You can now specify the read-only GraphQL endpoint by setting the `HOST_GRAPHQL_READONLY` environment variable. The default value is empty, preventing the proxy from using the read-only endpoint for the queries and directing all the requests to the main endpoint specified as `HOST_GRAPHQL`. If the `HOST_GRAPHQL_READONLY` is set, the proxy will use the read-only endpoint for the queries with the `query` type and the main endpoint for the `mutation` type queries. Format of the read-only endpoint is the same as `HOST_GRAPHQL` endpoint, for example `http://localhost:8080/`.
 
 You can check out the [example of combined deployment with RW and read-only hasura](static/kubernetes-single-deployment-with-ro.yaml).
+
+### Resilience
+
+#### Circuit Breaker Pattern
+
+The proxy implements a circuit breaker pattern to prevent cascading failures when backend services are unstable. When enabled via `ENABLE_CIRCUIT_BREAKER=true`, the proxy will monitor for failures and automatically trip the circuit after a configured number of consecutive failures.
+
+Key features:
+- **Automatic recovery**: The circuit breaker will automatically attempt recovery after a timeout period
+- **Configurable thresholds**: Set failure thresholds, timeouts, and recovery behavior
+- **Fallback mechanism**: Can serve cached responses when the circuit is open
+- **Selective tripping**: Can be configured to trip on specific error types (timeouts, 5XX responses)
+
+Configuration:
+- `ENABLE_CIRCUIT_BREAKER`: Enable the circuit breaker pattern (default: `false`)
+- `CIRCUIT_MAX_FAILURES`: Number of consecutive failures before tripping (default: `5`)
+- `CIRCUIT_TIMEOUT_SECONDS`: How long the circuit stays open before trying half-open state (default: `30`)
+- `CIRCUIT_MAX_HALF_OPEN_REQUESTS`: Maximum concurrent requests in half-open state (default: `2`)
+- `CIRCUIT_RETURN_CACHED_ON_OPEN`: Whether to return cached responses when circuit is open (default: `true`)
+- `CIRCUIT_TRIP_ON_TIMEOUTS`: Whether to count timeouts as failures (default: `true`)
+- `CIRCUIT_TRIP_ON_5XX`: Whether to count 5XX responses as failures (default: `true`)
+
+Example configurations:
+
+*Minimal circuit breaker configuration:*
+```bash
+GMP_ENABLE_CIRCUIT_BREAKER=true
+GMP_CIRCUIT_MAX_FAILURES=5
+GMP_CIRCUIT_TIMEOUT_SECONDS=30
+```
+
+*Production-ready circuit breaker with fallback:*
+```bash
+GMP_ENABLE_CIRCUIT_BREAKER=true
+GMP_CIRCUIT_MAX_FAILURES=3
+GMP_CIRCUIT_TIMEOUT_SECONDS=15
+GMP_CIRCUIT_MAX_HALF_OPEN_REQUESTS=1
+GMP_CIRCUIT_RETURN_CACHED_ON_OPEN=true
+GMP_CIRCUIT_TRIP_ON_TIMEOUTS=true
+GMP_CIRCUIT_TRIP_ON_5XX=true
+```
+
+*Aggressive circuit breaking for critical systems:*
+```bash
+GMP_ENABLE_CIRCUIT_BREAKER=true
+GMP_CIRCUIT_MAX_FAILURES=1
+GMP_CIRCUIT_TIMEOUT_SECONDS=60
+GMP_CIRCUIT_MAX_HALF_OPEN_REQUESTS=1
+GMP_CIRCUIT_RETURN_CACHED_ON_OPEN=true
+GMP_CIRCUIT_TRIP_ON_TIMEOUTS=true
+GMP_CIRCUIT_TRIP_ON_5XX=true
+```
+
+#### Enhanced HTTP Client
+
+The proxy includes an optimized HTTP client with granular controls for timeouts, connection pooling, and TLS verification. This helps improve performance and reliability when communicating with backend GraphQL servers.
+
+Configuration:
+- `CLIENT_READ_TIMEOUT`: HTTP client read timeout in seconds
+- `CLIENT_WRITE_TIMEOUT`: HTTP client write timeout in seconds
+- `CLIENT_MAX_IDLE_CONN_DURATION`: Maximum duration to keep idle connections open (default: `300` seconds)
+- `MAX_CONNS_PER_HOST`: Maximum number of connections per host (default: `1024`)
+- `CLIENT_DISABLE_TLS_VERIFY`: Disable TLS certificate verification (default: `false`)
+#### GraphQL Parsing Optimizations
+
+Version 0.26.0 includes several optimizations to GraphQL query parsing and execution:
+
+- **Query parsing cache**: Identical queries are parsed only once, improving performance for repeated queries
+- **Efficient mutation detection**: Optimized logic for identifying and routing mutations
+- **Memory efficiency**: Improved memory management during GraphQL operations
+- **Enhanced introspection handling**: Better security for introspection queries
+
+These optimizations are applied automatically with no configuration required, resulting in improved performance and reduced resource usage, especially for high-traffic deployments.
+
+
+
+Example configurations:
+
+*High-performance client for low-latency environments:*
+```bash
+GMP_CLIENT_READ_TIMEOUT=1
+GMP_CLIENT_WRITE_TIMEOUT=1
+GMP_CLIENT_MAX_IDLE_CONN_DURATION=60
+GMP_MAX_CONNS_PER_HOST=2048
+```
+
+*Client for high-reliability environments:*
+```bash
+GMP_CLIENT_READ_TIMEOUT=5
+GMP_CLIENT_WRITE_TIMEOUT=5
+GMP_CLIENT_MAX_IDLE_CONN_DURATION=120
+GMP_MAX_CONNS_PER_HOST=1024
+```
 
 ### Maintenance
 

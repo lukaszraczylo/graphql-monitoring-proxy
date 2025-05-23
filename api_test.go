@@ -104,8 +104,8 @@ func (suite *Tests) Test_apiBanUser() {
 	})
 
 	// Cleanup
-	os.Remove(cfg.Api.BannedUsersFile)
-	os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
+	_ = os.Remove(cfg.Api.BannedUsersFile)
+	_ = os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
 }
 
 func (suite *Tests) Test_apiUnbanUser() {
@@ -176,8 +176,8 @@ func (suite *Tests) Test_apiUnbanUser() {
 	})
 
 	// Cleanup
-	os.Remove(cfg.Api.BannedUsersFile)
-	os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
+	_ = os.Remove(cfg.Api.BannedUsersFile)
+	_ = os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
 }
 
 func (suite *Tests) Test_apiClearCache() {
@@ -299,7 +299,7 @@ func (suite *Tests) Test_loadBannedUsers() {
 	// Test with non-existent file (should create it)
 	suite.Run("non-existent file", func() {
 		// Remove file if it exists
-		os.Remove(cfg.Api.BannedUsersFile)
+		_ = os.Remove(cfg.Api.BannedUsersFile)
 
 		bannedUsersIDs = make(map[string]string)
 		loadBannedUsers()
@@ -320,7 +320,7 @@ func (suite *Tests) Test_loadBannedUsers() {
 			"test-user-2": "reason 2",
 		}
 		data, _ := json.Marshal(testData)
-		err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0644)
+		err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0o644)
 		assert.NoError(err)
 
 		bannedUsersIDs = make(map[string]string)
@@ -335,7 +335,7 @@ func (suite *Tests) Test_loadBannedUsers() {
 	// Test with invalid JSON
 	suite.Run("invalid JSON", func() {
 		// Create file with invalid JSON
-		err := os.WriteFile(cfg.Api.BannedUsersFile, []byte("{invalid json}"), 0644)
+		err := os.WriteFile(cfg.Api.BannedUsersFile, []byte("{invalid json}"), 0o644)
 		assert.NoError(err)
 
 		bannedUsersIDs = make(map[string]string)
@@ -346,8 +346,8 @@ func (suite *Tests) Test_loadBannedUsers() {
 	})
 
 	// Cleanup
-	os.Remove(cfg.Api.BannedUsersFile)
-	os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
+	_ = os.Remove(cfg.Api.BannedUsersFile)
+	_ = os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
 }
 
 func (suite *Tests) Test_storeBannedUsers() {
@@ -382,8 +382,8 @@ func (suite *Tests) Test_storeBannedUsers() {
 	})
 
 	// Cleanup
-	os.Remove(cfg.Api.BannedUsersFile)
-	os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
+	_ = os.Remove(cfg.Api.BannedUsersFile)
+	_ = os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
 }
 
 func (suite *Tests) Test_lockFile() {
@@ -404,7 +404,10 @@ func (suite *Tests) Test_lockFile() {
 		assert.True(fileLock.Locked())
 
 		// Cleanup
-		fileLock.Unlock()
+		if err := fileLock.Unlock(); err != nil {
+			// In test context, we can use assert to check the error
+			assert.NoError(err)
+		}
 	})
 }
 
@@ -426,7 +429,10 @@ func (suite *Tests) Test_lockFileRead() {
 		assert.True(fileLock.RLocked())
 
 		// Cleanup
-		fileLock.Unlock()
+		if err := fileLock.Unlock(); err != nil {
+			// In test context, we can use assert to check the error
+			assert.NoError(err)
+		}
 	})
 }
 

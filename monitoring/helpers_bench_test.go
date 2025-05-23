@@ -39,6 +39,6 @@ func BenchmarkValidateMetricsName(b *testing.B) {
 	input := "valid metric name with special chars @#! and underscores__"
 
 	for n := 0; n < b.N; n++ {
-		validate_metrics_name(input)
+		_ = validate_metrics_name(input)
 	}
 }
