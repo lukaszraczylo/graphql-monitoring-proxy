@@ -9,7 +9,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.33.0
 	github.com/avast/retry-go/v4 v4.6.1
 	github.com/goccy/go-json v0.10.5
-	github.com/gofiber/fiber/v2 v2.52.6
+	github.com/gofiber/fiber/v2 v2.52.8
 	github.com/gofrs/flock v0.12.1
 	github.com/google/uuid v1.6.0
 	github.com/gookit/goutil v0.6.18
@@ -17,7 +17,7 @@ require (
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/lukaszraczylo/ask v0.0.0-20240916204100-6e9ef53a62d9
 	github.com/lukaszraczylo/go-ratecounter v0.1.12
-	github.com/lukaszraczylo/go-simple-graphql v1.2.57
+	github.com/lukaszraczylo/go-simple-graphql v1.2.78
 	github.com/redis/go-redis/v9 v9.8.0
 	github.com/stretchr/testify v1.10.0
 	github.com/valyala/fasthttp v1.62.0
