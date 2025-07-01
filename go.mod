@@ -12,7 +12,7 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.8
 	github.com/gofrs/flock v0.12.1
 	github.com/google/uuid v1.6.0
-	github.com/gookit/goutil v0.6.18
+	github.com/gookit/goutil v0.7.0
 	github.com/graphql-go/graphql v0.8.1
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/lukaszraczylo/ask v0.0.0-20240916204100-6e9ef53a62d9
@@ -20,7 +20,7 @@ require (
 	github.com/lukaszraczylo/go-simple-graphql v1.2.78
 	github.com/redis/go-redis/v9 v9.11.0
 	github.com/stretchr/testify v1.10.0
-	github.com/valyala/fasthttp v1.62.0
+	github.com/valyala/fasthttp v1.63.0
 	go.opentelemetry.io/otel v1.37.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.37.0
 	go.opentelemetry.io/otel/sdk v1.37.0
@@ -37,7 +37,6 @@ require (
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/gookit/color v1.5.4 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
@@ -51,7 +50,6 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fastrand v1.1.0 // indirect
 	github.com/valyala/histogram v1.2.0 // indirect
-	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.37.0 // indirect
