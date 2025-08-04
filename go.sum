@@ -1,5 +1,5 @@
-github.com/VictoriaMetrics/metrics v1.38.0 h1:1d0dRgVH8Nnu8dKMfisKefPC3q7gqf3/odyO0quAvyA=
-github.com/VictoriaMetrics/metrics v1.38.0/go.mod h1:r7hveu6xMdUACXvB8TYdAj8WEsKzWB0EkpJN+RDtOf8=
+github.com/VictoriaMetrics/metrics v1.39.1 h1:AT7jz7oSpAK9phDl5O5Tmy06nXnnzALwqVnf4ros3Ow=
+github.com/VictoriaMetrics/metrics v1.39.1/go.mod h1:XE4uudAAIRaJE614Tl5HMrtoEU6+GDZO4QTnNSsZRuA=
 github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a h1:HbKu58rmZpUGpz5+4FfNmIU+FmZg2P3Xaj2v2bfNWmk=
 github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a/go.mod h1:SGnFV6hVsYE877CKEZ6tDNTjaSXYUk6QqoIK6PrAtcc=
 github.com/alicebob/miniredis/v2 v2.33.0 h1:uvTF0EDeu9RLnUEG27Db5I68ESoIxTiXbNUiji6lZrA=
