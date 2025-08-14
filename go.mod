@@ -12,7 +12,7 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.9
 	github.com/gofrs/flock v0.12.1
 	github.com/google/uuid v1.6.0
-	github.com/gookit/goutil v0.7.0
+	github.com/gookit/goutil v0.7.1
 	github.com/graphql-go/graphql v0.8.1
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/lukaszraczylo/ask v0.0.0-20240916204100-6e9ef53a62d9
