@@ -402,14 +402,14 @@ func (suite *ProxyLoggingSecurityTestSuite) TestRedactSensitiveFields() {
 			"level1": map[string]interface{}{
 				"level2": map[string]interface{}{
 					"level3": map[string]interface{}{
-						"password": "deep-secret",
+						"password": "testdeepsecret",
 						"public":   "data",
 					},
-					"token": "level2-token",
+					"token": "testlevel2token",
 				},
 				"normal": "value",
 			},
-			"secret": "top-level-secret",
+			"secret": "testtoplevel",
 		}
 
 		redactSensitiveFields(data, sensitiveFields)
@@ -434,11 +434,11 @@ func (suite *ProxyLoggingSecurityTestSuite) TestRedactSensitiveFields() {
 			"users": []interface{}{
 				map[string]interface{}{
 					"name":     "User1",
-					"password": "pass1",
+					"password": "testpass1",
 				},
 				map[string]interface{}{
 					"name":  "User2",
-					"token": "token2",
+					"token": "testtoken2",
 				},
 				"not-an-object", // Should be ignored
 			},

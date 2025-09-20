@@ -117,7 +117,7 @@ func createTripFunc(config *config) func(counts gobreaker.Counts) bool {
 		// Check failure ratio if configured and enough samples
 		if config.CircuitBreaker.FailureRatio > 0 &&
 			config.CircuitBreaker.SampleSize > 0 &&
-			counts.Requests >= uint32(config.CircuitBreaker.SampleSize) {
+			counts.Requests >= safeUint32(config.CircuitBreaker.SampleSize) {
 			failureRatio := float64(counts.TotalFailures) / float64(counts.Requests)
 			if failureRatio >= config.CircuitBreaker.FailureRatio {
 				config.Logger.Warning(&libpack_logger.LogMessage{
