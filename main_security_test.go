@@ -18,6 +18,30 @@ func TestMainSecurityTestSuite(t *testing.T) {
 	suite.Run(t, new(MainSecurityTestSuite))
 }
 
+// isTempPathAllowed checks if a temp path would be allowed by validateFilePath
+func (suite *MainSecurityTestSuite) isTempPathAllowed(path string) bool {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+
+	// Check if temp path is in allowed locations
+	allowedPrefixes := []string{"/tmp/", "/var/tmp/"}
+	for _, prefix := range allowedPrefixes {
+		if strings.HasPrefix(absPath, prefix) {
+			return true
+		}
+	}
+
+	// Check if it's in the working directory
+	workDir, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	cleanedWorkDir := filepath.Clean(workDir)
+	return strings.HasPrefix(absPath, cleanedWorkDir+string(filepath.Separator))
+}
+
 // TestValidateFilePathSecurity tests the validateFilePath function for various security scenarios
 func (suite *MainSecurityTestSuite) TestValidateFilePathSecurity() {
 	tests := []struct {
@@ -267,6 +291,9 @@ func (suite *MainSecurityTestSuite) TestValidateFilePathWithRealFiles() {
 	err = os.WriteFile(testFile, []byte("test content"), 0644)
 	suite.NoError(err)
 
+	// Determine if temp file should fail based on system temp location
+	tempFileShouldFail := !suite.isTempPathAllowed(testFile)
+
 	tests := []struct {
 		name       string
 		path       string
@@ -275,7 +302,7 @@ func (suite *MainSecurityTestSuite) TestValidateFilePathWithRealFiles() {
 		{
 			name:       "Valid temp file",
 			path:       testFile,
-			shouldFail: true, // Will fail because tempDir is not in allowed prefixes
+			shouldFail: tempFileShouldFail, // Depends on system temp location
 		},
 		{
 			name:       "Non-existent file in allowed directory",
