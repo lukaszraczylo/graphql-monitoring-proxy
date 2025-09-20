@@ -7,6 +7,7 @@ import (
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 	"github.com/sony/gobreaker"
+	"github.com/stretchr/testify/assert"
 	"github.com/valyala/fasthttp"
 )
 
@@ -45,11 +46,11 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerCacheFallback() {
 		_, err := cb.Execute(func() (interface{}, error) {
 			return nil, testErr
 		})
-		assert.Error(err, "Execute should return error")
+		assert.Error(suite.T(), err, "Execute should return error")
 	}
 
 	// Verify circuit is now open
-	assert.Equal(gobreaker.StateOpen.String(), cb.State().String(), "Circuit should be open after failures")
+	assert.Equal(suite.T(), gobreaker.StateOpen.String(), cb.State().String(), "Circuit should be open after failures")
 
 	// Prepare to monitor metric increments for fallback success
 	initialFallbackSuccessCount := getMetricCount(libpack_monitoring.MetricsCircuitFallbackSuccess)
@@ -59,25 +60,25 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerCacheFallback() {
 	err := performProxyRequest(ctx, "http://test-endpoint.example")
 
 	// The request should succeed since we have a cached response
-	assert.NoError(err, "Request should succeed with cached fallback")
+	assert.NoError(suite.T(), err, "Request should succeed with cached fallback")
 
 	// Verify cached response was served
-	assert.Equal(string(cachedResponse), string(ctx.Response().Body()),
+	assert.Equal(suite.T(), string(cachedResponse), string(ctx.Response().Body()),
 		"Response should match cached value")
-	assert.Equal(fiber.StatusOK, ctx.Response().StatusCode(),
+	assert.Equal(suite.T(), fiber.StatusOK, ctx.Response().StatusCode(),
 		"Status code should be 200 OK")
 
 	// Verify metrics were incremented
 	newFallbackSuccessCount := getMetricCount(libpack_monitoring.MetricsCircuitFallbackSuccess)
 	newCacheHitCount := getMetricCount(libpack_monitoring.MetricsCacheHit)
 
-	assert.True(newFallbackSuccessCount > initialFallbackSuccessCount,
+	assert.True(suite.T(), newFallbackSuccessCount > initialFallbackSuccessCount,
 		"Circuit fallback success metric should be incremented")
-	assert.True(newCacheHitCount > initialCacheHitCount,
+	assert.True(suite.T(), newCacheHitCount > initialCacheHitCount,
 		"Cache hit metric should be incremented")
 
 	// Verify log messages
-	assert.True(suite.logContains("Circuit open - serving from cache"),
+	assert.True(suite.T(), suite.logContains("Circuit open - serving from cache"),
 		"Log should indicate serving from cache")
 }
 
@@ -109,11 +110,11 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerNoCacheFallback() {
 		_, err := cb.Execute(func() (interface{}, error) {
 			return nil, testErr
 		})
-		assert.Error(err, "Execute should return error")
+		assert.Error(suite.T(), err, "Execute should return error")
 	}
 
 	// Verify circuit is now open
-	assert.Equal(gobreaker.StateOpen.String(), cb.State().String(), "Circuit should be open after failures")
+	assert.Equal(suite.T(), gobreaker.StateOpen.String(), cb.State().String(), "Circuit should be open after failures")
 
 	// Prepare to monitor metric increments for fallback failure
 	initialFallbackFailedCount := getMetricCount(libpack_monitoring.MetricsCircuitFallbackFailed)
@@ -122,16 +123,16 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerNoCacheFallback() {
 	err := performProxyRequest(ctx, "http://test-endpoint.example")
 
 	// The request should fail with ErrCircuitOpen
-	assert.Error(err, "Request should fail without cached fallback")
-	assert.Equal(ErrCircuitOpen.Error(), err.Error(), "Error should be ErrCircuitOpen")
+	assert.Error(suite.T(), err, "Request should fail without cached fallback")
+	assert.Equal(suite.T(), ErrCircuitOpen.Error(), err.Error(), "Error should be ErrCircuitOpen")
 
 	// Verify metrics were incremented
 	newFallbackFailedCount := getMetricCount(libpack_monitoring.MetricsCircuitFallbackFailed)
-	assert.True(newFallbackFailedCount > initialFallbackFailedCount,
+	assert.True(suite.T(), newFallbackFailedCount > initialFallbackFailedCount,
 		"Circuit fallback failed metric should be incremented")
 
 	// Verify log messages
-	assert.True(suite.logContains("Circuit open - no cached response available"),
+	assert.True(suite.T(), suite.logContains("Circuit open - no cached response available"),
 		"Log should indicate no cache available")
 }
 
@@ -152,6 +153,8 @@ func (suite *CircuitBreakerTestSuite) TestCacheDisabledFallback() {
 	requestCtx := &fasthttp.RequestCtx{}
 	requestCtx.Request.SetRequestURI("/test-path-cache-disabled")
 	requestCtx.Request.Header.SetMethod("POST")
+	requestCtx.Request.Header.SetContentType("application/json")
+	requestCtx.Request.SetBody([]byte(`{"query": "query { testCacheDisabled }"}`))
 	ctx := app.AcquireCtx(requestCtx)
 	defer app.ReleaseCtx(ctx)
 
@@ -166,23 +169,23 @@ func (suite *CircuitBreakerTestSuite) TestCacheDisabledFallback() {
 		_, err := cb.Execute(func() (interface{}, error) {
 			return nil, testErr
 		})
-		assert.Error(err, "Execute should return error")
+		assert.Error(suite.T(), err, "Execute should return error")
 	}
 
 	// Verify circuit is now open
-	assert.Equal(gobreaker.StateOpen.String(), cb.State().String(), "Circuit should be open")
+	assert.Equal(suite.T(), gobreaker.StateOpen.String(), cb.State().String(), "Circuit should be open")
 
 	// Simulate a proxy request that would hit the circuit breaker
 	err := performProxyRequest(ctx, "http://test-endpoint.example")
 
 	// The request should fail with ErrOpenState, not attempt cache fallback
-	assert.Error(err, "Request should fail when circuit is open and fallback disabled")
-	assert.Equal(gobreaker.ErrOpenState.Error(), err.Error(), "Error should be ErrOpenState")
+	assert.Error(suite.T(), err, "Request should fail when circuit is open and fallback disabled")
+	assert.Equal(suite.T(), gobreaker.ErrOpenState.Error(), err.Error(), "Error should be ErrOpenState")
 
 	// Verify no cache-related logs were generated
-	assert.False(suite.logContains("Circuit open - serving from cache"),
+	assert.False(suite.T(), suite.logContains("Circuit open - serving from cache"),
 		"Log should not indicate serving from cache")
-	assert.False(suite.logContains("Circuit open - no cached response available"),
+	assert.False(suite.T(), suite.logContains("Circuit open - no cached response available"),
 		"Log should not indicate attempting cache lookup")
 }
 

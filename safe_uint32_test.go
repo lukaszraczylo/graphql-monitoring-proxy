@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
-	testifyassert "github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -20,8 +19,6 @@ type SafeUint32TestSuite struct {
 }
 
 func (suite *SafeUint32TestSuite) SetupTest() {
-	// Initialize the global assert variable
-	assert = testifyassert.New(suite.T())
 
 	// Store original config to restore later
 	suite.originalConfig = cfg
@@ -95,10 +92,10 @@ func (suite *SafeUint32TestSuite) TestSafeUint32() {
 func (suite *SafeUint32TestSuite) TestSafeMaxRequests() {
 	testCases := []struct {
 		name           string
+		warningMessage string
 		input          int
 		expected       uint32
 		expectWarning  bool
-		warningMessage string
 	}{
 		{
 			name:           "negative value",

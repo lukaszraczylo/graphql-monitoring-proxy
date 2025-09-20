@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
+	"github.com/stretchr/testify/assert"
 )
 
 func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
@@ -46,7 +47,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 
 		// Verify file was created
 		_, err := os.Stat(cfg.Api.BannedUsersFile)
-		assert.NoError(err)
+		assert.NoError(suite.T(), err)
 
 		// Safely check the map
 		bannedUsersIDsMutex.RLock()
@@ -54,7 +55,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		bannedUsersIDsMutex.RUnlock()
 
 		// Verify map is still empty
-		assert.Equal(0, mapSize)
+		assert.Equal(suite.T(), 0, mapSize)
 	})
 
 	// Run the test with a populated banned users file
@@ -66,7 +67,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		}
 		data, _ := json.Marshal(testData)
 		err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0o644)
-		assert.NoError(err)
+		assert.NoError(suite.T(), err)
 
 		// Clear the banned users map
 		bannedUsersIDsMutex.Lock()
@@ -85,9 +86,9 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		bannedUsersIDsMutex.RUnlock()
 
 		// Verify banned users map was loaded
-		assert.Equal(2, mapSize)
-		assert.Equal("reason reload 1", value1)
-		assert.Equal("reason reload 2", value2)
+		assert.Equal(suite.T(), 2, mapSize)
+		assert.Equal(suite.T(), "reason reload 1", value1)
+		assert.Equal(suite.T(), "reason reload 2", value2)
 	})
 
 	// Test updating banned users file while reloader is running
@@ -98,7 +99,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		}
 		data, _ := json.Marshal(initialData)
 		err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0o644)
-		assert.NoError(err)
+		assert.NoError(suite.T(), err)
 
 		// Clear the banned users map
 		bannedUsersIDsMutex.Lock()
@@ -116,8 +117,8 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		bannedUsersIDsMutex.RUnlock()
 
 		// Verify initial data was loaded
-		assert.Equal(1, mapSize)
-		assert.Equal("initial reason", initialValue)
+		assert.Equal(suite.T(), 1, mapSize)
+		assert.Equal(suite.T(), "initial reason", initialValue)
 
 		// Update the file with new data
 		updatedData := map[string]string{
@@ -126,7 +127,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		}
 		data, _ = json.Marshal(updatedData)
 		err = os.WriteFile(cfg.Api.BannedUsersFile, data, 0o644)
-		assert.NoError(err)
+		assert.NoError(suite.T(), err)
 
 		// Execute reloader again to load updated data
 		go testPeriodicallyReloadBannedUsers()
@@ -141,10 +142,10 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		bannedUsersIDsMutex.RUnlock()
 
 		// Verify updated data was loaded
-		assert.Equal(2, mapSize)
-		assert.Equal("updated reason 1", value1)
-		assert.Equal("updated reason 2", value2)
-		assert.False(exists)
+		assert.Equal(suite.T(), 2, mapSize)
+		assert.Equal(suite.T(), "updated reason 1", value1)
+		assert.Equal(suite.T(), "updated reason 2", value2)
+		assert.False(suite.T(), exists)
 	})
 
 	// Cleanup
@@ -167,7 +168,7 @@ func (suite *Tests) Test_LoadUnloadBannedUsers() {
 	}
 	data, _ := json.Marshal(initialData)
 	err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0o644)
-	assert.NoError(err)
+	assert.NoError(suite.T(), err)
 	defer func() { _ = os.Remove(cfg.Api.BannedUsersFile) }()
 	defer func() { _ = os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile)) }()
 
@@ -188,9 +189,9 @@ func (suite *Tests) Test_LoadUnloadBannedUsers() {
 		reason2 := bannedUsersIDs["user2"]
 		bannedUsersIDsMutex.RUnlock()
 
-		assert.Equal(2, count)
-		assert.Equal("reason1", reason1)
-		assert.Equal("reason2", reason2)
+		assert.Equal(suite.T(), 2, count)
+		assert.Equal(suite.T(), "reason1", reason1)
+		assert.Equal(suite.T(), "reason2", reason2)
 	})
 
 	// Test updating banned users
@@ -205,7 +206,7 @@ func (suite *Tests) Test_LoadUnloadBannedUsers() {
 
 		// Store the updated banned users
 		err := storeBannedUsers()
-		assert.NoError(err)
+		assert.NoError(suite.T(), err)
 
 		// Clear the banned users map
 		bannedUsersIDsMutex.Lock()
@@ -223,9 +224,9 @@ func (suite *Tests) Test_LoadUnloadBannedUsers() {
 		_, user1Exists := bannedUsersIDs["user1"]
 		bannedUsersIDsMutex.RUnlock()
 
-		assert.Equal(2, count)
-		assert.Equal("reason3", reason3)
-		assert.Equal("reason4", reason4)
-		assert.False(user1Exists)
+		assert.Equal(suite.T(), 2, count)
+		assert.Equal(suite.T(), "reason3", reason3)
+		assert.Equal(suite.T(), "reason4", reason4)
+		assert.False(suite.T(), user1Exists)
 	})
 }

@@ -74,8 +74,8 @@ func (suite *Tests) Test_extractClaimsFromJWTHeader() {
 				cfg.Client.JWTRoleClaimPath = tt.jwt_role_path
 			}
 			gotUsr, gotRole := extractClaimsFromJWTHeader(tt.args.authorization)
-			assert.Equal(tt.wantUsr, gotUsr, "Unexpected user ID")
-			assert.Equal(tt.wantRole, gotRole, "Unexpected role")
+			suite.Equal(tt.wantUsr, gotUsr, "Unexpected user ID")
+			suite.Equal(tt.wantRole, gotRole, "Unexpected role")
 		})
 	}
 }

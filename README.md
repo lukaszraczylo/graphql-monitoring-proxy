@@ -46,6 +46,7 @@ I wanted to monitor the queries and responses of our graphql endpoint. Still, we
 
 You should always try to stick to the latest and greatest version of the graphql-proxy to ensure that it's as much bug-free as possible. Following list will be kept to the maximum of five "most important" bugs and enhancements included in the latest versions.
 
+* **19/09/2025 - 0.26.x** - Major security enhancements: Fixed SQL injection vulnerability in event cleaner, added path traversal protection, implemented optional API authentication, enhanced log sanitization to prevent sensitive data exposure, and consolidated buffer pool implementations for better performance.
 * **06/12/2024 - 0.25.12** - Fixes the bug where deeply nested introspection queries were blocked despite of being present on the whitelist. GraphQL proxy will now inspect the queries in depth to find any possible nested introspections.
 
 * **20/08/2024 - 0.23.21+** - Fixes the bug when timeouts were not respected on proxy-graphql line. Affected versions before that were timeouting after 30 seconds which was set as default ( thanks to Jurica Železnjak for reporting ). It also provides a temporary fix for running within kubernetes deployment, when graphql server ( for example - hasura ) took more time to start than the proxy, causing avalanche of errors with "can't proxy the request".
@@ -153,12 +154,17 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `CACHE_REDIS_PASSWORD`    | Redis connection password               | ``                         |
 | `CACHE_REDIS_DB`          | Redis DB id                             | `0`                        |
 | `ENABLE_CIRCUIT_BREAKER`  | Enable circuit breaker pattern          | `false`                    |
-| `CIRCUIT_MAX_FAILURES`    | Failures before circuit trips           | `5`                        |
-| `CIRCUIT_TIMEOUT_SECONDS` | Seconds circuit stays open              | `30`                       |
-| `CIRCUIT_MAX_HALF_OPEN_REQUESTS` | Max requests in half-open state  | `2`                        |
+| `CIRCUIT_MAX_FAILURES`    | Consecutive failures before circuit trips | `10`                     |
+| `CIRCUIT_FAILURE_RATIO`   | Failure ratio threshold (0.0-1.0)       | `0.5`                      |
+| `CIRCUIT_SAMPLE_SIZE`     | Min requests for ratio calculation      | `100`                      |
+| `CIRCUIT_TIMEOUT_SECONDS` | Seconds circuit stays open              | `60`                       |
+| `CIRCUIT_MAX_HALF_OPEN_REQUESTS` | Max requests in half-open state  | `5`                        |
 | `CIRCUIT_RETURN_CACHED_ON_OPEN` | Return cached responses when open | `true`                     |
 | `CIRCUIT_TRIP_ON_TIMEOUTS` | Trip circuit breaker on timeouts       | `true`                     |
 | `CIRCUIT_TRIP_ON_5XX`     | Trip circuit breaker on 5XX responses   | `true`                     |
+| `CIRCUIT_TRIP_ON_4XX`     | Trip circuit breaker on 4XX responses (except 429) | `false`        |
+| `CIRCUIT_BACKOFF_MULTIPLIER` | Exponential backoff multiplier (e.g., 1.5) | `1.0`                 |
+| `CIRCUIT_MAX_BACKOFF_TIMEOUT` | Max timeout in seconds for backoff | `300`                      |
 | `CLIENT_READ_TIMEOUT`     | HTTP client read timeout in seconds     | ``                         |
 | `CLIENT_WRITE_TIMEOUT`    | HTTP client write timeout in seconds    | ``                         |
 | `CLIENT_MAX_IDLE_CONN_DURATION` | Max idle connection duration in seconds | `300`                |
@@ -172,6 +178,7 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `ALLOWED_URLS`              | Allow access only to certain URLs       | `/v1/graphql,/v1/version`  |
 | `ENABLE_API`              | Enable the monitoring API               | `false`                    |
 | `API_PORT`                | The port to expose the monitoring API   | `9090`                     |
+| `ADMIN_API_KEY`           | API key for admin endpoint authentication (optional) | ``                |
 | `BANNED_USERS_FILE`       | The path to the file with banned users  | `/go/src/app/banned_users.json`   |
 | `PROXIED_CLIENT_TIMEOUT` | The timeout for the proxied client in seconds     | `120`                      |
 | `PURGE_METRICS_ON_CRAWL` | Purge metrics on each /metrics crawl    | `false`                      |
@@ -274,22 +281,57 @@ You can check out the [example of combined deployment with RW and read-only hasu
 
 #### Circuit Breaker Pattern
 
-The proxy implements a circuit breaker pattern to prevent cascading failures when backend services are unstable. When enabled via `ENABLE_CIRCUIT_BREAKER=true`, the proxy will monitor for failures and automatically trip the circuit after a configured number of consecutive failures.
+The proxy implements an advanced circuit breaker pattern to prevent cascading failures when backend services are unstable. When enabled via `ENABLE_CIRCUIT_BREAKER=true`, the proxy monitors for failures and automatically trips the circuit based on configurable thresholds.
 
 Key features:
+- **Dual tripping strategies**: Trip on consecutive failures OR failure ratio
 - **Automatic recovery**: The circuit breaker will automatically attempt recovery after a timeout period
+- **Health monitoring endpoint**: Check circuit breaker status via `/api/circuit-breaker/health`
 - **Configurable thresholds**: Set failure thresholds, timeouts, and recovery behavior
 - **Fallback mechanism**: Can serve cached responses when the circuit is open
-- **Selective tripping**: Can be configured to trip on specific error types (timeouts, 5XX responses)
+- **Selective error filtering**: Configure which HTTP status codes trigger failures
+- **Exponential backoff**: Optional progressive timeout increases for repeated failures
 
-Configuration:
+##### Production-Ready Configuration for High Traffic
+
+For high-traffic production environments, use these recommended settings:
+
+```bash
+# Basic circuit breaker configuration
+GMP_ENABLE_CIRCUIT_BREAKER=true
+GMP_CIRCUIT_MAX_FAILURES=10           # Tolerant of transient failures
+GMP_CIRCUIT_FAILURE_RATIO=0.5         # Trip at 50% failure rate
+GMP_CIRCUIT_SAMPLE_SIZE=100           # Statistically significant sample
+GMP_CIRCUIT_TIMEOUT_SECONDS=60        # 1 minute recovery window
+GMP_CIRCUIT_MAX_HALF_OPEN_REQUESTS=5  # More probe requests for validation
+
+# Caching fallback
+GMP_CIRCUIT_RETURN_CACHED_ON_OPEN=true
+
+# Error type configuration
+GMP_CIRCUIT_TRIP_ON_TIMEOUTS=true
+GMP_CIRCUIT_TRIP_ON_5XX=true
+GMP_CIRCUIT_TRIP_ON_4XX=false         # 4xx are usually client errors
+
+# Backoff configuration (optional)
+GMP_CIRCUIT_BACKOFF_MULTIPLIER=1.0    # No backoff by default
+GMP_CIRCUIT_MAX_BACKOFF_TIMEOUT=300   # 5 minutes maximum
+```
+
+##### All Circuit Breaker Configuration Options
+
 - `ENABLE_CIRCUIT_BREAKER`: Enable the circuit breaker pattern (default: `false`)
-- `CIRCUIT_MAX_FAILURES`: Number of consecutive failures before tripping (default: `5`)
-- `CIRCUIT_TIMEOUT_SECONDS`: How long the circuit stays open before trying half-open state (default: `30`)
-- `CIRCUIT_MAX_HALF_OPEN_REQUESTS`: Maximum concurrent requests in half-open state (default: `2`)
-- `CIRCUIT_RETURN_CACHED_ON_OPEN`: Whether to return cached responses when circuit is open (default: `true`)
-- `CIRCUIT_TRIP_ON_TIMEOUTS`: Whether to count timeouts as failures (default: `true`)
-- `CIRCUIT_TRIP_ON_5XX`: Whether to count 5XX responses as failures (default: `true`)
+- `CIRCUIT_MAX_FAILURES`: Consecutive failures before circuit trips (default: `10`)
+- `CIRCUIT_FAILURE_RATIO`: Failure ratio threshold 0.0-1.0 (default: `0.5`)
+- `CIRCUIT_SAMPLE_SIZE`: Minimum requests for ratio calculation (default: `100`)
+- `CIRCUIT_TIMEOUT_SECONDS`: Seconds circuit stays open (default: `60`)
+- `CIRCUIT_MAX_HALF_OPEN_REQUESTS`: Max requests in half-open state (default: `5`)
+- `CIRCUIT_RETURN_CACHED_ON_OPEN`: Return cached responses when open (default: `true`)
+- `CIRCUIT_TRIP_ON_TIMEOUTS`: Count timeouts as failures (default: `true`)
+- `CIRCUIT_TRIP_ON_5XX`: Count 5XX responses as failures (default: `true`)
+- `CIRCUIT_TRIP_ON_4XX`: Count 4XX responses as failures, except 429 (default: `false`)
+- `CIRCUIT_BACKOFF_MULTIPLIER`: Exponential backoff multiplier, e.g., 1.5 (default: `1.0`)
+- `CIRCUIT_MAX_BACKOFF_TIMEOUT`: Maximum timeout in seconds for backoff (default: `300`)
 
 Example configurations:
 
@@ -363,6 +405,163 @@ GMP_CLIENT_MAX_IDLE_CONN_DURATION=120
 GMP_MAX_CONNS_PER_HOST=1024
 ```
 
+#### Connection Resilience and Startup Management
+
+The proxy includes comprehensive connection resilience features to handle backend GraphQL endpoint startup delays and connection recovery scenarios.
+
+##### Startup Readiness Probe
+
+The proxy can wait for the GraphQL backend to become available before accepting traffic, preventing failed requests during backend startup:
+
+```bash
+# Wait up to 5 minutes for backend to be ready (default: 300 seconds)
+GMP_BACKEND_STARTUP_TIMEOUT=300
+```
+
+When enabled, the proxy will:
+- Perform periodic health checks against the GraphQL backend during startup
+- Use exponential backoff with jitter for health check retries
+- Log startup progress and backend readiness status
+- Start accepting traffic only after backend is confirmed healthy
+- Continue startup if backend doesn't respond within the timeout (with warnings)
+
+##### Backend Health Monitoring
+
+Continuous health monitoring runs in the background to detect backend availability:
+
+- **Health Check Interval**: 5 seconds
+- **Health Check Method**: Minimal GraphQL introspection query (`{__typename}`)
+- **Failure Tracking**: Consecutive failure counting with automatic recovery detection
+- **Integration**: Works with circuit breaker and retry mechanisms
+
+##### Intelligent Retry with Connection Awareness
+
+Enhanced retry mechanism that adapts based on backend health and error types:
+
+**Normal Operation (Healthy Backend)**:
+- 7 retry attempts
+- Initial delay: 500ms
+- Maximum delay: 10 seconds
+- Exponential backoff
+
+**Degraded Operation (Unhealthy Backend)**:
+- 10 retry attempts
+- Initial delay: 2 seconds
+- Maximum delay: 30 seconds
+- Longer delays to account for backend recovery time
+
+**Error Classification**:
+- Connection errors (connection refused, reset, etc.): Retryable
+- Timeout errors: Limited retries to prevent cascade failures
+- 4xx client errors: Generally not retryable (except 429, 503)
+- 5xx server errors: Retryable with backoff
+
+##### Connection Pool with Auto-Recovery
+
+Advanced connection pool management with automatic health monitoring and recovery:
+
+**Keep-Alive Mechanism**:
+- Interval: 15 seconds
+- Lightweight GraphQL queries to maintain connection health
+- Automatic failure detection and recovery
+
+**Connection Recovery**:
+- Recovery check interval: 60 seconds
+- Automatic connection pool reset after 5+ consecutive failures
+- Coordinated with backend health status
+
+**Connection Statistics Tracking**:
+- Active connection count
+- Total connection attempts
+- Failure rate monitoring
+- Last recovery attempt timestamp
+
+##### Graceful Degradation
+
+When the backend is unavailable, the proxy provides graceful degradation:
+
+**Cache Fallback** (if circuit breaker configured):
+- Serve cached responses when backend is unavailable
+- Automatic cache hit metrics tracking
+
+**Informative Error Responses**:
+- Standard GraphQL error format with helpful extensions
+- Includes retry recommendations and timeout information
+- Maintains API contract even during failures
+
+**Example Error Response**:
+```json
+{
+  "errors": [{
+    "message": "GraphQL backend is temporarily unavailable",
+    "extensions": {
+      "code": "SERVICE_UNAVAILABLE",
+      "retryable": true,
+      "retry_after": 60
+    }
+  }],
+  "data": null
+}
+```
+
+##### Monitoring and Observability
+
+Connection resilience provides extensive monitoring through API endpoints:
+
+**Backend Health Endpoint**: `/api/backend/health`
+```json
+{
+  "status": "healthy",
+  "backend_url": "http://graphql-backend:4000",
+  "last_health_check": "2024-01-15T10:30:00Z",
+  "consecutive_failures": 0,
+  "check_interval": "5s"
+}
+```
+
+**Connection Pool Health Endpoint**: `/api/connection-pool/health`
+```json
+{
+  "status": "healthy",
+  "active_connections": 12,
+  "total_connections": 1547,
+  "connection_failures": 2,
+  "last_recovery_attempt": "2024-01-15T09:15:00Z",
+  "cleanup_interval": "30s",
+  "keepalive_interval": "15s",
+  "recovery_check_interval": "60s"
+}
+```
+
+##### Production Configuration Example
+
+For high-availability production environments:
+
+```bash
+# Backend startup management
+GMP_BACKEND_STARTUP_TIMEOUT=600  # 10 minutes for complex backends
+
+# Enhanced connection pool
+GMP_MAX_CONNS_PER_HOST=2048
+GMP_CLIENT_MAX_IDLE_CONN_DURATION=300
+
+# Circuit breaker for graceful degradation
+GMP_ENABLE_CIRCUIT_BREAKER=true
+GMP_CIRCUIT_RETURN_CACHED_ON_OPEN=true
+GMP_CIRCUIT_MAX_FAILURES=5
+GMP_CIRCUIT_TIMEOUT_SECONDS=120
+
+# Caching for fallback responses
+GMP_ENABLE_GLOBAL_CACHE=true
+GMP_CACHE_TTL=300
+```
+
+This configuration provides:
+- Extended startup patience for complex GraphQL backends
+- High connection capacity with efficient pooling
+- Circuit breaker protection with cache fallback
+- 5-minute cache retention for fallback scenarios
+
 ### Maintenance
 
 #### Hasura event cleaner
@@ -379,35 +578,79 @@ Following tables are being cleaned:
 
 ### Security
 
-#### Role-based rate limiting
+#### Advanced Rate Limiting
 
-You can rate limit requests using the `ROLE_RATE_LIMIT` environment variable. If enabled, the proxy will rate limit the requests based on the role claim in the JWT token. You can then provide the JSON file in the following format to specify the limits.
-The default interval is `second`, but you can use other values as well. If you want to disable the rate limiting for a specific role, you can set the `req` to `0`.
+The proxy supports multiple rate limiting strategies to protect your GraphQL endpoint from abuse:
 
-Available values:
-`nano`, `micro`, `milli`, `second`, `minute`, `hour`, `day`
+##### Role-based Rate Limiting
 
-To define path in JWT token where the current user role is present, use the `JWT_ROLE_CLAIM_PATH` environment variable.
+Enable rate limiting based on user roles using the `ROLE_RATE_LIMIT` environment variable. The proxy extracts the role from JWT tokens or headers and applies appropriate limits.
 
-You can also set up the `ROLE_FROM_HEADER` environment variable to extract the role from the header instead of the JWT token. This is useful if you want to rate limit the requests for unauthenticated users. It's worth mentioning that `ROLE_FROM_HEADER` takes a priority over the `JWT_ROLE_CLAIM_PATH` environment variable and if its set, the proxy will not try to extract the role from the JWT token.
+**Configuration:**
+- `JWT_ROLE_CLAIM_PATH`: Path to the role claim in JWT token
+- `ROLE_FROM_HEADER`: Header name to extract role from (takes priority over JWT)
+- `ROLE_RATE_LIMIT`: Enable role-based rate limiting (default: `false`)
 
-*Default/sample configuration:*
+**Features:**
+- **Dynamic configuration reload**: Rate limit configuration is automatically reloaded periodically without restart
+- **Burst control**: Optional burst limits for handling traffic spikes
+- **Per-endpoint limits**: Different rate limits for specific GraphQL endpoints
+- **IP-based limiting**: Additional rate limiting by client IP address
+
+Available interval values:
+`nano`, `micro`, `milli`, `second`, `minute`, `hour`, `day`, or duration strings like `5s`, `10m`
+
+##### Basic Rate Limit Configuration (`ratelimit.json`)
 
 ```json
 {
   "ratelimit": {
-      "admin": {
-          "req": 100,
-          "interval": "second"
-      },
-      "guest": {
-          "req": 50,
-          "interval": "minute"
-      },
-      "-": {
-          "req": 100,
-          "interval": "day"
-      }
+    "admin": {
+      "req": 100,
+      "interval": "second"
+    },
+    "guest": {
+      "req": 50,
+      "interval": "minute"
+    },
+    "-": {  // Default/fallback role
+      "req": 100,
+      "interval": "day"
+    }
+  }
+}
+```
+
+##### Production-Ready Rate Limit Configuration for High Traffic
+
+```json
+{
+  "ratelimit": {
+    "admin": {
+      "req": 1000,
+      "interval": "second",
+      "burst": 2000,  // Allow bursts up to 2000 requests
+      "endpoints": ["/v1/graphql", "/v1/relay"]  // Optional endpoint-specific limits
+    },
+    "premium": {
+      "req": 500,
+      "interval": "second",
+      "burst": 1000
+    },
+    "standard": {
+      "req": 100,
+      "interval": "second",
+      "burst": 200
+    },
+    "guest": {
+      "req": 10,
+      "interval": "second",
+      "burst": 20
+    },
+    "-": {  // Default/fallback role - deny by default for security
+      "req": 5,
+      "interval": "second"
+    }
   }
 }
 ```
@@ -435,13 +678,52 @@ If you'd like to keep blocking of the schema introspection on but allow one or m
 
 `ALLOWED_INTROSPECTION="__typename,__type"`
 
+#### Security Best Practices
+
+The GraphQL monitoring proxy implements several security measures to protect your GraphQL endpoints:
+
+1. **Input Validation**: All user inputs are validated and sanitized to prevent injection attacks. File paths are validated to prevent path traversal attacks.
+
+2. **Parameterized Queries**: Database queries use parameterized statements to prevent SQL injection vulnerabilities.
+
+3. **Log Sanitization**: Sensitive data (passwords, tokens, API keys, credit cards, SSNs) are automatically redacted from debug logs to prevent information disclosure.
+
+4. **Optional API Authentication**: Admin endpoints can be protected with API key authentication when needed, while supporting network-level security for internal deployments.
+
+5. **Rate Limiting**: Role-based rate limiting prevents abuse and DDoS attacks.
+
+6. **GraphQL Query Complexity**: The proxy can analyze and limit query complexity to prevent resource exhaustion attacks.
+
+For production deployments, we recommend:
+- Running the proxy in a secure network segment (VPC, Kubernetes cluster)
+- Using TLS for all connections
+- Enabling authentication for admin APIs in less secure environments
+- Implementing proper monitoring and alerting
+- Regularly updating to the latest version for security patches
+
 ### API endpoints
+
+#### Authentication
+
+The admin API endpoints support optional authentication for flexibility in different deployment scenarios:
+
+- **Without Authentication** (default): When `ADMIN_API_KEY` or `GMP_ADMIN_API_KEY` is not set, the API endpoints are accessible without authentication. This is suitable for internal services protected by network segmentation (firewalls, VPCs, Kubernetes network policies, service mesh, etc.).
+
+- **With Authentication**: When `ADMIN_API_KEY` or `GMP_ADMIN_API_KEY` is set to a value, all admin API requests must include the `X-API-Key` header with the matching key. This provides application-level security for deployments in less secure environments.
+
+Example with authentication enabled:
+```bash
+curl -X POST \
+  http://localhost:9090/api/cache-clear \
+  -H 'X-API-Key: your-secret-key-here' \
+  -H 'Content-Type: application/json'
+```
 
 #### Ban or unban the user
 
 Your monitoring system can detect user misbehaving, for example trying to extract / scrap the data. To prevent user from doing so you can use the simple API to ban the user from accessing the application.
 
-To do so - you need to enable the api by setting env variable `ENABLE_API=true` which will expose the API on the port `API_PORT=9090`. Nedless to say - keep it secure and don't expose it outside of your cluster.
+To do so - you need to enable the api by setting env variable `ENABLE_API=true` which will expose the API on the port `API_PORT=9090`. When deployed internally, keep it secure by not exposing it outside of your cluster. For additional security, set `ADMIN_API_KEY` to require authentication.
 
  Then you can use the following endpoints:
 
@@ -453,13 +735,58 @@ To do so - you need to enable the api by setting env variable `ENABLE_API=true` 
 * `POST /api/cache-clear` - clear the cache
 * `GET /api/cache-stats` - get the cache statistics ( hits, misses, size )
 
-Both endpoints require the `user_id` parameter to be present in the request body and allow you to provide the reason for the ban.
+#### Circuit Breaker Health
 
-Example request:
+* `GET /api/circuit-breaker/health` - get the circuit breaker health status
+
+The circuit breaker health endpoint returns detailed information about the circuit state:
+- Current state (healthy/recovering/unhealthy)
+- Request counts and failure statistics
+- Current configuration
+
+Example response:
+```json
+{
+  "status": "healthy",
+  "state": "closed",
+  "counts": {
+    "requests": 1000,
+    "total_successes": 950,
+    "total_failures": 50,
+    "consecutive_successes": 10,
+    "consecutive_failures": 0
+  },
+  "configuration": {
+    "max_failures": 10,
+    "failure_ratio": 0.5,
+    "sample_size": 100,
+    "timeout_seconds": 60,
+    "max_half_open_reqs": 5,
+    "backoff_multiplier": 1.0
+  }
+}
+```
+
+Both ban/unban endpoints require the `user_id` and `reason` parameters to be present in the request body.
+
+Example request without authentication (internal deployment):
 
 ```bash
 curl -X POST \
   http://localhost:9090/api/user-ban \
+  -H 'Content-Type: application/json' \
+  -d '{
+      "user_id": "1337",
+      "reason": "Scraping data"
+    }'
+```
+
+Example request with authentication enabled:
+
+```bash
+curl -X POST \
+  http://localhost:9090/api/user-ban \
+  -H 'X-API-Key: your-secret-key-here' \
   -H 'Content-Type: application/json' \
   -d '{
       "user_id": "1337",

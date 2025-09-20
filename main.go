@@ -4,8 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,10 +25,11 @@ import (
 )
 
 var (
-	cfg      *config
-	cfgMutex sync.RWMutex
-	once     sync.Once
-	tracer   *libpack_tracing.TracingSetup
+	cfg             *config
+	cfgMutex        sync.RWMutex
+	once            sync.Once
+	tracer          *libpack_tracing.TracingSetup
+	shutdownManager *ShutdownManager
 )
 
 // getDetailsFromEnv retrieves the value from the environment or returns the default.
@@ -184,14 +187,21 @@ func parseConfig() {
 	c.Tracing.Enable = getDetailsFromEnv("ENABLE_TRACE", false)
 	c.Tracing.Endpoint = getDetailsFromEnv("TRACE_ENDPOINT", "localhost:4317")
 
-	// Circuit Breaker configuration
+	// Circuit Breaker configuration - optimized for high-traffic production environments
 	c.CircuitBreaker.Enable = getDetailsFromEnv("ENABLE_CIRCUIT_BREAKER", false)
-	c.CircuitBreaker.MaxFailures = getDetailsFromEnv("CIRCUIT_MAX_FAILURES", 5)
-	c.CircuitBreaker.Timeout = getDetailsFromEnv("CIRCUIT_TIMEOUT_SECONDS", 30)
-	c.CircuitBreaker.MaxRequestsInHalfOpen = getDetailsFromEnv("CIRCUIT_MAX_HALF_OPEN_REQUESTS", 2)
+	c.CircuitBreaker.MaxFailures = getDetailsFromEnv("CIRCUIT_MAX_FAILURES", 10)                    // Higher tolerance for transient failures
+	c.CircuitBreaker.FailureRatio = getDetailsFromEnv("CIRCUIT_FAILURE_RATIO", 0.5)                 // Trip at 50% failure rate
+	c.CircuitBreaker.SampleSize = getDetailsFromEnv("CIRCUIT_SAMPLE_SIZE", 100)                     // Statistically significant sample
+	c.CircuitBreaker.Timeout = getDetailsFromEnv("CIRCUIT_TIMEOUT_SECONDS", 60)                     // Longer recovery time for stability
+	c.CircuitBreaker.MaxRequestsInHalfOpen = getDetailsFromEnv("CIRCUIT_MAX_HALF_OPEN_REQUESTS", 5) // More probe requests
 	c.CircuitBreaker.ReturnCachedOnOpen = getDetailsFromEnv("CIRCUIT_RETURN_CACHED_ON_OPEN", true)
 	c.CircuitBreaker.TripOnTimeouts = getDetailsFromEnv("CIRCUIT_TRIP_ON_TIMEOUTS", true)
 	c.CircuitBreaker.TripOn5xx = getDetailsFromEnv("CIRCUIT_TRIP_ON_5XX", true)
+	c.CircuitBreaker.TripOn4xx = getDetailsFromEnv("CIRCUIT_TRIP_ON_4XX", false)               // 4xx are usually client errors
+	c.CircuitBreaker.BackoffMultiplier = getDetailsFromEnv("CIRCUIT_BACKOFF_MULTIPLIER", 1.0)  // No backoff by default
+	c.CircuitBreaker.MaxBackoffTimeout = getDetailsFromEnv("CIRCUIT_MAX_BACKOFF_TIMEOUT", 300) // 5 minutes max
+	// Initialize endpoint configs map
+	c.CircuitBreaker.EndpointConfigs = make(map[string]*EndpointCBConfig)
 
 	cfgMutex.Lock()
 	cfg = &c
@@ -251,14 +261,19 @@ func parseConfig() {
 		libpack_cache.EnableCache(cacheConfig)
 
 		// Start memory monitoring for in-memory cache if it's not Redis
-		if !cfg.Cache.CacheRedisEnable {
-			go startCacheMemoryMonitoring()
-		}
+		// Will be started with context in main()
 	}
 
 	// Initialize circuit breaker if enabled
 	if cfg.CircuitBreaker.Enable {
 		initCircuitBreaker(cfg)
+	}
+
+	// Initialize backend health manager
+	if cfg.Server.HostGraphQL != "" {
+		healthMgr := InitializeBackendHealth(cfg.Client.FastProxyClient, cfg.Server.HostGraphQL, cfg.Logger)
+		// Start health checking in background
+		healthMgr.StartHealthChecking()
 	}
 
 	// Load rate limit configuration with improved error handling
@@ -279,10 +294,7 @@ func parseConfig() {
 			os.Exit(1)
 		}
 	}
-	once.Do(func() {
-		go enableApi()
-		go enableHasuraEventCleaner()
-	})
+	// API and event cleaner will be started with context in main()
 	prepareQueriesAndExemptions()
 
 	// Initialize GraphQL parsing optimizations
@@ -297,6 +309,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Initialize shutdown manager
+	shutdownManager = NewShutdownManager(ctx)
+
 	// Create a wait group to manage goroutines
 	var wg sync.WaitGroup
 
@@ -310,6 +325,52 @@ func main() {
 		})
 		cancel()
 	}()
+
+	// Start background services with context
+	once.Do(func() {
+		// Start API server
+		shutdownManager.RunGoroutine("api-server", func(ctx context.Context) {
+			if err := enableApi(ctx); err != nil {
+				cfg.Logger.Error(&libpack_logging.LogMessage{
+					Message: "API server error",
+					Pairs:   map[string]interface{}{"error": err.Error()},
+				})
+			}
+		})
+
+		// Start event cleaner
+		shutdownManager.RunGoroutine("event-cleaner", func(ctx context.Context) {
+			if err := enableHasuraEventCleaner(ctx); err != nil {
+				cfg.Logger.Error(&libpack_logging.LogMessage{
+					Message: "Event cleaner error",
+					Pairs:   map[string]interface{}{"error": err.Error()},
+				})
+			}
+		})
+
+		// Start cache memory monitoring if not using Redis
+		if cfg.Cache.CacheEnable && !cfg.Cache.CacheRedisEnable {
+			shutdownManager.RunGoroutine("cache-memory-monitoring", startCacheMemoryMonitoring)
+		}
+	})
+
+	// Register connection pool for cleanup
+	shutdownManager.RegisterComponent("http-connection-pool", func(ctx context.Context) error {
+		if connectionPoolManager != nil {
+			return connectionPoolManager.Shutdown()
+		}
+		return nil
+	})
+
+	// Register backend health manager for cleanup
+	shutdownManager.RegisterComponent("backend-health-manager", func(ctx context.Context) error {
+		if healthMgr := GetBackendHealthManager(); healthMgr != nil {
+			healthMgr.Shutdown()
+		}
+		return nil
+	})
+
+	// Cache shutdown is handled internally by the cache implementation
 
 	// Start monitoring server
 	cfg.Logger.Info(&libpack_logging.LogMessage{
@@ -340,6 +401,31 @@ func main() {
 		os.Exit(1)
 	case <-time.After(2 * time.Second):
 		// Continue if no error received within timeout
+	}
+
+	// Wait for GraphQL backend to be ready before starting proxy
+	if healthMgr := GetBackendHealthManager(); healthMgr != nil {
+		startupTimeout := time.Duration(getDetailsFromEnv("BACKEND_STARTUP_TIMEOUT", 300)) * time.Second
+		cfg.Logger.Info(&libpack_logging.LogMessage{
+			Message: "Waiting for GraphQL backend to be ready",
+			Pairs: map[string]interface{}{
+				"timeout_seconds": int(startupTimeout.Seconds()),
+			},
+		})
+
+		if err := healthMgr.WaitForBackendReady(startupTimeout); err != nil {
+			cfg.Logger.Critical(&libpack_logging.LogMessage{
+				Message: "GraphQL backend did not become ready in time",
+				Pairs: map[string]interface{}{
+					"error":   err.Error(),
+					"timeout": startupTimeout.String(),
+				},
+			})
+			// Don't exit immediately, but warn that backend is not ready
+			cfg.Logger.Warning(&libpack_logging.LogMessage{
+				Message: "Starting proxy anyway - requests will fail until backend becomes available",
+			})
+		}
 	}
 
 	// Start HTTP proxy
@@ -381,17 +467,19 @@ func main() {
 		Message: "Shutting down services...",
 	})
 
-	// Cleanup tracing
+	// Register tracer shutdown
 	if tracer != nil {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer shutdownCancel()
+		shutdownManager.RegisterComponent("tracer", func(ctx context.Context) error {
+			return tracer.Shutdown(ctx)
+		})
+	}
 
-		if err := tracer.Shutdown(shutdownCtx); err != nil {
-			cfg.Logger.Error(&libpack_logging.LogMessage{
-				Message: "Error shutting down tracer",
-				Pairs:   map[string]interface{}{"error": err.Error()},
-			})
-		}
+	// Perform graceful shutdown of all components
+	if err := shutdownManager.Shutdown(30 * time.Second); err != nil {
+		cfg.Logger.Error(&libpack_logging.LogMessage{
+			Message: "Error during shutdown",
+			Pairs:   map[string]interface{}{"error": err.Error()},
+		})
 	}
 
 	// Wait for all goroutines to finish (with timeout)
@@ -414,7 +502,7 @@ func main() {
 }
 
 // startCacheMemoryMonitoring polls memory cache usage and updates metrics
-func startCacheMemoryMonitoring() {
+func startCacheMemoryMonitoring(ctx context.Context) {
 	// Check every few seconds (more frequent than cleanup routine)
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
@@ -432,44 +520,52 @@ func startCacheMemoryMonitoring() {
 		float64(libpack_cache.GetCacheMaxMemorySize()))
 	metricsMutex.Unlock()
 
-	for range ticker.C {
-		// Skip if monitoring not initialized or cache not initialized
-		if cfg.Monitoring == nil || !libpack_cache.IsCacheInitialized() {
-			continue
-		}
-
-		// Get current memory usage atomically
-		memoryUsage := libpack_cache.GetCacheMemoryUsage()
-		memoryLimit := libpack_cache.GetCacheMaxMemorySize()
-
-		// Update metrics with proper synchronization
-		metricsMutex.Lock()
-		cfg.Monitoring.RegisterMetricsGauge(libpack_monitoring.MetricsCacheMemoryUsage, nil,
-			float64(memoryUsage))
-
-		cfg.Monitoring.RegisterMetricsGauge(libpack_monitoring.MetricsCacheMemoryLimit, nil,
-			float64(memoryLimit))
-
-		// Calculate percentage (protect against division by zero)
-		var percentUsed float64
-		if memoryLimit > 0 {
-			percentUsed = float64(memoryUsage) / float64(memoryLimit) * 100.0
-		}
-
-		cfg.Monitoring.RegisterMetricsGauge(libpack_monitoring.MetricsCacheMemoryPercent, nil,
-			percentUsed)
-		metricsMutex.Unlock()
-
-		// Log if memory usage is high (over 80%)
-		if percentUsed > 80.0 {
-			cfg.Logger.Warning(&libpack_logging.LogMessage{
-				Message: "Memory cache usage is high",
-				Pairs: map[string]interface{}{
-					"memory_usage_bytes": memoryUsage,
-					"memory_limit_bytes": memoryLimit,
-					"percent_used":       percentUsed,
-				},
+	for {
+		select {
+		case <-ctx.Done():
+			cfg.Logger.Info(&libpack_logging.LogMessage{
+				Message: "Stopping cache memory monitoring",
 			})
+			return
+		case <-ticker.C:
+			// Skip if monitoring not initialized or cache not initialized
+			if cfg.Monitoring == nil || !libpack_cache.IsCacheInitialized() {
+				continue
+			}
+
+			// Get current memory usage atomically
+			memoryUsage := libpack_cache.GetCacheMemoryUsage()
+			memoryLimit := libpack_cache.GetCacheMaxMemorySize()
+
+			// Update metrics with proper synchronization
+			metricsMutex.Lock()
+			cfg.Monitoring.RegisterMetricsGauge(libpack_monitoring.MetricsCacheMemoryUsage, nil,
+				float64(memoryUsage))
+
+			cfg.Monitoring.RegisterMetricsGauge(libpack_monitoring.MetricsCacheMemoryLimit, nil,
+				float64(memoryLimit))
+
+			// Calculate percentage (protect against division by zero)
+			var percentUsed float64
+			if memoryLimit > 0 {
+				percentUsed = float64(memoryUsage) / float64(memoryLimit) * 100.0
+			}
+
+			cfg.Monitoring.RegisterMetricsGauge(libpack_monitoring.MetricsCacheMemoryPercent, nil,
+				percentUsed)
+			metricsMutex.Unlock()
+
+			// Log if memory usage is high (over 80%)
+			if percentUsed > 80.0 {
+				cfg.Logger.Warning(&libpack_logging.LogMessage{
+					Message: "Memory cache usage is high",
+					Pairs: map[string]interface{}{
+						"memory_usage_bytes": memoryUsage,
+						"memory_limit_bytes": memoryLimit,
+						"percent_used":       percentUsed,
+					},
+				})
+			}
 		}
 	}
 }
@@ -477,30 +573,72 @@ func startCacheMemoryMonitoring() {
 // validateFilePath validates and sanitizes file paths to prevent path traversal attacks
 func validateFilePath(path string) (string, error) {
 	if path == "" {
-		return "", fmt.Errorf("empty file path")
+		return "", fmt.Errorf("empty path not allowed")
 	}
 
-	// Check for path traversal attempts
-	if strings.Contains(path, "..") {
-		return "", fmt.Errorf("path traversal detected")
+	// Reject bare current directory for security
+	if path == "." {
+		return "", fmt.Errorf("bare current directory not allowed")
 	}
 
-	// Check for null bytes
-	if strings.Contains(path, "\x00") {
-		return "", fmt.Errorf("null byte in path")
+	// URL decode the path to detect encoded traversal attempts
+	decodedPath := path
+	if strings.Contains(path, "%") {
+		// Try to decode URL encoding (single and double)
+		for i := 0; i < 3; i++ { // Handle multiple levels of encoding
+			if decoded, err := url.QueryUnescape(decodedPath); err == nil {
+				decodedPath = decoded
+			} else {
+				break
+			}
+		}
 	}
 
-	// Ensure path is absolute or within allowed directories
-	allowedPrefixes := []string{
-		"/go/src/app/",
-		"./",
-		"/tmp/",
-		"/var/tmp/",
+	// Check for path traversal patterns (in both original and decoded)
+	checkPaths := []string{path, decodedPath}
+	for _, checkPath := range checkPaths {
+		if strings.Contains(checkPath, "..") {
+			return "", fmt.Errorf("path traversal attempt detected")
+		}
 	}
 
+	// Check for dangerous characters
+	dangerousChars := []string{";", "|", "\n", "\r"}
+	for _, char := range dangerousChars {
+		if strings.Contains(path, char) {
+			return "", fmt.Errorf("dangerous character detected in path")
+		}
+	}
+
+	// Clean and normalize the path
+	cleaned := filepath.Clean(path)
+
+	// Get absolute path
+	absPath, err := filepath.Abs(cleaned)
+	if err != nil {
+		return "", fmt.Errorf("invalid file path: %w", err)
+	}
+
+	// Get working directory as base
+	workDir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine working directory: %w", err)
+	}
+
+	// Define allowed directories
+	allowedDirs := []string{
+		workDir,       // Current working directory
+		"/tmp",        // Temporary files
+		"/var/tmp",    // System temporary files
+		"/go/src/app", // Docker container default
+	}
+
+	// Check if the path is within any allowed directory
 	isAllowed := false
-	for _, prefix := range allowedPrefixes {
-		if strings.HasPrefix(path, prefix) {
+	for _, allowedDir := range allowedDirs {
+		// Ensure both paths are cleaned and absolute for proper comparison
+		cleanedAllowed := filepath.Clean(allowedDir)
+		if strings.HasPrefix(absPath, cleanedAllowed+string(filepath.Separator)) || absPath == cleanedAllowed {
 			isAllowed = true
 			break
 		}
@@ -510,7 +648,17 @@ func validateFilePath(path string) (string, error) {
 		return "", fmt.Errorf("path not in allowed directories")
 	}
 
-	return path, nil
+	// Additional security checks
+	if strings.Contains(absPath, "\x00") {
+		return "", fmt.Errorf("null byte in path")
+	}
+
+	// Return the original path if it's within the current working directory and is relative
+	if strings.HasPrefix(absPath, workDir) && !filepath.IsAbs(path) {
+		return path, nil
+	}
+
+	return absPath, nil
 }
 
 // ifNotInTest checks if the program is not running in a test environment.

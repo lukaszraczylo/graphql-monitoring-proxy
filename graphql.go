@@ -28,8 +28,8 @@ var (
 	introspectionAllowedQueries = make(map[string]struct{})
 	allowedUrls                 = make(map[string]struct{})
 
-	// Cache for parsed GraphQL queries to avoid reparsing - using sync.Map for thread safety
-	parsedQueryCache = sync.Map{}
+	// Cache for parsed GraphQL queries to avoid reparsing
+	parsedQueryCache *LRUCache
 
 	// Maximum size for parsed query cache
 	maxQueryCacheSize = 1000
@@ -96,16 +96,15 @@ var (
 func initGraphQLParsing() {
 	// Set cache size based on available memory
 	maxQueryCacheSize = runtime.GOMAXPROCS(0) * 250
+
+	// Initialize LRU cache with entry limit and 50MB size limit
+	parsedQueryCache = NewLRUCache(maxQueryCacheSize, 50*1024*1024)
 }
 
 // Store a parsed document in the cache with LRU eviction
 func cacheQuery(queryText string, document *ast.Document) {
-	// Use atomic operations for cache size tracking
-	currentSize := atomic.LoadInt64(&currentCacheSize)
-
-	// Check if we need to evict entries (implement LRU-like behavior)
-	if currentSize >= int64(maxQueryCacheSize) {
-		evictOldestQueries(int64(maxQueryCacheSize / 4)) // Evict 25% of entries
+	if parsedQueryCache == nil {
+		return
 	}
 
 	// Store the document in the cache with timestamp for LRU
@@ -114,10 +113,9 @@ func cacheQuery(queryText string, document *ast.Document) {
 		Timestamp: time.Now(),
 	}
 
-	// Only increment if this is a new entry
-	if _, exists := parsedQueryCache.LoadOrStore(queryText, cacheEntry); !exists {
-		atomic.AddInt64(&currentCacheSize, 1)
-	}
+	// The LRU cache handles eviction automatically
+	parsedQueryCache.Set(queryText, cacheEntry, int64(len(queryText)))
+	atomic.AddInt64(&currentCacheSize, 1)
 }
 
 // CachedQuery represents a cached GraphQL query with timestamp for LRU
@@ -126,60 +124,17 @@ type CachedQuery struct {
 	Timestamp time.Time
 }
 
-// evictOldestQueries implements LRU eviction by removing oldest entries
-func evictOldestQueries(numToEvict int64) {
-	type queryEntry struct {
-		key       string
-		timestamp time.Time
-	}
-
-	var entries []queryEntry
-
-	// Collect all entries with their timestamps
-	parsedQueryCache.Range(func(key, value interface{}) bool {
-		if keyStr, ok := key.(string); ok {
-			if cachedQuery, ok := value.(*CachedQuery); ok {
-				entries = append(entries, queryEntry{
-					key:       keyStr,
-					timestamp: cachedQuery.Timestamp,
-				})
-			}
-		}
-		return true
-	})
-
-	// Sort by timestamp (oldest first) and evict
-	if len(entries) > 0 {
-		// Simple selection sort for oldest entries
-		evicted := int64(0)
-		for i := 0; i < len(entries) && evicted < numToEvict; i++ {
-			oldest := i
-			for j := i + 1; j < len(entries); j++ {
-				if entries[j].timestamp.Before(entries[oldest].timestamp) {
-					oldest = j
-				}
-			}
-			// Swap and delete
-			if oldest != i {
-				entries[i], entries[oldest] = entries[oldest], entries[i]
-			}
-
-			if _, existed := parsedQueryCache.LoadAndDelete(entries[i].key); existed {
-				atomic.AddInt64(&currentCacheSize, -1)
-				evicted++
-			}
-		}
-	}
-}
+// evictOldestQueries is no longer needed with LRU cache
+// The LRU cache handles eviction automatically
 
 // Check if we have a cached parsed query
 func getCachedQuery(queryText string) *ast.Document {
-	if entry, found := parsedQueryCache.Load(queryText); found {
-		if cachedQuery, ok := entry.(*CachedQuery); ok {
-			// Update timestamp for LRU
-			cachedQuery.Timestamp = time.Now()
-			parsedQueryCache.Store(queryText, cachedQuery)
+	if parsedQueryCache == nil {
+		return nil
+	}
 
+	if entry, found := parsedQueryCache.Get(queryText); found {
+		if cachedQuery, ok := entry.(*CachedQuery); ok {
 			if cfg != nil && cfg.Monitoring != nil {
 				cfg.Monitoring.Increment(libpack_monitoring.MetricsGraphQLCacheHit, nil)
 			}

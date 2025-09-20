@@ -17,34 +17,46 @@ func TestRedisClear(t *testing.T) {
 	defer s.Close()
 
 	// Create a Redis client
-	redisConfig := New(&RedisClientConfig{
+	redisConfig, err := New(&RedisClientConfig{
 		RedisServer:   s.Addr(),
 		RedisPassword: "",
 		RedisDB:       0,
 	})
+	if err != nil {
+		t.Fatalf("Failed to create Redis client: %v", err)
+	}
 
 	// Add some test data
 	ttl := time.Duration(60) * time.Second
-	redisConfig.Set("key1", []byte("value1"), ttl)
-	redisConfig.Set("key2", []byte("value2"), ttl)
-	redisConfig.Set("key3", []byte("value3"), ttl)
+	err = redisConfig.Set("key1", []byte("value1"), ttl)
+	assert.NoError(t, err)
+	err = redisConfig.Set("key2", []byte("value2"), ttl)
+	assert.NoError(t, err)
+	err = redisConfig.Set("key3", []byte("value3"), ttl)
+	assert.NoError(t, err)
 
 	// Verify keys exist
-	count := redisConfig.CountQueries()
+	count, err := redisConfig.CountQueries()
+	assert.NoError(t, err)
 	assert.Equal(t, int64(3), count, "Expected 3 keys before clearing cache")
 
 	// Clear the cache
-	redisConfig.Clear()
+	err = redisConfig.Clear()
+	assert.NoError(t, err)
 
 	// Verify all keys are gone
-	count = redisConfig.CountQueries()
+	count, err = redisConfig.CountQueries()
+	assert.NoError(t, err)
 	assert.Equal(t, int64(0), count, "Expected 0 keys after clearing cache")
 
 	// Verify individual keys are gone
-	_, found := redisConfig.Get("key1")
+	_, found, err := redisConfig.Get("key1")
+	assert.NoError(t, err)
 	assert.False(t, found, "Key1 should be deleted after Clear")
-	_, found = redisConfig.Get("key2")
+	_, found, err = redisConfig.Get("key2")
+	assert.NoError(t, err)
 	assert.False(t, found, "Key2 should be deleted after Clear")
-	_, found = redisConfig.Get("key3")
+	_, found, err = redisConfig.Get("key3")
+	assert.NoError(t, err)
 	assert.False(t, found, "Key3 should be deleted after Clear")
 }

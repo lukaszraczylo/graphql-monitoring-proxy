@@ -21,8 +21,8 @@ func (suite *Tests) Test_proxyTheRequest() {
 		host         string
 		hostRO       string
 		path         string
-		wantErr      bool
 		wantEndpoint string
+		wantErr      bool
 	}{
 		{
 			name:         "test_empty",
@@ -101,14 +101,14 @@ func (suite *Tests) Test_proxyTheRequest() {
 			// Create fiber context with the request context
 			ctx := suite.app.AcquireCtx(reqCtx)
 			res := parseGraphQLQuery(ctx)
-			assert.NotNil(ctx, "Fiber context is nil", tt.name)
+			suite.NotNil(ctx, "Fiber context is nil", tt.name)
 			err := proxyTheRequest(ctx, res.activeEndpoint)
 			if tt.wantErr {
-				assert.NotNil(err, "Error is nil", tt.name)
+				suite.NotNil(err, "Error is nil", tt.name)
 			} else {
-				assert.Nil(err, "Error is not nil", tt.name)
+				suite.Nil(err, "Error is not nil", tt.name)
 			}
-			assert.Equal(tt.wantEndpoint, res.activeEndpoint, "Unexpected endpoint", tt.name)
+			suite.Equal(tt.wantEndpoint, res.activeEndpoint, "Unexpected endpoint", tt.name)
 		})
 	}
 }
@@ -146,9 +146,9 @@ func (suite *Tests) Test_proxyTheRequestWithPayloads() {
 			ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{})
 			err := proxyTheRequest(ctx, cfg.Server.HostGraphQL)
 			if tt.wantErr {
-				assert.NotNil(err)
+				suite.NotNil(err)
 			} else {
-				assert.Nil(err)
+				suite.Nil(err)
 			}
 		})
 	}
@@ -172,9 +172,9 @@ func (suite *Tests) Test_proxyTheRequestWithTimeouts() {
 
 	tests := []struct {
 		name          string
-		clientTimeout int
 		sleepDuration string
 		body          string
+		clientTimeout int
 		wantErr       bool
 	}{
 		{
@@ -223,9 +223,9 @@ func (suite *Tests) Test_proxyTheRequestWithTimeouts() {
 			err := proxyTheRequest(ctx, cfg.Server.HostGraphQL)
 
 			if tt.wantErr {
-				assert.NotNil(err, "Expected an error for test: %s", tt.name)
+				suite.NotNil(err, "Expected an error for test: %s", tt.name)
 			} else {
-				assert.Nil(err, "Expected no error for test: %s", tt.name)
+				suite.Nil(err, "Expected no error for test: %s", tt.name)
 			}
 		})
 	}

@@ -15,8 +15,10 @@ import (
 // RateLimitConfig holds the rate limit configuration for a role
 type RateLimitConfig struct {
 	RateCounterTicker *goratecounter.RateCounter
+	Endpoints         []string      `json:"endpoints,omitempty"`
 	Interval          time.Duration `json:"interval"`
 	Req               int           `json:"req"`
+	Burst             int           `json:"burst,omitempty"`
 }
 
 // UnmarshalJSON implements custom JSON unmarshaling for RateLimitConfig
@@ -195,7 +197,7 @@ func rateLimitedRequest(userID, userRole string) bool {
 	if configInterface := rateLimitConfigAtomic.Load(); configInterface != nil {
 		if config, ok := configInterface.(map[string]RateLimitConfig); ok {
 			if roleConfig, exists := config[userRole]; exists && roleConfig.RateCounterTicker != nil {
-				return checkRateLimit(userID, userRole, roleConfig)
+				return checkRateLimit(userID, userRole, roleConfig, "")
 			}
 		}
 	}
@@ -214,11 +216,11 @@ func rateLimitedRequest(userID, userRole string) bool {
 		return false
 	}
 
-	return checkRateLimit(userID, userRole, roleConfig)
+	return checkRateLimit(userID, userRole, roleConfig, "")
 }
 
 // checkRateLimit performs the actual rate limit check
-func checkRateLimit(userID, userRole string, roleConfig RateLimitConfig) bool {
+func checkRateLimit(userID, userRole string, roleConfig RateLimitConfig, endpoint string) bool {
 	roleConfig.RateCounterTicker.Incr(1)
 	tickerRate := roleConfig.RateCounterTicker.GetRate()
 
@@ -228,12 +230,22 @@ func checkRateLimit(userID, userRole string, roleConfig RateLimitConfig) bool {
 		"rate":        tickerRate,
 		"config_rate": roleConfig.Req,
 		"interval":    roleConfig.Interval,
+		"endpoint":    endpoint,
 	}
 
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Rate limit ticker",
 		Pairs:   map[string]interface{}{"log_details": logDetails},
 	})
+
+	// Check burst limit if configured
+	if roleConfig.Burst > 0 && tickerRate > float64(roleConfig.Burst) {
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "Burst limit exceeded",
+			Pairs:   map[string]interface{}{"log_details": logDetails},
+		})
+		return false
+	}
 
 	if tickerRate > float64(roleConfig.Req) {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{

@@ -67,12 +67,12 @@ func (suite *Tests) Test_IntervalConversion() {
 			err := json.Unmarshal([]byte(tc.jsonString), &config)
 
 			if tc.shouldError {
-				assert.Error(err, "Expected error for invalid format")
+				suite.Error(err, "Expected error for invalid format")
 			} else {
-				assert.NoError(err, "Unexpected error during unmarshal")
-				assert.Equal(tc.expectedDuration, config.Interval,
+				suite.NoError(err, "Unexpected error during unmarshal")
+				suite.Equal(tc.expectedDuration, config.Interval,
 					fmt.Sprintf("Expected %v but got %v", tc.expectedDuration, config.Interval))
-				assert.NotNil(config.Interval, "Interval should not be nil")
+				suite.NotNil(config.Interval, "Interval should not be nil")
 			}
 		})
 	}
@@ -84,23 +84,23 @@ func (suite *Tests) Test_LoadRatelimitConfigFile() {
 	cfg = &config{}
 	parseConfig()
 	err := loadRatelimitConfig()
-	assert.NoError(err, "Should load ratelimit config without error")
+	suite.NoError(err, "Should load ratelimit config without error")
 
 	// Verify that rate limits were loaded
-	assert.NotEmpty(rateLimits, "Rate limits should not be empty")
+	suite.NotEmpty(rateLimits, "Rate limits should not be empty")
 
 	// Check specific roles
-	assert.Contains(rateLimits, "admin", "Should contain admin role")
-	assert.Contains(rateLimits, "guest", "Should contain guest role")
-	assert.Contains(rateLimits, "-", "Should contain default role")
+	suite.Contains(rateLimits, "admin", "Should contain admin role")
+	suite.Contains(rateLimits, "guest", "Should contain guest role")
+	suite.Contains(rateLimits, "-", "Should contain default role")
 
 	// Verify interval values
-	assert.Equal(time.Second, rateLimits["admin"].Interval, "Admin should have 1 second interval")
-	assert.Equal(time.Second, rateLimits["guest"].Interval, "Guest should have 1 second interval")
-	assert.Equal(time.Minute, rateLimits["-"].Interval, "Default role should have 1 minute interval")
+	suite.Equal(time.Second, rateLimits["admin"].Interval, "Admin should have 1 second interval")
+	suite.Equal(time.Second, rateLimits["guest"].Interval, "Guest should have 1 second interval")
+	suite.Equal(time.Minute, rateLimits["-"].Interval, "Default role should have 1 minute interval")
 
 	// Verify request limits
-	assert.Equal(100, rateLimits["admin"].Req, "Admin should allow 100 req/second")
-	assert.Equal(3, rateLimits["guest"].Req, "Guest should allow 3 req/second")
-	assert.Equal(10, rateLimits["-"].Req, "Default role should allow 10 req/minute")
+	suite.Equal(100, rateLimits["admin"].Req, "Admin should allow 100 req/second")
+	suite.Equal(3, rateLimits["guest"].Req, "Guest should allow 3 req/second")
+	suite.Equal(10, rateLimits["-"].Req, "Default role should allow 10 req/minute")
 }

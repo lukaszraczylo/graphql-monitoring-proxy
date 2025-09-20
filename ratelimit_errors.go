@@ -7,9 +7,8 @@ import (
 
 // RateLimitConfigError represents a detailed error when loading rate limit configuration
 type RateLimitConfigError struct {
-	Paths []string
-	// Map of path -> error message
 	PathErrors map[string]string
+	Paths      []string
 }
 
 // Error implements the error interface

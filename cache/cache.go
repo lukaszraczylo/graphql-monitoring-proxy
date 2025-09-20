@@ -68,11 +68,21 @@ func EnableCache(cfg *CacheConfig) {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Using Redis cache",
 		})
-		cfg.Client = libpack_cache_redis.New(&libpack_cache_redis.RedisClientConfig{
+		redisClient, err := libpack_cache_redis.New(&libpack_cache_redis.RedisClientConfig{
 			RedisDB:       cfg.Redis.DB,
 			RedisServer:   cfg.Redis.URL,
 			RedisPassword: cfg.Redis.Password,
 		})
+		if err != nil {
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Failed to create Redis client",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
+			// Fall back to memory cache
+			cfg.Client = libpack_cache_memory.New(time.Duration(cfg.TTL) * time.Second)
+		} else {
+			cfg.Client = libpack_cache_redis.NewCacheWrapper(redisClient, cfg.Logger)
+		}
 	} else {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Using in-memory cache",
@@ -222,8 +232,12 @@ func GetCacheStats() *CacheStats {
 	config.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Getting cache stats",
 	})
-	cacheStats.CachedQueries = CacheGetQueries()
-	return cacheStats
+	// Return a copy to avoid race conditions
+	return &CacheStats{
+		CacheHits:     atomic.LoadInt64(&cacheStats.CacheHits),
+		CacheMisses:   atomic.LoadInt64(&cacheStats.CacheMisses),
+		CachedQueries: CacheGetQueries(),
+	}
 }
 
 // GetCacheMemoryUsage returns the current memory usage of the cache in bytes

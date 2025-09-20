@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"context"
 	"io"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -35,15 +34,14 @@ type CacheEntry struct {
 type Cache struct {
 	compressPool   sync.Pool
 	decompressPool sync.Pool
+	ctx            context.Context
+	cancel         context.CancelFunc
 	entries        sync.Map
 	globalTTL      time.Duration
 	entryCount     int64
-	memoryUsage    int64 // Total memory usage in bytes
-	maxMemorySize  int64 // Maximum memory usage in bytes
-	maxCacheSize   int64 // Maximum number of entries (for backward compatibility)
-	// Add context for graceful shutdown
-	ctx    context.Context
-	cancel context.CancelFunc
+	memoryUsage    int64
+	maxMemorySize  int64
+	maxCacheSize   int64
 	sync.RWMutex
 }
 
@@ -93,11 +91,8 @@ func (c *Cache) cleanupRoutine(globalTTL time.Duration) {
 		case <-ticker.C:
 			c.CleanExpiredEntries()
 
-			// Trigger GC if we have a lot of entries or memory usage
-			if atomic.LoadInt64(&c.entryCount) > c.maxCacheSize/2 ||
-				atomic.LoadInt64(&c.memoryUsage) > c.maxMemorySize/2 {
-				runtime.GC()
-			}
+			// Note: Removed aggressive GC trigger that was causing performance issues
+			// The Go runtime GC is already optimized and will run when needed
 		}
 	}
 }
@@ -275,8 +270,8 @@ func (c *Cache) CleanExpiredEntries() {
 // evictOldest removes the oldest n entries from the cache
 func (c *Cache) evictOldest(n int) {
 	type keyExpiry struct {
-		key       string
 		expiresAt time.Time
+		key       string
 	}
 
 	// Collect all entries with their expiry times
@@ -284,7 +279,7 @@ func (c *Cache) evictOldest(n int) {
 	c.entries.Range(func(k, v interface{}) bool {
 		key := k.(string)
 		entry := v.(CacheEntry)
-		entries = append(entries, keyExpiry{key, entry.ExpiresAt})
+		entries = append(entries, keyExpiry{entry.ExpiresAt, key})
 		return len(entries) < cap(entries)
 	})
 
@@ -314,9 +309,9 @@ func (c *Cache) evictOldest(n int) {
 // evictToFreeMemory removes entries until the specified amount of memory is freed
 func (c *Cache) evictToFreeMemory(bytesToFree int64) {
 	type keyMemorySize struct {
+		expiresAt  time.Time
 		key        string
 		memorySize int64
-		expiresAt  time.Time
 	}
 
 	// Collect entries to consider for eviction
@@ -324,7 +319,7 @@ func (c *Cache) evictToFreeMemory(bytesToFree int64) {
 	c.entries.Range(func(k, v interface{}) bool {
 		key := k.(string)
 		entry := v.(CacheEntry)
-		entries = append(entries, keyMemorySize{key, entry.MemorySize, entry.ExpiresAt})
+		entries = append(entries, keyMemorySize{entry.ExpiresAt, key, entry.MemorySize})
 		return len(entries) < cap(entries)
 	})
 

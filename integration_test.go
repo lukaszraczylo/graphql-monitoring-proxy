@@ -33,8 +33,7 @@ func (suite *Tests) TestCachingAndCircuitBreakerInteraction() {
 		// Reset the circuit breaker
 		cbMutex.Lock()
 		cb = nil
-		cbStateGauge = nil
-		cbFailCounters = nil
+		cbMetrics = nil
 		cbMutex.Unlock()
 	}()
 
@@ -112,8 +111,8 @@ func (suite *Tests) TestCachingAndCircuitBreakerInteraction() {
 
 	// Save response before releasing context
 	firstResponseBody := string(ctx.Response().Body())
-	assert.Nil(err, "First request should succeed")
-	assert.Equal(responseBody, firstResponseBody, "Response body should match server response")
+	suite.Nil(err, "First request should succeed")
+	suite.Equal(responseBody, firstResponseBody, "Response body should match server response")
 
 	// Calculate hash the same way the system does, before releasing context
 	cacheKey := strutil.Md5(ctx.Body())
@@ -125,8 +124,8 @@ func (suite *Tests) TestCachingAndCircuitBreakerInteraction() {
 
 	// Verify cache was populated
 	cachedResponse := libpack_cache.CacheLookup(cacheKey)
-	assert.NotNil(cachedResponse, "Response should be cached")
-	assert.Equal(responseBody, string(cachedResponse), "Cached response should match server response")
+	suite.NotNil(cachedResponse, "Response should be cached")
+	suite.Equal(responseBody, string(cachedResponse), "Cached response should match server response")
 
 	// Test Case 2: Server begins failing, trips circuit breaker, fallback to cache
 
@@ -142,7 +141,7 @@ func (suite *Tests) TestCachingAndCircuitBreakerInteraction() {
 	}
 
 	// Verify circuit is now open
-	assert.Equal(gobreaker.StateOpen.String(), cb.State().String(), "Circuit should be open after failures")
+	suite.Equal(gobreaker.StateOpen.String(), cb.State().String(), "Circuit should be open after failures")
 
 	// Update server to return success again (but circuit is open, so this shouldn't be called)
 	responseStatus = http.StatusOK
@@ -161,17 +160,17 @@ func (suite *Tests) TestCachingAndCircuitBreakerInteraction() {
 	suite.app.ReleaseCtx(ctx)
 
 	// Verify request succeeded via cache fallback
-	assert.Nil(err, "Request with open circuit should succeed with cache fallback")
-	assert.Equal(`{"data":{"test":"original"}}`, fallbackResponseBody,
+	suite.Nil(err, "Request with open circuit should succeed with cache fallback")
+	suite.Equal(`{"data":{"test":"original"}}`, fallbackResponseBody,
 		"Response should match cached version, not updated server response")
 
 	// Verify metrics were incremented
 	newCacheHitCount := getMetricValue(libpack_monitoring.MetricsCacheHit)
 	newFallbackSuccessCount := getMetricValue(libpack_monitoring.MetricsCircuitFallbackSuccess)
 
-	assert.Greater(newCacheHitCount, metricCounts[libpack_monitoring.MetricsCacheHit],
+	suite.Greater(newCacheHitCount, metricCounts[libpack_monitoring.MetricsCacheHit],
 		"Cache hit metric should be incremented")
-	assert.Greater(newFallbackSuccessCount, metricCounts[libpack_monitoring.MetricsCircuitFallbackSuccess],
+	suite.Greater(newFallbackSuccessCount, metricCounts[libpack_monitoring.MetricsCircuitFallbackSuccess],
 		"Circuit fallback success metric should be incremented")
 
 	// Test Case 3: Request with different query missing in cache while circuit is open
@@ -193,12 +192,12 @@ func (suite *Tests) TestCachingAndCircuitBreakerInteraction() {
 	suite.app.ReleaseCtx(ctx)
 
 	// Verify request failed with circuit open error
-	assert.NotNil(err, "Request with open circuit and no cache should fail")
-	assert.Equal(ErrCircuitOpen.Error(), err.Error(), "Error should be ErrCircuitOpen")
+	suite.NotNil(err, "Request with open circuit and no cache should fail")
+	suite.Equal(ErrCircuitOpen.Error(), err.Error(), "Error should be ErrCircuitOpen")
 
 	// Verify metrics were incremented
 	fallbackFailedAfter := getMetricValue(libpack_monitoring.MetricsCircuitFallbackFailed)
-	assert.Greater(fallbackFailedAfter, fallbackFailedBefore,
+	suite.Greater(fallbackFailedAfter, fallbackFailedBefore,
 		"Circuit fallback failed metric should be incremented")
 
 	// Test Case 4: Circuit timeout and transition to half-open state
@@ -229,7 +228,7 @@ func (suite *Tests) TestCachingAndCircuitBreakerInteraction() {
 	// Just verify circuit state changed - don't try to test the actual half-open behavior
 	// as it's timing sensitive and can lead to flaky tests
 	t.Logf("Final circuit state: %s", cb.State().String())
-	assert.NotEqual(gobreaker.StateOpen.String(), cb.State().String(),
+	suite.NotEqual(gobreaker.StateOpen.String(), cb.State().String(),
 		"Circuit should no longer be fully open after recovery")
 }
 
@@ -320,18 +319,18 @@ func (suite *Tests) TestGzipHandlingAndCachingInteraction() {
 	cacheMisses++
 
 	// Check response
-	assert.Nil(err, "First request should succeed")
-	assert.Equal(fiber.StatusOK, firstResponseStatus, "Status should be 200 OK")
-	assert.Contains(firstResponseBody, "query1 response",
+	suite.Nil(err, "First request should succeed")
+	suite.Equal(fiber.StatusOK, firstResponseStatus, "Status should be 200 OK")
+	suite.Contains(firstResponseBody, "query1 response",
 		"Response should contain uncompressed query1 content")
 
 	// Content-Encoding header should be removed after decompression
-	assert.Equal("", firstResponseHeaders,
+	suite.Equal("", firstResponseHeaders,
 		"Content-Encoding header should be removed")
 
 	// Verify cache metrics - should have one miss, no hits yet
-	assert.Equal(1, cacheMisses, "Should have one cache miss")
-	assert.Equal(0, cacheHits, "Should have no cache hits yet")
+	suite.Equal(1, cacheMisses, "Should have one cache miss")
+	suite.Equal(0, cacheHits, "Should have no cache hits yet")
 
 	// Second request - repeat query1, should be a cache hit
 	reqCtx2 := &fasthttp.RequestCtx{}
@@ -352,13 +351,13 @@ func (suite *Tests) TestGzipHandlingAndCachingInteraction() {
 	// Second request is a cache hit
 	cacheHits++
 
-	assert.Nil(err, "Second request should succeed")
-	assert.Equal(fiber.StatusOK, secondResponseStatus, "Status should be 200 OK")
-	assert.Contains(secondResponseBody, "query1 response",
+	suite.Nil(err, "Second request should succeed")
+	suite.Equal(fiber.StatusOK, secondResponseStatus, "Status should be 200 OK")
+	suite.Contains(secondResponseBody, "query1 response",
 		"Response should contain correct content")
 
 	// Verify cache metrics - should have one hit now
-	assert.Equal(1, cacheHits, "Should have one cache hit")
+	suite.Equal(1, cacheHits, "Should have one cache hit")
 
 	// Third request - different query, should be a cache miss
 	reqCtx3 := &fasthttp.RequestCtx{}
@@ -379,13 +378,13 @@ func (suite *Tests) TestGzipHandlingAndCachingInteraction() {
 	// Third request is a cache miss
 	cacheMisses++
 
-	assert.Nil(err, "Third request should succeed")
-	assert.Equal(fiber.StatusOK, thirdResponseStatus, "Status should be 200 OK")
-	assert.Contains(thirdResponseBody, "query2 response", "Response should contain query2 content")
+	suite.Nil(err, "Third request should succeed")
+	suite.Equal(fiber.StatusOK, thirdResponseStatus, "Status should be 200 OK")
+	suite.Contains(thirdResponseBody, "query2 response", "Response should contain query2 content")
 
 	// Verify cache metrics - should have one hit and two misses
-	assert.Equal(2, cacheMisses, "Should have two cache misses total")
-	assert.Equal(1, cacheHits, "Should have one cache hit total")
+	suite.Equal(2, cacheMisses, "Should have two cache misses total")
+	suite.Equal(1, cacheHits, "Should have one cache hit total")
 }
 
 // TestGraphQLQueryParsing tests GraphQL parsing with various query types
@@ -393,8 +392,8 @@ func (suite *Tests) TestGraphQLQueryParsing() {
 	testCases := []struct {
 		name           string
 		query          string
-		expectParseErr bool
 		expectEndpoint string
+		expectParseErr bool
 		expectReadOnly bool
 	}{
 		{
@@ -472,16 +471,16 @@ func (suite *Tests) TestGraphQLQueryParsing() {
 
 			// Verify parsing result
 			if tc.expectParseErr {
-				assert.True(result.shouldIgnore, "Should report parse error via shouldIgnore")
+				suite.True(result.shouldIgnore, "Should report parse error via shouldIgnore")
 			} else {
-				assert.False(result.shouldIgnore, "Should not report parse error via shouldIgnore")
+				suite.False(result.shouldIgnore, "Should not report parse error via shouldIgnore")
 			}
 
 			if tc.expectReadOnly {
-				assert.Equal(cfg.Server.HostGraphQLReadOnly, result.activeEndpoint,
+				suite.Equal(cfg.Server.HostGraphQLReadOnly, result.activeEndpoint,
 					"Should use read-only endpoint")
 			} else {
-				assert.Equal(cfg.Server.HostGraphQL, result.activeEndpoint,
+				suite.Equal(cfg.Server.HostGraphQL, result.activeEndpoint,
 					"Should use write endpoint")
 			}
 		})

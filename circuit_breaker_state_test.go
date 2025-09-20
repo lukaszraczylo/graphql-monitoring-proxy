@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/sony/gobreaker"
+	"github.com/stretchr/testify/assert"
 )
 
 // TestCircuitBreakerStateTransitions tests the circuit breaker state transitions:
@@ -19,7 +20,7 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerStateTransitions() {
 	initCircuitBreaker(cfg)
 
 	// 1. Initially the circuit should be closed
-	assert.Equal(gobreaker.StateClosed.String(), cb.State().String(), "Circuit should start in closed state")
+	assert.Equal(suite.T(), gobreaker.StateClosed.String(), cb.State().String(), "Circuit should start in closed state")
 
 	// 2. Generate failures to trip the circuit
 	testErr := errors.New("test error")
@@ -27,24 +28,24 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerStateTransitions() {
 		_, err := cb.Execute(func() (interface{}, error) {
 			return nil, testErr
 		})
-		assert.Error(err, "Execute should return error")
+		assert.Error(suite.T(), err, "Execute should return error")
 	}
 
 	// 3. Circuit should now be open
-	assert.Equal(gobreaker.StateOpen.String(), cb.State().String(), "Circuit should transition to open state after failures")
+	assert.Equal(suite.T(), gobreaker.StateOpen.String(), cb.State().String(), "Circuit should transition to open state after failures")
 
 	// Verify that requests are rejected during open state
 	_, err := cb.Execute(func() (interface{}, error) {
 		return "success", nil
 	})
-	assert.Equal(gobreaker.ErrOpenState.Error(), err.Error(), "Should return ErrOpenState when circuit is open")
+	assert.Equal(suite.T(), gobreaker.ErrOpenState.Error(), err.Error(), "Should return ErrOpenState when circuit is open")
 
 	// Verify that the state change was logged
-	assert.True(suite.logContains("Circuit breaker state changed"),
+	assert.True(suite.T(), suite.logContains("Circuit breaker state changed"),
 		"State change should be logged")
-	assert.True(suite.logContains(`"from":"closed"`),
+	assert.True(suite.T(), suite.logContains(`"from":"closed"`),
 		"Log should mention transition from closed state")
-	assert.True(suite.logContains(`"to":"open"`),
+	assert.True(suite.T(), suite.logContains(`"to":"open"`),
 		"Log should mention transition to open state")
 
 	// 4. Wait for timeout to allow transition to half-open
@@ -65,9 +66,9 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerStateTransitions() {
 	}
 
 	// Verify the state change was logged
-	assert.True(suite.logContains(`"from":"open"`),
+	assert.True(suite.T(), suite.logContains(`"from":"open"`),
 		"Log should mention transition from open state")
-	assert.True(suite.logContains(`"to":"half-open"`),
+	assert.True(suite.T(), suite.logContains(`"to":"half-open"`),
 		"Log should mention transition to half-open state")
 
 	// 6. Execute successful requests in half-open state to transition back to closed
@@ -75,16 +76,16 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerStateTransitions() {
 		_, err = cb.Execute(func() (interface{}, error) {
 			return "success", nil
 		})
-		assert.NoError(err, "Execute should not return error")
+		assert.NoError(suite.T(), err, "Execute should not return error")
 	}
 
 	// 7. Circuit should now be closed again
-	assert.Equal(gobreaker.StateClosed.String(), cb.State().String(), "Circuit should transition to closed state after successes")
+	assert.Equal(suite.T(), gobreaker.StateClosed.String(), cb.State().String(), "Circuit should transition to closed state after successes")
 
 	// Verify the final state change was logged
-	assert.True(suite.logContains(`"from":"half-open"`),
+	assert.True(suite.T(), suite.logContains(`"from":"half-open"`),
 		"Log should mention transition from half-open state")
-	assert.True(suite.logContains(`"to":"closed"`),
+	assert.True(suite.T(), suite.logContains(`"to":"closed"`),
 		"Log should mention transition to closed state")
 }
 
@@ -106,11 +107,11 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerHalfOpenToOpen() {
 		_, err := cb.Execute(func() (interface{}, error) {
 			return nil, testErr
 		})
-		assert.Error(err, "Execute should return error")
+		assert.Error(suite.T(), err, "Execute should return error")
 	}
 
 	// 2. Circuit should now be open
-	assert.Equal(gobreaker.StateOpen.String(), cb.State().String(), "Circuit should be open after failures")
+	assert.Equal(suite.T(), gobreaker.StateOpen.String(), cb.State().String(), "Circuit should be open after failures")
 
 	// 3. Wait for timeout to allow transition to half-open
 	time.Sleep(time.Duration(cfg.CircuitBreaker.Timeout+1) * time.Second)
@@ -124,17 +125,17 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerHalfOpenToOpen() {
 
 	// 4. If we successfully reached half-open state, verify it transitions back to open after failure
 	if tmpState.String() == gobreaker.StateHalfOpen.String() {
-		assert.Equal(gobreaker.StateOpen.String(), cb.State().String(),
+		assert.Equal(suite.T(), gobreaker.StateOpen.String(), cb.State().String(),
 			"Circuit should transition back to open state after failure in half-open")
 
 		// Verify the state changes were logged
-		assert.True(suite.logContains(`"from":"open"`),
+		assert.True(suite.T(), suite.logContains(`"from":"open"`),
 			"Log should mention transition from open state")
-		assert.True(suite.logContains(`"to":"half-open"`),
+		assert.True(suite.T(), suite.logContains(`"to":"half-open"`),
 			"Log should mention transition to half-open state")
-		assert.True(suite.logContains(`"from":"half-open"`),
+		assert.True(suite.T(), suite.logContains(`"from":"half-open"`),
 			"Log should mention transition from half-open state")
-		assert.True(suite.logContains(`"to":"open"`),
+		assert.True(suite.T(), suite.logContains(`"to":"open"`),
 			"Log should mention transition back to open state")
 	} else {
 		suite.T().Skip("Circuit didn't transition to half-open as expected, likely due to timing issues in test environment")

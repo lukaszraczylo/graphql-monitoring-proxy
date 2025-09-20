@@ -30,9 +30,9 @@ type HealthCheckResponse struct {
 
 // DependencyStatus represents the status of a dependency
 type DependencyStatus struct {
-	Status       string  `json:"status"`          // "up" or "down"
-	ResponseTime int64   `json:"responseTime"`    // in milliseconds
-	Error        *string `json:"error,omitempty"` // error message if any
+	Error        *string `json:"error,omitempty"`
+	Status       string  `json:"status"`
+	ResponseTime int64   `json:"responseTime"`
 }
 
 // StartHTTPProxy initializes and starts the HTTP proxy server.

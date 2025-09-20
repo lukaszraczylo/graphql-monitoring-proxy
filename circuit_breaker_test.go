@@ -13,7 +13,6 @@ import (
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 	"github.com/sony/gobreaker"
-	testifyassert "github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -25,8 +24,6 @@ type CircuitBreakerTestSuite struct {
 }
 
 func (suite *CircuitBreakerTestSuite) SetupTest() {
-	// Initialize the global assert variable for circuit breaker tests
-	assert = testifyassert.New(suite.T())
 
 	// Store original config to restore later
 	suite.originalConfig = cfg
@@ -70,8 +67,8 @@ func (suite *CircuitBreakerTestSuite) TearDownTest() {
 	cbMutex.Lock()
 	defer cbMutex.Unlock()
 	cb = nil
-	cbStateGauge = nil
-	cbFailCounters = nil
+	// Circuit breaker metrics are now managed by cbMetrics
+	cbMetrics = nil
 }
 
 // Helper function to check if a specific message appears in the logger output
@@ -161,8 +158,7 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerInitialization() {
 
 	// Verify circuit breaker was initialized
 	suite.NotNil(cb, "Circuit breaker should be initialized")
-	suite.NotNil(cbStateGauge, "Circuit breaker gauge should be initialized")
-	suite.NotNil(cbFailCounters, "Circuit breaker counters should be initialized")
+	suite.NotNil(cbMetrics, "Circuit breaker metrics should be initialized")
 
 	// Verify the log message
 	suite.True(suite.logContains("Circuit breaker initialized"),
@@ -175,8 +171,7 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerInitialization() {
 	// Reset circuit breaker
 	cbMutex.Lock()
 	cb = nil
-	cbStateGauge = nil
-	cbFailCounters = nil
+	cbMetrics = nil
 	cbMutex.Unlock()
 
 	// Initialize again with disabled config

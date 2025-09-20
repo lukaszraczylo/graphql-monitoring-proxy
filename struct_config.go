@@ -7,40 +7,24 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// EndpointCBConfig holds per-endpoint circuit breaker configuration
+type EndpointCBConfig struct {
+	MaxFailures  int     // Override max failures for this endpoint
+	FailureRatio float64 // Override failure ratio for this endpoint
+	Timeout      int     // Override timeout for this endpoint
+	Disabled     bool    // Disable circuit breaker for this endpoint
+}
+
 // config is a struct that holds the configuration of the application.
 // It includes settings for logging, monitoring, client connections, security, and server behavior.
 type config struct {
 	Logger     *libpack_logging.Logger
-	LogLevel   string
 	Monitoring *libpack_monitoring.MetricsSetup
+	LogLevel   string
+	Api        struct{ BannedUsersFile string }
 	Tracing    struct {
-		Enable   bool
 		Endpoint string
-	}
-	Api    struct{ BannedUsersFile string }
-	Client struct {
-		GQLClient           *graphql.BaseClient
-		FastProxyClient     *fasthttp.Client
-		JWTUserClaimPath    string
-		JWTRoleClaimPath    string
-		RoleFromHeader      string
-		proxy               string
-		ClientTimeout       int
-		RoleRateLimit       bool
-		MaxConnsPerHost     int  // Maximum number of connections per host
-		ReadTimeout         int  // Read timeout in seconds
-		WriteTimeout        int  // Write timeout in seconds
-		MaxIdleConnDuration int  // Maximum idle connection duration in seconds
-		DisableTLSVerify    bool // Whether to skip TLS certificate verification
-	}
-	CircuitBreaker struct {
-		Enable                bool // Whether to enable circuit breaker
-		MaxFailures           int  // Consecutive failures count to trip the circuit
-		Timeout               int  // Timeout in seconds before half-open state
-		MaxRequestsInHalfOpen int  // Maximum requests allowed in half-open state
-		ReturnCachedOnOpen    bool // Whether to return cached response when circuit is open
-		TripOnTimeouts        bool // Whether to trip the circuit on timeouts
-		TripOn5xx             bool // Whether to trip the circuit on 5xx responses
+		Enable   bool
 	}
 	Security struct {
 		IntrospectionAllowed []string
@@ -58,21 +42,54 @@ type config struct {
 		CacheRedisDB       int
 		CacheEnable        bool
 		CacheRedisEnable   bool
-		CacheMaxMemorySize int // Maximum memory size in MB (0 = use default)
-		CacheMaxEntries    int // Maximum number of entries (0 = use default)
+		CacheMaxMemorySize int
+		CacheMaxEntries    int
+	}
+	Client struct {
+		GQLClient           *graphql.BaseClient
+		FastProxyClient     *fasthttp.Client
+		JWTUserClaimPath    string
+		JWTRoleClaimPath    string
+		RoleFromHeader      string
+		proxy               string
+		ClientTimeout       int
+		MaxConnsPerHost     int
+		ReadTimeout         int
+		WriteTimeout        int
+		MaxIdleConnDuration int
+		RoleRateLimit       bool
+		DisableTLSVerify    bool
 	}
 	Server struct {
 		HostGraphQL         string
 		HostGraphQLReadOnly string
 		HealthcheckGraphQL  string
-		AllowURLs           []string
-		PortGraphQL         int
-		PortMonitoring      int
-		ApiPort             int
-		PurgeEvery          int
-		AccessLog           bool
-		ReadOnlyMode        bool
-		EnableApi           bool
-		PurgeOnCrawl        bool
+		AllowURLs           []string // Per-endpoint circuit breaker configs
+
+		PortGraphQL    int
+		PortMonitoring int
+		ApiPort        int
+		PurgeEvery     int
+		AccessLog      bool
+		ReadOnlyMode   bool
+		EnableApi      bool
+		PurgeOnCrawl   bool
+	}
+	CircuitBreaker struct {
+		EndpointConfigs map[ // Maximum memory size in MB (0 = use default)
+		string]*EndpointCBConfig
+		ExcludedStatusCodes   []int
+		MaxFailures           int
+		FailureRatio          float64
+		SampleSize            int
+		Timeout               int
+		MaxRequestsInHalfOpen int
+		MaxBackoffTimeout     int
+		BackoffMultiplier     float64
+		ReturnCachedOnOpen    bool
+		TripOn4xx             bool
+		TripOn5xx             bool
+		TripOnTimeouts        bool
+		Enable                bool
 	}
 }
