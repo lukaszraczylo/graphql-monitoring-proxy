@@ -253,6 +253,84 @@
             color: #991b1b;
         }
 
+        .cluster-toggle-container {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 12px 20px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .cluster-toggle-container:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-1px);
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 48px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            transition: background 0.3s ease;
+            cursor: pointer;
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        #cluster-mode-toggle {
+            display: none;
+        }
+
+        #cluster-mode-toggle:checked + .cluster-toggle-container .toggle-switch {
+            background: #10b981;
+        }
+
+        #cluster-mode-toggle:checked + .cluster-toggle-container .toggle-switch::after {
+            transform: translateX(24px);
+        }
+
+        #cluster-mode-toggle:disabled + .cluster-toggle-container {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #cluster-mode-toggle:disabled + .cluster-toggle-container:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: none;
+        }
+
+        .cluster-toggle-label {
+            font-size: 0.95em;
+            font-weight: 600;
+            color: white;
+            letter-spacing: 0.3px;
+            user-select: none;
+        }
+
+        .cluster-toggle-info {
+            font-size: 0.8em;
+            opacity: 0.9;
+            color: white;
+            font-weight: 400;
+        }
+
         .instance-card {
             background: white;
             border-radius: 12px;
@@ -303,17 +381,24 @@
 <body>
     <header>
         <div class="container">
-            <h1>GraphQL Proxy Admin Dashboard</h1>
-            <div class="subtitle">
-                Real-time monitoring and management
-                <span class="ws-status ws-disconnected" id="ws-status">Connecting...</span>
-            </div>
-            <div style="margin-top: 15px;">
-                <label style="display: inline-flex; align-items: center; cursor: pointer;">
-                    <input type="checkbox" id="cluster-mode-toggle" style="margin-right: 8px;">
-                    <span style="font-size: 0.95em; font-weight: 500;">Cluster View</span>
-                    <span id="cluster-info" style="margin-left: 10px; font-size: 0.85em; opacity: 0.8;"></span>
-                </label>
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+                <div>
+                    <h1>GraphQL Proxy Admin Dashboard</h1>
+                    <div class="subtitle">
+                        Real-time monitoring and management
+                        <span class="ws-status ws-disconnected" id="ws-status">Connecting...</span>
+                    </div>
+                </div>
+                <div>
+                    <input type="checkbox" id="cluster-mode-toggle">
+                    <label for="cluster-mode-toggle" class="cluster-toggle-container">
+                        <div class="toggle-switch"></div>
+                        <div>
+                            <div class="cluster-toggle-label">Cluster View</div>
+                            <div class="cluster-toggle-info" id="cluster-info">Checking availability...</div>
+                        </div>
+                    </label>
+                </div>
             </div>
         </div>
     </header>
