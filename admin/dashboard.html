@@ -818,8 +818,9 @@
             container.innerHTML = '';
 
             instances.forEach(instance => {
-                const isCurrent = instance.InstanceID === currentInstanceID;
-                const isHealthy = instance.Health && instance.Health.status === 'healthy';
+                // Use JSON field names (snake_case), not Go struct names (PascalCase)
+                const isCurrent = instance.instance_id === currentInstanceID;
+                const isHealthy = instance.health && instance.health.status === 'healthy';
 
                 const card = document.createElement('div');
                 card.className = 'instance-card';
@@ -831,14 +832,14 @@
                 title.className = 'instance-title';
                 title.innerHTML = `
                     <span class="status-indicator ${isHealthy ? 'status-healthy' : 'status-unhealthy'}"></span>
-                    ${instance.Hostname}
+                    ${instance.hostname || 'unknown'}
                     ${isCurrent ? '<span class="badge badge-info" style="margin-left: 8px;">Current</span>' : ''}
                 `;
 
                 const uptime = document.createElement('span');
                 uptime.style.fontSize = '0.85em';
                 uptime.style.color = '#666';
-                uptime.textContent = `Uptime: ${formatUptime(instance.UptimeSeconds)}`;
+                uptime.textContent = `Uptime: ${formatUptime(instance.uptime_seconds || 0)}`;
 
                 header.appendChild(title);
                 header.appendChild(uptime);
@@ -846,10 +847,10 @@
                 const grid = document.createElement('div');
                 grid.className = 'instance-grid';
 
-                // Extract stats
-                const stats = instance.Stats || {};
+                // Extract stats - use JSON field names
+                const stats = instance.stats || {};
                 const requests = stats.requests || {};
-                const cache = stats.cache_summary || {};
+                const cache = instance.cache_summary || stats.cache_summary || {};
 
                 const metrics = [
                     { label: 'Total Requests', value: (requests.total || 0).toLocaleString() },
