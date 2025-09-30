@@ -319,6 +319,39 @@ func parseConfig() {
 		}
 	}
 
+	// Initialize metrics aggregator FIRST if Redis is enabled (even if cache is disabled)
+	// This allows cluster mode monitoring even when cache is off
+	if cfg.Cache.CacheRedisEnable {
+		cfg.Logger.Info(&libpack_logging.LogMessage{
+			Message: "Initializing metrics aggregator for cluster mode",
+			Pairs: map[string]interface{}{
+				"redis_url": cfg.Cache.CacheRedisURL,
+				"redis_db":  cfg.Cache.CacheRedisDB,
+			},
+		})
+
+		if err := InitializeMetricsAggregator(
+			cfg.Cache.CacheRedisURL,
+			cfg.Cache.CacheRedisPassword,
+			cfg.Cache.CacheRedisDB,
+			cfg.Logger,
+		); err != nil {
+			cfg.Logger.Error(&libpack_logging.LogMessage{
+				Message: "FAILED to initialize metrics aggregator - cluster mode will not work",
+				Pairs: map[string]interface{}{
+					"error": err.Error(),
+				},
+			})
+		} else {
+			cfg.Logger.Info(&libpack_logging.LogMessage{
+				Message: "✓ Metrics aggregator successfully initialized",
+				Pairs: map[string]interface{}{
+					"instance_id": GetMetricsAggregator().GetInstanceID(),
+				},
+			})
+		}
+	}
+
 	// Initialize cache if enabled
 	if cfg.Cache.CacheEnable || cfg.Cache.CacheRedisEnable {
 		cacheConfig := &libpack_cache.CacheConfig{
@@ -483,6 +516,14 @@ func main() {
 	shutdownManager.RegisterComponent("backend-health-manager", func(ctx context.Context) error {
 		if healthMgr := GetBackendHealthManager(); healthMgr != nil {
 			healthMgr.Shutdown()
+		}
+		return nil
+	})
+
+	// Register metrics aggregator for cleanup
+	shutdownManager.RegisterComponent("metrics-aggregator", func(ctx context.Context) error {
+		if aggregator := GetMetricsAggregator(); aggregator != nil {
+			aggregator.Shutdown()
 		}
 		return nil
 	})

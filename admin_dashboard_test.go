@@ -425,13 +425,13 @@ func TestGetAdminMetricValue(t *testing.T) {
 	}
 
 	// Test with valid metric
-	value := getAdminMetricValue("graphql_proxy_succeeded_total")
+	value := getAdminMetricValue("requests_succesful")
 	assert.GreaterOrEqual(t, value, int64(0))
 
 	// Test with nil config
 	oldCfg := cfg
 	cfg = nil
-	value = getAdminMetricValue("graphql_proxy_succeeded_total")
+	value = getAdminMetricValue("requests_succesful")
 	assert.Equal(t, int64(0), value)
 	cfg = oldCfg
 }

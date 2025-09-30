@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GraphQL Proxy Admin Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -211,28 +212,318 @@
         .loading {
             animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+        }
+
+        .ws-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75em;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+
+        .ws-connected {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .ws-disconnected {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .cluster-toggle-container {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 12px 20px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .cluster-toggle-container:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-1px);
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 48px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            transition: background 0.3s ease;
+            cursor: pointer;
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        #cluster-mode-toggle {
+            display: none;
+        }
+
+        #cluster-mode-toggle:checked + .cluster-toggle-container .toggle-switch {
+            background: #10b981;
+        }
+
+        #cluster-mode-toggle:checked + .cluster-toggle-container .toggle-switch::after {
+            transform: translateX(24px);
+        }
+
+        #cluster-mode-toggle:disabled + .cluster-toggle-container {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #cluster-mode-toggle:disabled + .cluster-toggle-container:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: none;
+        }
+
+        .cluster-toggle-label {
+            font-size: 0.95em;
+            font-weight: 600;
+            color: white;
+            letter-spacing: 0.3px;
+            user-select: none;
+        }
+
+        .cluster-toggle-info {
+            font-size: 0.8em;
+            opacity: 0.9;
+            color: white;
+            font-weight: 400;
+        }
+
+        .instance-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .instance-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .instance-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .instance-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .instance-metric {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .instance-metric-label {
+            font-size: 0.8em;
+            color: #666;
+            margin-bottom: 4px;
+        }
+
+        .instance-metric-value {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #333;
+        }
     </style>
 </head>
 <body>
     <header>
         <div class="container">
-            <h1>GraphQL Proxy Admin Dashboard</h1>
-            <div class="subtitle">Real-time monitoring and management</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+                <div>
+                    <h1>GraphQL Proxy Admin Dashboard</h1>
+                    <div class="subtitle">
+                        Real-time monitoring and management
+                        <span class="ws-status ws-disconnected" id="ws-status">Connecting...</span>
+                    </div>
+                </div>
+                <div>
+                    <input type="checkbox" id="cluster-mode-toggle">
+                    <label for="cluster-mode-toggle" class="cluster-toggle-container">
+                        <div class="toggle-switch"></div>
+                        <div>
+                            <div class="cluster-toggle-label">Cluster View</div>
+                            <div class="cluster-toggle-info" id="cluster-info">Checking availability...</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
         </div>
     </header>
 
     <div class="container">
+        <!-- Cluster Status (shown when cluster mode detected) -->
+        <div id="cluster-status-section" style="display: none;">
+            <h2 class="section-title">Cluster Status</h2>
+            <div class="stats-grid">
+                <div class="card">
+                    <div class="card-title">Total Instances</div>
+                    <div class="card-value" id="cluster-total-instances">--</div>
+                    <div class="card-label">Proxy nodes</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Healthy Instances</div>
+                    <div class="card-value" id="cluster-healthy-instances">--</div>
+                    <div class="card-label">Active nodes</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Overview -->
+        <h2 class="section-title">
+            <span id="overview-title">System Overview</span>
+        </h2>
+        <div class="stats-grid">
+            <div class="card">
+                <div class="card-title">Uptime</div>
+                <div class="card-value" id="uptime">--</div>
+                <div class="card-label" id="uptime-seconds">-- seconds</div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Total Requests</div>
+                <div class="card-value" id="total-requests">--</div>
+                <div class="card-label">
+                    <span style="color: #10b981;">✓ <span id="succeeded-requests">--</span></span>
+                    <span style="color: #ef4444;">✗ <span id="failed-requests">--</span></span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Current RPS</div>
+                <div class="card-value" id="current-rps">--</div>
+                <div class="card-label">Avg: <span id="avg-rps">--</span> req/s</div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Success Rate</div>
+                <div class="card-value" id="success-rate">--%</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="success-progress" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cache Statistics -->
+        <h2 class="section-title">Cache Performance</h2>
+        <div class="stats-grid">
+            <div class="card">
+                <div class="card-title">Cache Hit Rate</div>
+                <div class="card-value" id="cache-hit-rate">--%</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="cache-hit-progress" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Cache Hits / Misses</div>
+                <div class="card-value" id="cache-hits">--</div>
+                <div class="card-label">
+                    Hits: <span id="cache-hits-detail">--</span> |
+                    Misses: <span id="cache-misses">--</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Cached Queries</div>
+                <div class="card-value" id="cached-queries">--</div>
+                <div class="card-label">Total entries</div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Memory Usage</div>
+                <div class="card-value" id="cache-memory">-- MB</div>
+                <div class="card-label" id="cache-memory-pct">--%</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="memory-progress" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Real-time Charts -->
+        <h2 class="section-title">Real-time Metrics</h2>
+        <div class="stats-grid">
+            <div class="card">
+                <div class="card-title">Requests Per Second</div>
+                <div class="chart-container">
+                    <canvas id="rps-chart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Cache Hit Rate Over Time</div>
+                <div class="chart-container">
+                    <canvas id="cache-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
         <!-- Health Status -->
+        <h2 class="section-title">Health Status</h2>
         <div class="card" id="health-card">
-            <div class="card-title">System Health</div>
-            <div>
-                <span class="status-indicator status-unknown loading" id="health-indicator"></span>
-                <span id="health-status">Loading...</span>
+            <div class="metric-row">
+                <span class="metric-label">Backend Status</span>
+                <span>
+                    <span class="status-indicator status-unknown loading" id="health-indicator"></span>
+                    <span id="health-status">Loading...</span>
+                </span>
             </div>
         </div>
 
         <!-- Key Metrics -->
-        <h2 class="section-title">Key Metrics</h2>
+        <h2 class="section-title">Advanced Features</h2>
         <div class="stats-grid">
             <div class="card">
                 <div class="card-title">Request Coalescing</div>
@@ -334,41 +625,555 @@
             </div>
         </div>
 
-        <div class="refresh-info">
-            Dashboard refreshes every 5 seconds
+        <!-- Instance Details (shown in cluster mode) -->
+        <div id="instance-details-section" style="display: none;">
+            <h2 class="section-title">Instance Details</h2>
+            <div id="instance-list"></div>
+        </div>
+
+        <div class="refresh-info" id="refresh-info">
+            <span id="connection-mode">Connecting to real-time updates...</span>
         </div>
     </div>
 
     <script>
-        // Fetch and update dashboard data
+        // Chart instances
+        let rpsChart, cacheChart;
+        let rpsData = { labels: [], data: [] };
+        let cacheData = { labels: [], data: [] };
+        const MAX_DATA_POINTS = 60; // Keep last 60 data points
+
+        // WebSocket connection
+        let ws = null;
+        let wsReconnectInterval = null;
+        let useWebSocket = true;
+
+        // Cluster mode state
+        let clusterModeEnabled = false;
+        let clusterModeAvailable = false;
+
+        // Smoothing buffers for metrics (10-second moving average at 2s intervals = 5 data points)
+        const smoothingWindow = 5;
+        const rpsBuffer = [];
+        const successRateBuffer = [];
+        const cacheHitRateBuffer = [];
+
+        // Initialize charts
+        function initCharts() {
+            const rpsCtx = document.getElementById('rps-chart').getContext('2d');
+            rpsChart = new Chart(rpsCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Requests/sec',
+                        data: [],
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { precision: 0 }
+                        },
+                        x: {
+                            display: false
+                        }
+                    }
+                }
+            });
+
+            const cacheCtx = document.getElementById('cache-chart').getContext('2d');
+            cacheChart = new Chart(cacheCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Hit Rate %',
+                        data: [],
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        },
+                        x: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update chart data
+        function updateChart(chart, dataStore, value) {
+            const timestamp = new Date().toLocaleTimeString();
+
+            dataStore.labels.push(timestamp);
+            dataStore.data.push(value);
+
+            // Keep only last MAX_DATA_POINTS
+            if (dataStore.labels.length > MAX_DATA_POINTS) {
+                dataStore.labels.shift();
+                dataStore.data.shift();
+            }
+
+            chart.data.labels = dataStore.labels;
+            chart.data.datasets[0].data = dataStore.data;
+            chart.update('none'); // Update without animation for smoother real-time updates
+        }
+
+        // Connect to WebSocket
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/admin/ws/stats`;
+
+            try {
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    updateWSStatus(true);
+                    if (wsReconnectInterval) {
+                        clearInterval(wsReconnectInterval);
+                        wsReconnectInterval = null;
+                    }
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        updateAllStats(data);
+                    } catch (error) {
+                        console.error('Failed to parse WebSocket message:', error);
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                };
+
+                ws.onclose = () => {
+                    updateWSStatus(false);
+                    // Try to reconnect after 5 seconds
+                    if (!wsReconnectInterval) {
+                        wsReconnectInterval = setInterval(() => {
+                            connectWebSocket();
+                        }, 5000);
+                    }
+                };
+            } catch (error) {
+                console.error('Failed to create WebSocket:', error);
+                updateWSStatus(false);
+                // Fall back to polling if WebSocket fails
+                useWebSocket = false;
+                startPolling();
+            }
+        }
+
+        // Update WebSocket status indicator
+        function updateWSStatus(connected) {
+            const statusEl = document.getElementById('ws-status');
+            const infoEl = document.getElementById('connection-mode');
+
+            if (connected) {
+                statusEl.className = 'ws-status ws-connected';
+                statusEl.textContent = 'Live';
+                infoEl.textContent = 'Real-time updates via WebSocket';
+            } else {
+                statusEl.className = 'ws-status ws-disconnected';
+                statusEl.textContent = 'Reconnecting...';
+                infoEl.textContent = 'Attempting to reconnect...';
+            }
+        }
+
+        // Fallback: Fetch and update dashboard data via polling
         async function updateDashboard() {
             try {
-                // Update health
-                const health = await fetch('/admin/api/health').then(r => r.json());
-                updateHealth(health);
+                if (clusterModeEnabled) {
+                    // Fetch cluster stats
+                    const [clusterStats, instances] = await Promise.all([
+                        fetch('/admin/api/cluster/stats').then(r => r.json()),
+                        fetch('/admin/api/cluster/instances').then(r => r.json())
+                    ]);
 
-                // Update circuit breaker
-                const cb = await fetch('/admin/api/circuit-breaker').then(r => r.json());
-                updateCircuitBreaker(cb);
+                    if (clusterStats.cluster_mode) {
+                        updateClusterStats(clusterStats, instances);
+                    }
+                } else {
+                    // Fetch all stats for single instance
+                    const [stats, health, cb, cache, coalescing, retryBudget, wsStats, connections] = await Promise.all([
+                        fetch('/admin/api/stats').then(r => r.json()),
+                        fetch('/admin/api/health').then(r => r.json()),
+                        fetch('/admin/api/circuit-breaker').then(r => r.json()),
+                        fetch('/admin/api/cache').then(r => r.json()),
+                        fetch('/admin/api/coalescing').then(r => r.json()),
+                        fetch('/admin/api/retry-budget').then(r => r.json()),
+                        fetch('/admin/api/websocket').then(r => r.json()),
+                        fetch('/admin/api/connections').then(r => r.json())
+                    ]);
 
-                // Update coalescing
-                const coalescing = await fetch('/admin/api/coalescing').then(r => r.json());
-                updateCoalescing(coalescing);
+                    const allData = {
+                        stats,
+                        health,
+                        circuit_breaker: cb,
+                        cache,
+                        coalescing,
+                        retry_budget: retryBudget,
+                        websocket: wsStats,
+                        connections
+                    };
 
-                // Update retry budget
-                const retryBudget = await fetch('/admin/api/retry-budget').then(r => r.json());
-                updateRetryBudget(retryBudget);
-
-                // Update WebSocket
-                const ws = await fetch('/admin/api/websocket').then(r => r.json());
-                updateWebSocket(ws);
-
-                // Update connections
-                const connections = await fetch('/admin/api/connections').then(r => r.json());
-                updateConnections(connections);
+                    updateAllStats(allData);
+                }
 
             } catch (error) {
                 console.error('Failed to update dashboard:', error);
+            }
+        }
+
+        // Check if cluster mode is available
+        async function checkClusterMode() {
+            try {
+                const response = await fetch('/admin/api/cluster/stats');
+                const data = await response.json();
+
+                if (response.ok && data.cluster_mode) {
+                    clusterModeAvailable = true;
+                    document.getElementById('cluster-info').textContent =
+                        `(${data.total_instances} instance${data.total_instances !== 1 ? 's' : ''} available)`;
+                    return true;
+                }
+            } catch (error) {
+                // Cluster mode not available
+            }
+
+            clusterModeAvailable = false;
+            document.getElementById('cluster-info').textContent = '(not available)';
+            document.getElementById('cluster-mode-toggle').disabled = true;
+            return false;
+        }
+
+        // Update cluster statistics
+        function updateClusterStats(clusterData, instancesData) {
+            // Show cluster sections
+            document.getElementById('cluster-status-section').style.display = 'block';
+            document.getElementById('instance-details-section').style.display = 'block';
+            document.getElementById('overview-title').textContent = 'Cluster Overview';
+
+            // Update cluster status
+            document.getElementById('cluster-total-instances').textContent = clusterData.total_instances || 0;
+            document.getElementById('cluster-healthy-instances').textContent = clusterData.healthy_instances || 0;
+
+            // Update cluster info in toggle label
+            const totalInstances = clusterData.total_instances || 0;
+            document.getElementById('cluster-info').textContent =
+                `(${totalInstances} instance${totalInstances !== 1 ? 's' : ''} available)`;
+
+            // Update combined stats
+            if (clusterData.stats) {
+                updateStats({ ...clusterData.stats, cluster_mode: true });
+
+                // Update memory usage from cluster stats
+                if (clusterData.stats.memory) {
+                    updateCacheStats({
+                        memory_usage_mb: clusterData.stats.memory.total_usage_mb || 0
+                    });
+                }
+            }
+
+            // Update instance list
+            if (instancesData && instancesData.instances) {
+                updateInstanceList(instancesData.instances, instancesData.current_instance);
+            }
+        }
+
+        // Update individual instance list
+        function updateInstanceList(instances, currentInstanceID) {
+            const container = document.getElementById('instance-list');
+            container.innerHTML = '';
+
+            instances.forEach(instance => {
+                // Use JSON field names (snake_case), not Go struct names (PascalCase)
+                const isCurrent = instance.instance_id === currentInstanceID;
+                const isHealthy = instance.health && instance.health.status === 'healthy';
+
+                const card = document.createElement('div');
+                card.className = 'instance-card';
+
+                const header = document.createElement('div');
+                header.className = 'instance-header';
+
+                const title = document.createElement('div');
+                title.className = 'instance-title';
+                title.innerHTML = `
+                    <span class="status-indicator ${isHealthy ? 'status-healthy' : 'status-unhealthy'}"></span>
+                    ${instance.hostname || 'unknown'}
+                    ${isCurrent ? '<span class="badge badge-info" style="margin-left: 8px;">Current</span>' : ''}
+                `;
+
+                const uptime = document.createElement('span');
+                uptime.style.fontSize = '0.85em';
+                uptime.style.color = '#666';
+                uptime.textContent = `Uptime: ${formatUptime(instance.uptime_seconds || 0)}`;
+
+                header.appendChild(title);
+                header.appendChild(uptime);
+
+                const grid = document.createElement('div');
+                grid.className = 'instance-grid';
+
+                // Extract stats - use JSON field names
+                const stats = instance.stats || {};
+                const requests = stats.requests || {};
+                const cache = instance.cache_summary || stats.cache_summary || {};
+
+                const failedCount = requests.failed || 0;
+                const totalCount = requests.total || 0;
+                const failureInfo = failedCount > 0 ? ` (${failedCount} failed)` : '';
+
+                const metrics = [
+                    {
+                        label: 'Total Requests',
+                        value: formatNumber(totalCount),
+                        title: totalCount.toLocaleString() + ' total requests' + failureInfo
+                    },
+                    {
+                        label: 'Success Rate',
+                        value: (requests.success_rate_pct || 0).toFixed(1) + '%',
+                        title: null
+                    },
+                    {
+                        label: 'Current RPS',
+                        value: (requests.current_requests_per_second || 0).toFixed(1),
+                        title: null
+                    },
+                    {
+                        label: 'Cache Hit Rate',
+                        value: (cache.hit_rate_pct || 0).toFixed(1) + '%',
+                        title: null
+                    }
+                ];
+
+                metrics.forEach(metric => {
+                    const metricDiv = document.createElement('div');
+                    metricDiv.className = 'instance-metric';
+                    if (metric.title) {
+                        metricDiv.title = metric.title;
+                    }
+                    metricDiv.innerHTML = `
+                        <div class="instance-metric-label">${metric.label}</div>
+                        <div class="instance-metric-value">${metric.value}</div>
+                    `;
+                    grid.appendChild(metricDiv);
+                });
+
+                card.appendChild(header);
+                card.appendChild(grid);
+                container.appendChild(card);
+            });
+        }
+
+        // Format uptime in human readable format
+        function formatUptime(seconds) {
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+
+            if (days > 0) return `${days}d ${hours}h`;
+            if (hours > 0) return `${hours}h ${minutes}m`;
+            return `${minutes}m`;
+        }
+
+        // Format large numbers compactly (1.2M, 3.4K, etc)
+        function formatNumber(num) {
+            if (num === undefined || num === null) return '0';
+
+            const absNum = Math.abs(num);
+            if (absNum >= 1000000000) {
+                return (num / 1000000000).toFixed(1) + 'B';
+            }
+            if (absNum >= 1000000) {
+                return (num / 1000000).toFixed(1) + 'M';
+            }
+            if (absNum >= 1000) {
+                return (num / 1000).toFixed(1) + 'K';
+            }
+            return num.toLocaleString();
+        }
+
+        // Smooth metric values using moving average
+        function smoothMetric(buffer, newValue) {
+            buffer.push(newValue);
+            if (buffer.length > smoothingWindow) {
+                buffer.shift(); // Remove oldest value
+            }
+            // Calculate average
+            const sum = buffer.reduce((a, b) => a + b, 0);
+            return sum / buffer.length;
+        }
+
+        // Get trend indicator (↑ ↗ → ↘ ↓)
+        function getTrendIndicator(buffer) {
+            if (buffer.length < 2) return '→';
+            const recent = buffer.slice(-3); // Last 3 values
+            const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
+            const diff = recent[recent.length - 1] - recent[0];
+            const percentChange = Math.abs(diff / (avg || 1)) * 100;
+
+            if (percentChange < 5) return '→'; // Stable
+            if (diff > 0) {
+                return percentChange > 15 ? '↑' : '↗'; // Strong/moderate increase
+            } else {
+                return percentChange > 15 ? '↓' : '↘'; // Strong/moderate decrease
+            }
+        }
+
+        // Update all statistics
+        function updateAllStats(data) {
+            if (data.stats) updateStats(data.stats);
+            if (data.health) updateHealth(data.health);
+            if (data.circuit_breaker) updateCircuitBreaker(data.circuit_breaker);
+            if (data.cache) updateCacheStats(data.cache);
+            if (data.coalescing) updateCoalescing(data.coalescing);
+            if (data.retry_budget) updateRetryBudget(data.retry_budget);
+            if (data.websocket) updateWebSocket(data.websocket);
+            if (data.connections) updateConnections(data.connections);
+        }
+
+        // Update main stats
+        function updateStats(data) {
+            // Uptime
+            document.getElementById('uptime').textContent = data.uptime_human || '--';
+            document.getElementById('uptime-seconds').textContent =
+                (data.uptime_seconds || 0).toFixed(0) + ' seconds';
+
+            if (data.requests) {
+                const req = data.requests;
+
+                // Total requests with compact formatting
+                document.getElementById('total-requests').textContent = formatNumber(req.total || 0);
+                document.getElementById('total-requests').title = (req.total || 0).toLocaleString() + ' total requests';
+
+                document.getElementById('succeeded-requests').textContent = formatNumber(req.succeeded || 0);
+                document.getElementById('succeeded-requests').title = (req.succeeded || 0).toLocaleString() + ' succeeded';
+
+                document.getElementById('failed-requests').textContent = formatNumber(req.failed || 0);
+                document.getElementById('failed-requests').title = (req.failed || 0).toLocaleString() + ' failed';
+
+                // Show failure details if there are failures
+                if (req.failed > 0) {
+                    const failureRate = (req.failed / (req.total || 1) * 100).toFixed(2);
+                    document.getElementById('failed-requests').title += ` (${failureRate}% failure rate)`;
+                }
+
+                // Success rate with smoothing
+                const rawSuccessRate = req.success_rate_pct || 0;
+                const smoothedSuccessRate = smoothMetric(successRateBuffer, rawSuccessRate);
+                const successTrend = getTrendIndicator(successRateBuffer);
+
+                document.getElementById('success-rate').textContent =
+                    smoothedSuccessRate.toFixed(1) + '% ' + successTrend;
+                document.getElementById('success-rate').title =
+                    `10s avg: ${smoothedSuccessRate.toFixed(2)}% | Current: ${rawSuccessRate.toFixed(2)}%`;
+                document.getElementById('success-progress').style.width =
+                    smoothedSuccessRate + '%';
+
+                // RPS with smoothing
+                const rawRPS = req.current_requests_per_second || 0;
+                const smoothedRPS = smoothMetric(rpsBuffer, rawRPS);
+                const rpsTrend = getTrendIndicator(rpsBuffer);
+
+                document.getElementById('current-rps').textContent =
+                    smoothedRPS.toFixed(1) + ' ' + rpsTrend;
+                document.getElementById('current-rps').title =
+                    `10s avg: ${smoothedRPS.toFixed(2)} | Current: ${rawRPS.toFixed(2)}`;
+
+                document.getElementById('avg-rps').textContent =
+                    (req.avg_requests_per_second || 0).toFixed(1);
+
+                // Update RPS chart with smoothed value
+                updateChart(rpsChart, rpsData, smoothedRPS);
+            }
+
+            // Cache summary with smoothing
+            if (data.cache_summary) {
+                const cache = data.cache_summary;
+
+                const rawHitRate = cache.hit_rate_pct || 0;
+                const smoothedHitRate = smoothMetric(cacheHitRateBuffer, rawHitRate);
+                const hitRateTrend = getTrendIndicator(cacheHitRateBuffer);
+
+                document.getElementById('cache-hit-rate').textContent =
+                    smoothedHitRate.toFixed(1) + '% ' + hitRateTrend;
+                document.getElementById('cache-hit-rate').title =
+                    `10s avg: ${smoothedHitRate.toFixed(2)}% | Current: ${rawHitRate.toFixed(2)}%`;
+                document.getElementById('cache-hit-progress').style.width =
+                    smoothedHitRate + '%';
+
+                document.getElementById('cache-hits').textContent = formatNumber(cache.hits || 0);
+                document.getElementById('cache-hits').title = (cache.hits || 0).toLocaleString() + ' cache hits';
+
+                document.getElementById('cache-hits-detail').textContent = formatNumber(cache.hits || 0);
+                document.getElementById('cache-hits-detail').title = (cache.hits || 0).toLocaleString();
+
+                document.getElementById('cache-misses').textContent = formatNumber(cache.misses || 0);
+                document.getElementById('cache-misses').title = (cache.misses || 0).toLocaleString() + ' cache misses';
+
+                document.getElementById('cached-queries').textContent = formatNumber(cache.total_cached || 0);
+                document.getElementById('cached-queries').title = (cache.total_cached || 0).toLocaleString() + ' unique queries cached';
+
+                // Update cache hit rate chart with smoothed value
+                updateChart(cacheChart, cacheData, smoothedHitRate);
+            }
+        }
+
+        // Update cache detailed stats
+        function updateCacheStats(data) {
+            if (data.memory_usage_mb !== undefined) {
+                if (data.memory_usage_mb === -1) {
+                    // Redis cache - memory tracking not available
+                    document.getElementById('cache-memory').textContent = 'N/A';
+                    document.getElementById('cache-memory').title = 'Memory tracking not available for Redis cache';
+                    document.getElementById('cache-memory-pct').textContent = 'Redis cache';
+                    document.getElementById('memory-progress').style.width = '0%';
+                } else {
+                    document.getElementById('cache-memory').textContent =
+                        data.memory_usage_mb.toFixed(2) + ' MB';
+                    document.getElementById('cache-memory').title = 'In-memory cache usage';
+
+                    if (data.memory_usage_pct !== undefined) {
+                        const memPct = data.memory_usage_pct;
+                        document.getElementById('cache-memory-pct').textContent =
+                            memPct.toFixed(1) + '% used';
+                        document.getElementById('memory-progress').style.width =
+                            memPct + '%';
+                    }
+                }
             }
         }
 
@@ -465,11 +1270,67 @@
             }
         }
 
-        // Initial load
-        updateDashboard();
+        // Start polling (fallback when WebSocket is not available)
+        function startPolling() {
+            const statusEl = document.getElementById('ws-status');
+            const infoEl = document.getElementById('connection-mode');
 
-        // Refresh every 5 seconds
-        setInterval(updateDashboard, 5000);
+            statusEl.className = 'ws-status ws-disconnected';
+            statusEl.textContent = 'Polling';
+            infoEl.textContent = 'Updates every 5 seconds (WebSocket unavailable)';
+
+            // Initial load
+            updateDashboard();
+
+            // Refresh every 5 seconds
+            setInterval(updateDashboard, 5000);
+        }
+
+        // Initialize dashboard
+        async function initDashboard() {
+            // Initialize charts first
+            initCharts();
+
+            // Check if cluster mode is available
+            await checkClusterMode();
+
+            // Setup cluster mode toggle
+            const toggle = document.getElementById('cluster-mode-toggle');
+            toggle.addEventListener('change', (e) => {
+                clusterModeEnabled = e.target.checked && clusterModeAvailable;
+
+                // Toggle cluster sections visibility
+                if (clusterModeEnabled) {
+                    document.getElementById('cluster-status-section').style.display = 'block';
+                    document.getElementById('overview-title').textContent = 'Cluster Overview';
+                } else {
+                    document.getElementById('cluster-status-section').style.display = 'none';
+                    document.getElementById('instance-details-section').style.display = 'none';
+                    document.getElementById('overview-title').textContent = 'System Overview';
+                }
+
+                // Refresh data
+                updateDashboard();
+            });
+
+            // Try WebSocket connection first
+            connectWebSocket();
+
+            // Set a timeout to fall back to polling if WebSocket doesn't connect
+            setTimeout(() => {
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    useWebSocket = false;
+                    startPolling();
+                }
+            }, 3000);
+        }
+
+        // Start when page loads
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initDashboard);
+        } else {
+            initDashboard();
+        }
     </script>
 </body>
 </html>
