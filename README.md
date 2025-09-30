@@ -59,10 +59,12 @@ You can find the example of the Kubernetes manifest in the [example standalone d
 
 #### Note on websocket support
 
-Proxy in its current version 0.23.3 does not support websockets. If you need to proxy the websocket requests - you can use following trick whilst setting up the proxy. As I'm a big fan of Traefik - there's an example which works with the mentioned above combined deployment.
+**Native WebSocket Support Available!** Starting with version 0.27.0, the proxy includes native WebSocket support for GraphQL subscriptions. Enable it by setting `WEBSOCKET_ENABLE=true`.
+
+For backward compatibility or if you prefer routing WebSockets directly to your backend, you can use the Traefik configuration below:
 
 <details>
-  <summary>Click to show working Traefik Ingress Route example.</summary>
+  <summary>Click to show Traefik Ingress Route example for direct WebSocket routing.</summary>
 
 ```yaml
 apiVersion: traefik.containo.us/v1alpha1
@@ -94,13 +96,12 @@ spec:
           namespace: default
 ```
 
-In this case, both proxy and websockets will be available under the `/v1/graphql` path, and the websocket connection will be proxied directly to the hasura service, bypassing the proxy.
-
 </details>
 
 ### Endpoints
 
 * `:8080/*` - the graphql passthrough endpoint
+* `:8080/admin` - the admin dashboard (if enabled)
 * `:9393/metrics` - the prometheus metrics endpoint
 * `:8080/healthz` - the healthcheck endpoint
 * `:8080/livez` - the liveness probe endpoint
@@ -115,11 +116,16 @@ In this case, both proxy and websockets will be available under the `/v1/graphql
 | monitor    | Extracting the query name and type and adding it as a label to metrics|
 | monitor    | Calculating the query duration and adding it to the metrics           |
 | monitor    | OpenTelemetry tracing support with configurable endpoint              |
+| monitor    | Real-time admin dashboard with live metrics                           |
+| speed      | Request coalescing to deduplicate concurrent identical queries        |
 | speed      | Caching the queries, together with per-query cache and TTL            |
 | speed      | Support for READ ONLY graphql endpoint                                |
 | speed      | Memory-aware caching with compression and eviction                    |
+| speed      | Native WebSocket support for GraphQL subscriptions                    |
 | resilience | Circuit breaker pattern for fault tolerance                           |
+| resilience | Retry budget to prevent retry storms                                  |
 | resilience | Optimized HTTP client with granular timeout controls                  |
+| resilience | Structured error responses with retry recommendations                 |
 | security   | Blocking schema introspection                                         |
 | security   | Rate limiting queries based on user role                              |
 | security   | Blocking mutations in read-only mode                                  |
@@ -188,6 +194,15 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `HASURA_EVENT_METADATA_DB` | URL to the hasura metadata database    | `postgresql://localhost:5432/hasura` |
 | `ENABLE_TRACE`            | Enable OpenTelemetry tracing           | `false`                    |
 | `TRACE_ENDPOINT`          | OpenTelemetry collector endpoint       | `localhost:4317`           |
+| `RETRY_BUDGET_ENABLE`     | Enable retry budget mechanism          | `true`                     |
+| `RETRY_BUDGET_TOKENS_PER_SEC` | Retry tokens generated per second  | `10.0`                     |
+| `RETRY_BUDGET_MAX_TOKENS` | Maximum retry tokens allowed           | `100`                      |
+| `REQUEST_COALESCING_ENABLE` | Enable request deduplication         | `true`                     |
+| `WEBSOCKET_ENABLE`        | Enable WebSocket support for subscriptions | `false`                |
+| `WEBSOCKET_PING_INTERVAL` | WebSocket ping interval in seconds     | `30`                       |
+| `WEBSOCKET_PONG_TIMEOUT`  | WebSocket pong timeout in seconds      | `60`                       |
+| `WEBSOCKET_MAX_MESSAGE_SIZE` | Max WebSocket message size in bytes | `524288` (512KB)           |
+| `ADMIN_DASHBOARD_ENABLE`  | Enable admin dashboard UI              | `true`                     |
 
 ### Tracing
 
@@ -209,10 +224,143 @@ The proxy will extract the trace context from the header and create child spans 
 
 ### Speed
 
+#### Request Coalescing
+
+Request coalescing (also known as request deduplication) is a powerful optimization that reduces backend load by combining multiple concurrent identical requests into a single backend call. This feature is enabled by default via `REQUEST_COALESCING_ENABLE=true`.
+
+**How it works:**
+- When multiple clients send identical GraphQL queries simultaneously, only one request is forwarded to the backend
+- All other concurrent identical requests wait for the first request to complete
+- Once the response is received, it's shared with all waiting clients
+- This can reduce backend load by 50-80% in high-traffic scenarios with repeated queries
+
+**Benefits:**
+- Dramatically reduces backend load during traffic spikes
+- Prevents "thundering herd" problems when cache expires
+- Improves response times for coalesced requests (they don't need to wait for backend processing)
+- Zero additional latency for the primary request
+
+**Monitoring:**
+The admin dashboard (`/admin`) provides real-time statistics:
+- Total requests vs. primary requests
+- Number of coalesced requests
+- Backend savings percentage
+
+**Configuration:**
+```bash
+# Enable request coalescing (default: true)
+GMP_REQUEST_COALESCING_ENABLE=true
+```
+
+**Use Cases:**
+- High-traffic applications with popular queries
+- Applications with many concurrent users
+- APIs with expensive backend operations
+- Mobile/web apps where users often perform the same actions simultaneously
+
+#### Retry Budget
+
+The retry budget prevents retry storms and cascading failures by limiting the rate at which retries can occur. This is a critical resilience feature enabled by default.
+
+**How it works:**
+- Uses a token bucket algorithm: tokens are generated at a fixed rate
+- Each retry attempt consumes one token
+- When tokens are exhausted, retries are denied until tokens are refilled
+- Automatic refill ensures the system can recover naturally
+
+**Benefits:**
+- Prevents retry storms that can overwhelm recovering backends
+- Reduces cascading failures across services
+- Maintains predictable load during outages
+- Allows graceful degradation instead of complete failure
+
+**Configuration:**
+```bash
+# Enable retry budget (default: true)
+GMP_RETRY_BUDGET_ENABLE=true
+
+# Tokens generated per second (default: 10)
+GMP_RETRY_BUDGET_TOKENS_PER_SEC=10.0
+
+# Maximum tokens that can accumulate (default: 100)
+GMP_RETRY_BUDGET_MAX_TOKENS=100
+```
+
+**Production Recommendations:**
+- **High traffic (1000+ req/s)**: Set `TOKENS_PER_SEC=50`, `MAX_TOKENS=500`
+- **Medium traffic (100-1000 req/s)**: Use defaults (10 tokens/s, 100 max)
+- **Low traffic (<100 req/s)**: Set `TOKENS_PER_SEC=5`, `MAX_TOKENS=50`
+
+**Monitoring:**
+The admin dashboard shows:
+- Current available tokens
+- Total retry attempts
+- Denied retries
+- Denial rate percentage
+
+#### WebSocket Support
+
+Native WebSocket support enables GraphQL subscriptions and real-time features. Enable via `WEBSOCKET_ENABLE=true`.
+
+**Features:**
+- Bidirectional proxying between client and backend
+- Automatic ping/pong keep-alive
+- Configurable message size limits
+- Connection statistics and monitoring
+- Graceful connection handling
+
+**Configuration:**
+```bash
+# Enable WebSocket support
+GMP_WEBSOCKET_ENABLE=true
+
+# Ping interval (seconds)
+GMP_WEBSOCKET_PING_INTERVAL=30
+
+# Pong timeout (seconds)
+GMP_WEBSOCKET_PONG_TIMEOUT=60
+
+# Max message size (bytes)
+GMP_WEBSOCKET_MAX_MESSAGE_SIZE=524288  # 512KB
+```
+
+**Example GraphQL Subscription:**
+```graphql
+subscription OnNewMessage {
+  messages {
+    id
+    content
+    createdAt
+  }
+}
+```
+
+**Monitoring:**
+The admin dashboard (`/admin`) provides:
+- Active WebSocket connections
+- Total connections handled
+- Messages sent/received
+- Connection errors
+
 #### Caching
 
 The cache engine is enabled in the background by default, using no additional resources.
 You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` or `ENABLE_REDIS_CACHE` environment variable to `true` - which will enable the cache for all queries without introspection. You can leave the global cache disabled and enable the cache for specific queries by adding the `@cached` directive to the query.
+
+**Important**: The cache key is calculated from the **entire request body**, which includes both the GraphQL query and variables. This means:
+- Identical queries with different variables are cached separately
+- Identical queries with different variable values get their own cache entries
+- This ensures correct caching behavior for parameterized queries
+
+Example:
+```graphql
+# These two requests will have DIFFERENT cache keys:
+query GetUser($id: ID!) { user(id: $id) { name } }
+variables: { "id": "123" }
+
+query GetUser($id: ID!) { user(id: $id) { name } }
+variables: { "id": "456" }
+```
 
 In the case of the `@cached` you can add additional parameters to the directive which will set the cache for specific queries to the provided time.
 For example, `query MyCachedQuery @cached(ttl: 90) ....` will set the cache for the query to 90 seconds.
@@ -795,6 +943,72 @@ curl -X POST \
 ```
 
 Ban details will be stored in the `banned_users.json` file, which you can mount as a file or configmap to the `/go/src/app/banned_users.json` path ( or use `BANNED_USERS_FILE` environment variable to specify the path to the file). The file operation is important if you have multiple instances of the proxy running, as it will allow you to ban the user from accessing the application on all instances.
+
+### Admin Dashboard
+
+The admin dashboard provides a real-time, web-based interface for monitoring proxy performance and health. Access it at `/admin` or `/admin/dashboard` on the main proxy port (default: `:8080/admin`).
+
+**Features:**
+- **Real-time metrics**: Auto-refreshes every 5 seconds
+- **System health**: Backend GraphQL and Redis connectivity status
+- **Circuit breaker**: Current state, configuration, and statistics
+- **Request coalescing**: Deduplication rate and backend savings
+- **Retry budget**: Available tokens and denial rate
+- **WebSocket**: Active connections and message statistics
+- **Connection pool**: Active connections and health status
+- **Cache statistics**: Hit/miss rates and memory usage
+
+**Configuration:**
+```bash
+# Enable admin dashboard (default: true)
+GMP_ADMIN_DASHBOARD_ENABLE=true
+```
+
+**Security Considerations:**
+- The dashboard is accessible on the main proxy port
+- For production, consider:
+  - Using Kubernetes NetworkPolicies to restrict access
+  - Adding authentication via ingress/service mesh
+  - Disabling the dashboard in production if not needed
+  - Using port-forwarding for administrative access
+
+**Dashboard Sections:**
+
+1. **System Health**
+   - Overall health status (healthy/unhealthy)
+   - Backend GraphQL connectivity
+   - Redis connectivity (if enabled)
+   - Response times for health checks
+
+2. **Key Metrics**
+   - Request coalescing rate (% of backend savings)
+   - Retry budget tokens available
+   - Active WebSocket connections
+   - Active connection pool connections
+
+3. **Circuit Breaker**
+   - Current state (closed/half-open/open)
+   - Configuration (max failures, timeout, etc.)
+   - Recent statistics
+
+4. **Detailed Statistics**
+   - Request coalescing: Total, primary, and coalesced requests with backend savings percentage
+   - Retry budget: Current tokens, max tokens, total attempts, denied retries, and denial rate
+   - Control actions: Reset statistics, clear cache
+
+**API Endpoints:**
+The dashboard fetches data from these API endpoints:
+- `GET /admin/api/health` - System health status
+- `GET /admin/api/circuit-breaker` - Circuit breaker status
+- `GET /admin/api/coalescing` - Request coalescing statistics
+- `GET /admin/api/retry-budget` - Retry budget statistics
+- `GET /admin/api/websocket` - WebSocket connection statistics
+- `GET /admin/api/connections` - Connection pool statistics
+- `POST /admin/api/coalescing/reset` - Reset coalescing stats
+- `POST /admin/api/retry-budget/reset` - Reset retry budget stats
+
+**Screenshot:**
+![Admin Dashboard](static/admin-dashboard.png)
 
 ### General
 

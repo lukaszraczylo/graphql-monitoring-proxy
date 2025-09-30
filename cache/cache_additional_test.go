@@ -43,6 +43,36 @@ func (suite *Tests) Test_CalculateHash() {
 
 		assert.NotEqual(hash1, hash2)
 	})
+
+	// Test with GraphQL query and variables
+	suite.Run("graphql with same query different variables", func() {
+		// Same query, different variables should produce different hashes
+		query1 := []byte(`{"query":"query GetUser($id: ID!) { user(id: $id) { name } }","variables":{"id":"123"}}`)
+		query2 := []byte(`{"query":"query GetUser($id: ID!) { user(id: $id) { name } }","variables":{"id":"456"}}`)
+
+		ctx.Request().SetBody(query1)
+		hash1 := CalculateHash(ctx)
+
+		ctx.Request().SetBody(query2)
+		hash2 := CalculateHash(ctx)
+
+		assert.NotEqual(hash1, hash2, "Different variables should produce different cache keys")
+	})
+
+	// Test with GraphQL query without variables
+	suite.Run("graphql with and without variables", func() {
+		// Same query with and without variables should produce different hashes
+		query1 := []byte(`{"query":"query GetUsers { users { name } }"}`)
+		query2 := []byte(`{"query":"query GetUsers { users { name } }","variables":{}}`)
+
+		ctx.Request().SetBody(query1)
+		hash1 := CalculateHash(ctx)
+
+		ctx.Request().SetBody(query2)
+		hash2 := CalculateHash(ctx)
+
+		assert.NotEqual(hash1, hash2, "Query with and without variables object should produce different cache keys")
+	})
 }
 
 func (suite *Tests) Test_CacheDelete() {

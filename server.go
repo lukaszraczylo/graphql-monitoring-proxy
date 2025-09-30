@@ -63,6 +63,25 @@ func StartHTTPProxy() error {
 	server.Get("/livez", healthCheck)
 	server.Get("/health", healthCheck)
 
+	// Register admin dashboard routes if enabled
+	if cfg.AdminDashboard.Enable {
+		adminDash := NewAdminDashboard(cfg.Logger)
+		adminDash.RegisterRoutes(server)
+	}
+
+	// WebSocket support - must be registered before catch-all routes
+	if cfg.WebSocket.Enable {
+		server.Get("/v1/graphql", func(c *fiber.Ctx) error {
+			if IsWebSocketRequest(c) {
+				wsp := GetWebSocketProxy()
+				if wsp != nil {
+					return wsp.HandleWebSocket(c)
+				}
+			}
+			return proxyTheRequestToDefault(c)
+		})
+	}
+
 	server.Post("/*", processGraphQLRequest)
 	server.Get("/*", proxyTheRequestToDefault)
 

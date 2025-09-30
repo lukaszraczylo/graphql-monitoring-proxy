@@ -92,4 +92,21 @@ type config struct {
 		TripOnTimeouts        bool
 		Enable                bool
 	}
+	RetryBudget struct {
+		TokensPerSecond float64
+		MaxTokens       int
+		Enable          bool
+	}
+	RequestCoalescing struct {
+		Enable bool
+	}
+	WebSocket struct {
+		Enable         bool
+		PingInterval   int // seconds
+		PongTimeout    int // seconds
+		MaxMessageSize int64
+	}
+	AdminDashboard struct {
+		Enable bool
+	}
 }

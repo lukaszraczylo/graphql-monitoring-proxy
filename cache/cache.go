@@ -52,6 +52,18 @@ var (
 	config     *CacheConfig
 )
 
+// CalculateHash generates an MD5 hash from the request body.
+// For GraphQL requests, this includes both the query and variables,
+// ensuring that identical queries with different variables are cached separately.
+//
+// Example GraphQL request body:
+//
+//	{
+//	  "query": "query GetUser($id: ID!) { user(id: $id) { name } }",
+//	  "variables": { "id": "123" }
+//	}
+//
+// Different variable values will produce different cache keys.
 func CalculateHash(c *fiber.Ctx) string {
 	return strutil.Md5(c.Body())
 }

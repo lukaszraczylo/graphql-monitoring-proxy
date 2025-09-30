@@ -271,6 +271,23 @@ func parseConfig() {
 	// Initialize endpoint configs map
 	c.CircuitBreaker.EndpointConfigs = make(map[string]*EndpointCBConfig)
 
+	// Retry budget configuration
+	c.RetryBudget.Enable = getDetailsFromEnv("RETRY_BUDGET_ENABLE", true)
+	c.RetryBudget.TokensPerSecond = getDetailsFromEnv("RETRY_BUDGET_TOKENS_PER_SEC", 10.0)
+	c.RetryBudget.MaxTokens = getDetailsFromEnv("RETRY_BUDGET_MAX_TOKENS", 100)
+
+	// Request coalescing configuration
+	c.RequestCoalescing.Enable = getDetailsFromEnv("REQUEST_COALESCING_ENABLE", true)
+
+	// WebSocket configuration
+	c.WebSocket.Enable = getDetailsFromEnv("WEBSOCKET_ENABLE", false)
+	c.WebSocket.PingInterval = getDetailsFromEnv("WEBSOCKET_PING_INTERVAL", 30)
+	c.WebSocket.PongTimeout = getDetailsFromEnv("WEBSOCKET_PONG_TIMEOUT", 60)
+	c.WebSocket.MaxMessageSize = int64(getDetailsFromEnv("WEBSOCKET_MAX_MESSAGE_SIZE", 524288)) // 512KB
+
+	// Admin dashboard configuration
+	c.AdminDashboard.Enable = getDetailsFromEnv("ADMIN_DASHBOARD_ENABLE", true)
+
 	cfgMutex.Lock()
 	cfg = &c
 	cfgMutex.Unlock()
@@ -335,6 +352,32 @@ func parseConfig() {
 	// Initialize circuit breaker if enabled
 	if cfg.CircuitBreaker.Enable {
 		initCircuitBreaker(cfg)
+	}
+
+	// Initialize retry budget
+	if cfg.RetryBudget.Enable {
+		retryBudgetConfig := RetryBudgetConfig{
+			TokensPerSecond: cfg.RetryBudget.TokensPerSecond,
+			MaxTokens:       cfg.RetryBudget.MaxTokens,
+			Enabled:         cfg.RetryBudget.Enable,
+		}
+		InitializeRetryBudget(retryBudgetConfig, cfg.Logger)
+	}
+
+	// Initialize request coalescer
+	if cfg.RequestCoalescing.Enable {
+		InitializeRequestCoalescer(true, cfg.Logger, cfg.Monitoring)
+	}
+
+	// Initialize WebSocket proxy
+	if cfg.WebSocket.Enable {
+		wsConfig := WebSocketConfig{
+			Enabled:        cfg.WebSocket.Enable,
+			PingInterval:   time.Duration(cfg.WebSocket.PingInterval) * time.Second,
+			PongTimeout:    time.Duration(cfg.WebSocket.PongTimeout) * time.Second,
+			MaxMessageSize: cfg.WebSocket.MaxMessageSize,
+		}
+		InitializeWebSocketProxy(cfg.Server.HostGraphQL, wsConfig, cfg.Logger, cfg.Monitoring)
 	}
 
 	// Initialize backend health manager
