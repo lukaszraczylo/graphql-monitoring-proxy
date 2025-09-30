@@ -390,10 +390,39 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 		c.Close()
 	}()
 
+	// Set up ping/pong handlers
+	c.SetReadDeadline(time.Now().Add(60 * time.Second))
+	c.SetPongHandler(func(string) error {
+		c.SetReadDeadline(time.Now().Add(60 * time.Second))
+		return nil
+	})
+
+	// Channel to signal when to stop
+	done := make(chan struct{})
+
+	// Goroutine to handle incoming messages (for connection keep-alive)
+	go func() {
+		defer close(done)
+		for {
+			if _, _, err := c.ReadMessage(); err != nil {
+				// Connection closed or error
+				return
+			}
+		}
+	}()
+
 	// Stream statistics every 2 seconds
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
+	// Send initial stats immediately
+	if stats := ad.gatherAllStats(); stats != nil {
+		if data, err := json.Marshal(stats); err == nil {
+			c.WriteMessage(websocket.TextMessage, data)
+		}
+	}
+
+	// Stream loop
 	for {
 		select {
 		case <-ticker.C:
@@ -423,13 +452,9 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 				return
 			}
 
-		default:
-			// Check for control messages from client (ping/pong)
-			_, _, err := c.ReadMessage()
-			if err != nil {
-				// Client disconnected or error reading
-				return
-			}
+		case <-done:
+			// Client disconnected
+			return
 		}
 	}
 }
