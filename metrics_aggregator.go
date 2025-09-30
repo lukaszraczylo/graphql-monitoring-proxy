@@ -194,16 +194,6 @@ func (ma *MetricsAggregator) publishMetrics() {
 	ma.mu.RLock()
 	defer ma.mu.RUnlock()
 
-	// Log that we're attempting to publish (use INFO level for visibility)
-	if ma.logger != nil {
-		ma.logger.Info(&libpack_logger.LogMessage{
-			Message: "Publishing metrics to Redis",
-			Pairs: map[string]interface{}{
-				"instance_id": ma.instanceID,
-			},
-		})
-	}
-
 	// Safety check: ensure global config is initialized
 	if cfg == nil {
 		if ma.logger != nil {
@@ -256,25 +246,6 @@ func (ma *MetricsAggregator) publishMetrics() {
 			metrics.CacheSummary = cacheSummary
 		}
 
-		if ma.logger != nil {
-			// Log sample data to verify structure
-			requests, hasReq := stats["requests"].(map[string]interface{})
-			var totalReq float64
-			if hasReq {
-				if total, ok := requests["total"].(float64); ok {
-					totalReq = total
-				}
-			}
-			ma.logger.Info(&libpack_logger.LogMessage{
-				Message: "Metrics gathered successfully",
-				Pairs: map[string]interface{}{
-					"instance_id":    ma.instanceID,
-					"has_requests":   hasReq,
-					"total_requests": totalReq,
-					"uptime":         metrics.UptimeSeconds,
-				},
-			})
-		}
 	} else {
 		// Fallback: if stats extraction fails, use empty map
 		if ma.logger != nil {
@@ -345,7 +316,7 @@ func (ma *MetricsAggregator) publishMetrics() {
 	pipe.SAdd(ctx, ma.publishKey, ma.instanceID)
 	pipe.Expire(ctx, ma.publishKey, ma.ttl*2) // Keep set alive
 
-	cmds, err := pipe.Exec(ctx)
+	_, err = pipe.Exec(ctx)
 	if err != nil {
 		if ma.logger != nil {
 			ma.logger.Error(&libpack_logger.LogMessage{
@@ -359,19 +330,6 @@ func (ma *MetricsAggregator) publishMetrics() {
 			})
 		}
 		return
-	}
-
-	// Verify commands executed successfully
-	if ma.logger != nil {
-		ma.logger.Info(&libpack_logger.LogMessage{
-			Message: "✓ Successfully published metrics to Redis",
-			Pairs: map[string]interface{}{
-				"instance_id": ma.instanceID,
-				"key":         key,
-				"cmds_count":  len(cmds),
-				"data_size":   len(data),
-			},
-		})
 	}
 }
 
@@ -524,16 +482,6 @@ func (ma *MetricsAggregator) GetAggregatedMetrics() (*AggregatedMetrics, error) 
 		PerInstanceStats: perInstance,
 	}
 
-	if ma.logger != nil {
-		ma.logger.Info(&libpack_logger.LogMessage{
-			Message: "Successfully aggregated cluster metrics",
-			Pairs: map[string]interface{}{
-				"total_instances":   len(instances),
-				"healthy_instances": healthyCount,
-			},
-		})
-	}
-
 	return aggregated, nil
 }
 
@@ -546,15 +494,6 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 			})
 		}
 		return make(map[string]interface{})
-	}
-
-	if ma.logger != nil {
-		ma.logger.Info(&libpack_logger.LogMessage{
-			Message: "Aggregating stats from instances",
-			Pairs: map[string]interface{}{
-				"instance_count": len(instances),
-			},
-		})
 	}
 
 	// Initialize aggregated values
@@ -808,17 +747,6 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 			"instances_closed":   cbClosedCount,
 			"instances_halfopen": cbHalfOpenCount,
 		},
-	}
-
-	if ma.logger != nil {
-		ma.logger.Info(&libpack_logger.LogMessage{
-			Message: "Aggregation complete",
-			Pairs: map[string]interface{}{
-				"total_requests":  totalRequests,
-				"total_memory_mb": totalMemoryUsageMB,
-				"instance_count":  len(instances),
-			},
-		})
 	}
 
 	return result

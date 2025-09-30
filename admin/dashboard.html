@@ -757,7 +757,6 @@
                 ws = new WebSocket(wsUrl);
 
                 ws.onopen = () => {
-                    console.log('WebSocket connected');
                     updateWSStatus(true);
                     if (wsReconnectInterval) {
                         clearInterval(wsReconnectInterval);
@@ -779,12 +778,10 @@
                 };
 
                 ws.onclose = () => {
-                    console.log('WebSocket disconnected');
                     updateWSStatus(false);
                     // Try to reconnect after 5 seconds
                     if (!wsReconnectInterval) {
                         wsReconnectInterval = setInterval(() => {
-                            console.log('Attempting to reconnect WebSocket...');
                             connectWebSocket();
                         }, 5000);
                     }
@@ -872,7 +869,7 @@
                     return true;
                 }
             } catch (error) {
-                console.log('Cluster mode not available:', error);
+                // Cluster mode not available
             }
 
             clusterModeAvailable = false;
@@ -883,28 +880,6 @@
 
         // Update cluster statistics
         function updateClusterStats(clusterData, instancesData) {
-            // Debug logging
-            console.log('[Cluster] Received cluster data:', {
-                total_instances: clusterData.total_instances,
-                healthy_instances: clusterData.healthy_instances,
-                has_stats: !!clusterData.stats,
-                stats_keys: clusterData.stats ? Object.keys(clusterData.stats) : []
-            });
-
-            if (clusterData.stats) {
-                console.log('[Cluster] Stats structure:', {
-                    has_requests: !!clusterData.stats.requests,
-                    has_cache_summary: !!clusterData.stats.cache_summary,
-                    requests_data: clusterData.stats.requests
-                });
-            }
-
-            console.log('[Cluster] Instances data:', {
-                has_instances: !!instancesData,
-                instance_count: instancesData ? instancesData.instances?.length : 0,
-                instances: instancesData ? instancesData.instances : null
-            });
-
             // Show cluster sections
             document.getElementById('cluster-status-section').style.display = 'block';
             document.getElementById('instance-details-section').style.display = 'block';
@@ -929,15 +904,11 @@
                         memory_usage_mb: clusterData.stats.memory.total_usage_mb || 0
                     });
                 }
-            } else {
-                console.warn('[Cluster] No stats in clusterData');
             }
 
             // Update instance list
             if (instancesData && instancesData.instances) {
                 updateInstanceList(instancesData.instances, instancesData.current_instance);
-            } else {
-                console.warn('[Cluster] No instances in instancesData');
             }
         }
 
@@ -1348,7 +1319,6 @@
             // Set a timeout to fall back to polling if WebSocket doesn't connect
             setTimeout(() => {
                 if (!ws || ws.readyState !== WebSocket.OPEN) {
-                    console.log('WebSocket not connected, falling back to polling');
                     useWebSocket = false;
                     startPolling();
                 }
