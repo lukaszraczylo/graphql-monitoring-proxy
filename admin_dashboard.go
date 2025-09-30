@@ -49,6 +49,7 @@ func (ad *AdminDashboard) RegisterRoutes(app *fiber.App) {
 	// Cluster mode endpoints (when using Redis)
 	app.Get("/admin/api/cluster/stats", ad.getClusterStats)
 	app.Get("/admin/api/cluster/instances", ad.getClusterInstances)
+	app.Get("/admin/api/cluster/debug", ad.getClusterDebug)
 
 	// Control endpoints
 	app.Post("/admin/api/cache/clear", ad.clearCache)
@@ -427,6 +428,65 @@ func (ad *AdminDashboard) getClusterInstances(c *fiber.Ctx) error {
 		"current_instance":  aggregator.GetInstanceID(),
 		"instances":         metrics.Instances,
 	})
+}
+
+// getClusterDebug returns debug information about cluster mode
+func (ad *AdminDashboard) getClusterDebug(c *fiber.Ctx) error {
+	aggregator := GetMetricsAggregator()
+
+	debug := map[string]interface{}{
+		"aggregator_initialized": aggregator != nil,
+		"redis_cache_enabled":    false,
+	}
+
+	if cfg != nil {
+		debug["redis_cache_enabled"] = cfg.Cache.CacheRedisEnable
+		debug["cache_enabled"] = cfg.Cache.CacheEnable
+	}
+
+	if aggregator != nil {
+		debug["instance_id"] = aggregator.GetInstanceID()
+		debug["is_cluster_mode"] = aggregator.IsClusterMode()
+
+		// Try to get metrics
+		metrics, err := aggregator.GetAggregatedMetrics()
+		if err != nil {
+			debug["error"] = err.Error()
+		} else {
+			debug["total_instances"] = metrics.TotalInstances
+			debug["healthy_instances"] = metrics.HealthyInstances
+
+			// Show first instance structure as example
+			if len(metrics.Instances) > 0 {
+				first := metrics.Instances[0]
+				debug["sample_instance"] = map[string]interface{}{
+					"instance_id":    first.InstanceID,
+					"hostname":       first.Hostname,
+					"uptime_seconds": first.UptimeSeconds,
+					"stats_keys":     getMapKeys(first.Stats),
+					"has_requests":   first.Stats["requests"] != nil,
+					"has_cache":      len(first.CacheSummary) > 0,
+					"health_status":  first.Health["status"],
+				}
+
+				// Show requests structure if it exists
+				if requests, ok := first.Stats["requests"].(map[string]interface{}); ok {
+					debug["sample_requests"] = requests
+				}
+			}
+		}
+	}
+
+	return c.JSON(debug)
+}
+
+// Helper to get map keys
+func getMapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // Helper to get metric value for admin dashboard
