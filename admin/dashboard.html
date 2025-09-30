@@ -252,6 +252,52 @@
             background: #fee2e2;
             color: #991b1b;
         }
+
+        .instance-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .instance-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .instance-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .instance-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .instance-metric {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .instance-metric-label {
+            font-size: 0.8em;
+            color: #666;
+            margin-bottom: 4px;
+        }
+
+        .instance-metric-value {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #333;
+        }
     </style>
 </head>
 <body>
@@ -262,12 +308,38 @@
                 Real-time monitoring and management
                 <span class="ws-status ws-disconnected" id="ws-status">Connecting...</span>
             </div>
+            <div style="margin-top: 15px;">
+                <label style="display: inline-flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="cluster-mode-toggle" style="margin-right: 8px;">
+                    <span style="font-size: 0.95em; font-weight: 500;">Cluster View</span>
+                    <span id="cluster-info" style="margin-left: 10px; font-size: 0.85em; opacity: 0.8;"></span>
+                </label>
+            </div>
         </div>
     </header>
 
     <div class="container">
+        <!-- Cluster Status (shown when cluster mode detected) -->
+        <div id="cluster-status-section" style="display: none;">
+            <h2 class="section-title">Cluster Status</h2>
+            <div class="stats-grid">
+                <div class="card">
+                    <div class="card-title">Total Instances</div>
+                    <div class="card-value" id="cluster-total-instances">--</div>
+                    <div class="card-label">Proxy nodes</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Healthy Instances</div>
+                    <div class="card-value" id="cluster-healthy-instances">--</div>
+                    <div class="card-label">Active nodes</div>
+                </div>
+            </div>
+        </div>
+
         <!-- System Overview -->
-        <h2 class="section-title">System Overview</h2>
+        <h2 class="section-title">
+            <span id="overview-title">System Overview</span>
+        </h2>
         <div class="stats-grid">
             <div class="card">
                 <div class="card-title">Uptime</div>
@@ -468,6 +540,12 @@
             </div>
         </div>
 
+        <!-- Instance Details (shown in cluster mode) -->
+        <div id="instance-details-section" style="display: none;">
+            <h2 class="section-title">Instance Details</h2>
+            <div id="instance-list"></div>
+        </div>
+
         <div class="refresh-info" id="refresh-info">
             <span id="connection-mode">Connecting to real-time updates...</span>
         </div>
@@ -484,6 +562,10 @@
         let ws = null;
         let wsReconnectInterval = null;
         let useWebSocket = true;
+
+        // Cluster mode state
+        let clusterModeEnabled = false;
+        let clusterModeAvailable = false;
 
         // Initialize charts
         function initCharts() {
@@ -644,34 +726,163 @@
         // Fallback: Fetch and update dashboard data via polling
         async function updateDashboard() {
             try {
-                // Fetch all stats
-                const [stats, health, cb, cache, coalescing, retryBudget, wsStats, connections] = await Promise.all([
-                    fetch('/admin/api/stats').then(r => r.json()),
-                    fetch('/admin/api/health').then(r => r.json()),
-                    fetch('/admin/api/circuit-breaker').then(r => r.json()),
-                    fetch('/admin/api/cache').then(r => r.json()),
-                    fetch('/admin/api/coalescing').then(r => r.json()),
-                    fetch('/admin/api/retry-budget').then(r => r.json()),
-                    fetch('/admin/api/websocket').then(r => r.json()),
-                    fetch('/admin/api/connections').then(r => r.json())
-                ]);
+                if (clusterModeEnabled) {
+                    // Fetch cluster stats
+                    const [clusterStats, instances] = await Promise.all([
+                        fetch('/admin/api/cluster/stats').then(r => r.json()),
+                        fetch('/admin/api/cluster/instances').then(r => r.json())
+                    ]);
 
-                const allData = {
-                    stats,
-                    health,
-                    circuit_breaker: cb,
-                    cache,
-                    coalescing,
-                    retry_budget: retryBudget,
-                    websocket: wsStats,
-                    connections
-                };
+                    if (clusterStats.cluster_mode) {
+                        updateClusterStats(clusterStats, instances);
+                    }
+                } else {
+                    // Fetch all stats for single instance
+                    const [stats, health, cb, cache, coalescing, retryBudget, wsStats, connections] = await Promise.all([
+                        fetch('/admin/api/stats').then(r => r.json()),
+                        fetch('/admin/api/health').then(r => r.json()),
+                        fetch('/admin/api/circuit-breaker').then(r => r.json()),
+                        fetch('/admin/api/cache').then(r => r.json()),
+                        fetch('/admin/api/coalescing').then(r => r.json()),
+                        fetch('/admin/api/retry-budget').then(r => r.json()),
+                        fetch('/admin/api/websocket').then(r => r.json()),
+                        fetch('/admin/api/connections').then(r => r.json())
+                    ]);
 
-                updateAllStats(allData);
+                    const allData = {
+                        stats,
+                        health,
+                        circuit_breaker: cb,
+                        cache,
+                        coalescing,
+                        retry_budget: retryBudget,
+                        websocket: wsStats,
+                        connections
+                    };
+
+                    updateAllStats(allData);
+                }
 
             } catch (error) {
                 console.error('Failed to update dashboard:', error);
             }
+        }
+
+        // Check if cluster mode is available
+        async function checkClusterMode() {
+            try {
+                const response = await fetch('/admin/api/cluster/stats');
+                const data = await response.json();
+
+                if (response.ok && data.cluster_mode) {
+                    clusterModeAvailable = true;
+                    document.getElementById('cluster-info').textContent =
+                        `(${data.total_instances} instance${data.total_instances !== 1 ? 's' : ''} available)`;
+                    return true;
+                }
+            } catch (error) {
+                console.log('Cluster mode not available:', error);
+            }
+
+            clusterModeAvailable = false;
+            document.getElementById('cluster-info').textContent = '(not available)';
+            document.getElementById('cluster-mode-toggle').disabled = true;
+            return false;
+        }
+
+        // Update cluster statistics
+        function updateClusterStats(clusterData, instancesData) {
+            // Show cluster sections
+            document.getElementById('cluster-status-section').style.display = 'block';
+            document.getElementById('instance-details-section').style.display = 'block';
+            document.getElementById('overview-title').textContent = 'Cluster Overview';
+
+            // Update cluster status
+            document.getElementById('cluster-total-instances').textContent = clusterData.total_instances;
+            document.getElementById('cluster-healthy-instances').textContent = clusterData.healthy_instances;
+
+            // Update combined stats
+            if (clusterData.stats) {
+                updateStats({ ...clusterData.stats, cluster_mode: true });
+            }
+
+            // Update instance list
+            if (instancesData && instancesData.instances) {
+                updateInstanceList(instancesData.instances, instancesData.current_instance);
+            }
+        }
+
+        // Update individual instance list
+        function updateInstanceList(instances, currentInstanceID) {
+            const container = document.getElementById('instance-list');
+            container.innerHTML = '';
+
+            instances.forEach(instance => {
+                const isCurrent = instance.InstanceID === currentInstanceID;
+                const isHealthy = instance.Health && instance.Health.status === 'healthy';
+
+                const card = document.createElement('div');
+                card.className = 'instance-card';
+
+                const header = document.createElement('div');
+                header.className = 'instance-header';
+
+                const title = document.createElement('div');
+                title.className = 'instance-title';
+                title.innerHTML = `
+                    <span class="status-indicator ${isHealthy ? 'status-healthy' : 'status-unhealthy'}"></span>
+                    ${instance.Hostname}
+                    ${isCurrent ? '<span class="badge badge-info" style="margin-left: 8px;">Current</span>' : ''}
+                `;
+
+                const uptime = document.createElement('span');
+                uptime.style.fontSize = '0.85em';
+                uptime.style.color = '#666';
+                uptime.textContent = `Uptime: ${formatUptime(instance.UptimeSeconds)}`;
+
+                header.appendChild(title);
+                header.appendChild(uptime);
+
+                const grid = document.createElement('div');
+                grid.className = 'instance-grid';
+
+                // Extract stats
+                const stats = instance.Stats || {};
+                const requests = stats.requests || {};
+                const cache = stats.cache_summary || {};
+
+                const metrics = [
+                    { label: 'Total Requests', value: (requests.total || 0).toLocaleString() },
+                    { label: 'Success Rate', value: (requests.success_rate_pct || 0).toFixed(1) + '%' },
+                    { label: 'Current RPS', value: (requests.current_requests_per_second || 0).toFixed(1) },
+                    { label: 'Cache Hit Rate', value: (cache.hit_rate_pct || 0).toFixed(1) + '%' }
+                ];
+
+                metrics.forEach(metric => {
+                    const metricDiv = document.createElement('div');
+                    metricDiv.className = 'instance-metric';
+                    metricDiv.innerHTML = `
+                        <div class="instance-metric-label">${metric.label}</div>
+                        <div class="instance-metric-value">${metric.value}</div>
+                    `;
+                    grid.appendChild(metricDiv);
+                });
+
+                card.appendChild(header);
+                card.appendChild(grid);
+                container.appendChild(card);
+            });
+        }
+
+        // Format uptime in human readable format
+        function formatUptime(seconds) {
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+
+            if (days > 0) return `${days}d ${hours}h`;
+            if (hours > 0) return `${hours}h ${minutes}m`;
+            return `${minutes}m`;
         }
 
         // Update all statistics
@@ -872,9 +1083,31 @@
         }
 
         // Initialize dashboard
-        function initDashboard() {
+        async function initDashboard() {
             // Initialize charts first
             initCharts();
+
+            // Check if cluster mode is available
+            await checkClusterMode();
+
+            // Setup cluster mode toggle
+            const toggle = document.getElementById('cluster-mode-toggle');
+            toggle.addEventListener('change', (e) => {
+                clusterModeEnabled = e.target.checked && clusterModeAvailable;
+
+                // Toggle cluster sections visibility
+                if (clusterModeEnabled) {
+                    document.getElementById('cluster-status-section').style.display = 'block';
+                    document.getElementById('overview-title').textContent = 'Cluster Overview';
+                } else {
+                    document.getElementById('cluster-status-section').style.display = 'none';
+                    document.getElementById('instance-details-section').style.display = 'none';
+                    document.getElementById('overview-title').textContent = 'System Overview';
+                }
+
+                // Refresh data
+                updateDashboard();
+            });
 
             // Try WebSocket connection first
             connectWebSocket();

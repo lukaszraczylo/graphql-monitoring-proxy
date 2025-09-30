@@ -46,6 +46,10 @@ func (ad *AdminDashboard) RegisterRoutes(app *fiber.App) {
 	// WebSocket endpoint for streaming statistics
 	app.Get("/admin/ws/stats", websocket.New(ad.handleStatsWebSocket))
 
+	// Cluster mode endpoints (when using Redis)
+	app.Get("/admin/api/cluster/stats", ad.getClusterStats)
+	app.Get("/admin/api/cluster/instances", ad.getClusterInstances)
+
 	// Control endpoints
 	app.Post("/admin/api/cache/clear", ad.clearCache)
 	app.Post("/admin/api/retry-budget/reset", ad.resetRetryBudget)
@@ -351,6 +355,77 @@ func (ad *AdminDashboard) resetCoalescing(c *fiber.Ctx) error {
 	return c.JSON(map[string]interface{}{
 		"success": true,
 		"message": "Coalescing statistics reset",
+	})
+}
+
+// getClusterStats returns aggregated statistics from all proxy instances
+func (ad *AdminDashboard) getClusterStats(c *fiber.Ctx) error {
+	aggregator := GetMetricsAggregator()
+	if aggregator == nil {
+		return c.Status(503).JSON(map[string]interface{}{
+			"error":        "Cluster mode not available",
+			"message":      "Redis-based metrics aggregation is not enabled",
+			"cluster_mode": false,
+		})
+	}
+
+	metrics, err := aggregator.GetAggregatedMetrics()
+	if err != nil {
+		if ad.logger != nil {
+			ad.logger.Error(&libpack_logger.LogMessage{
+				Message: "Failed to get aggregated metrics",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
+		}
+		return c.Status(500).JSON(map[string]interface{}{
+			"error":   "Failed to retrieve cluster metrics",
+			"message": err.Error(),
+		})
+	}
+
+	// Format response similar to regular stats endpoint
+	response := map[string]interface{}{
+		"cluster_mode":      true,
+		"total_instances":   metrics.TotalInstances,
+		"healthy_instances": metrics.HealthyInstances,
+		"last_update":       metrics.LastUpdate.Format(time.RFC3339),
+		"stats":             metrics.CombinedStats,
+	}
+
+	return c.JSON(response)
+}
+
+// getClusterInstances returns detailed metrics for each proxy instance
+func (ad *AdminDashboard) getClusterInstances(c *fiber.Ctx) error {
+	aggregator := GetMetricsAggregator()
+	if aggregator == nil {
+		return c.Status(503).JSON(map[string]interface{}{
+			"error":        "Cluster mode not available",
+			"message":      "Redis-based metrics aggregation is not enabled",
+			"cluster_mode": false,
+		})
+	}
+
+	metrics, err := aggregator.GetAggregatedMetrics()
+	if err != nil {
+		if ad.logger != nil {
+			ad.logger.Error(&libpack_logger.LogMessage{
+				Message: "Failed to get instance metrics",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
+		}
+		return c.Status(500).JSON(map[string]interface{}{
+			"error":   "Failed to retrieve instance metrics",
+			"message": err.Error(),
+		})
+	}
+
+	return c.JSON(map[string]interface{}{
+		"cluster_mode":      true,
+		"total_instances":   metrics.TotalInstances,
+		"healthy_instances": metrics.HealthyInstances,
+		"current_instance":  aggregator.GetInstanceID(),
+		"instances":         metrics.Instances,
 	})
 }
 

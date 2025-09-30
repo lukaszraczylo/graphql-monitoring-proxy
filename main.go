@@ -331,6 +331,28 @@ func parseConfig() {
 			cacheConfig.Redis.URL = cfg.Cache.CacheRedisURL
 			cacheConfig.Redis.Password = cfg.Cache.CacheRedisPassword
 			cacheConfig.Redis.DB = cfg.Cache.CacheRedisDB
+
+			// Initialize metrics aggregator for cluster mode when using Redis
+			if err := InitializeMetricsAggregator(
+				cfg.Cache.CacheRedisURL,
+				cfg.Cache.CacheRedisPassword,
+				cfg.Cache.CacheRedisDB,
+				cfg.Logger,
+			); err != nil {
+				cfg.Logger.Warning(&libpack_logging.LogMessage{
+					Message: "Failed to initialize metrics aggregator (cluster mode disabled)",
+					Pairs: map[string]interface{}{
+						"error": err.Error(),
+					},
+				})
+			} else {
+				cfg.Logger.Info(&libpack_logging.LogMessage{
+					Message: "Metrics aggregator enabled for cluster mode",
+					Pairs: map[string]interface{}{
+						"instance_id": GetMetricsAggregator().GetInstanceID(),
+					},
+				})
+			}
 		} else {
 			// Memory cache configurations
 			cacheConfig.Memory.MaxMemorySize = int64(cfg.Cache.CacheMaxMemorySize) * 1024 * 1024 // Convert MB to bytes
@@ -483,6 +505,14 @@ func main() {
 	shutdownManager.RegisterComponent("backend-health-manager", func(ctx context.Context) error {
 		if healthMgr := GetBackendHealthManager(); healthMgr != nil {
 			healthMgr.Shutdown()
+		}
+		return nil
+	})
+
+	// Register metrics aggregator for cleanup
+	shutdownManager.RegisterComponent("metrics-aggregator", func(ctx context.Context) error {
+		if aggregator := GetMetricsAggregator(); aggregator != nil {
+			aggregator.Shutdown()
 		}
 		return nil
 	})
