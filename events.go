@@ -14,19 +14,20 @@ const (
 	cleanupInterval = 1 * time.Hour
 )
 
+// Use parameterized queries to prevent SQL injection
 var delQueries = [...]string{
-	"DELETE FROM hdb_catalog.event_invocation_logs WHERE created_at < NOW() - interval '%d days';",
-	"DELETE FROM hdb_catalog.event_log WHERE created_at < NOW() - interval '%d days';",
-	"DELETE FROM hdb_catalog.hdb_action_log WHERE created_at < NOW() - INTERVAL '%d days';",
-	"DELETE FROM hdb_catalog.hdb_cron_event_invocation_logs WHERE created_at < NOW() - INTERVAL '%d days';",
-	"DELETE FROM hdb_catalog.hdb_scheduled_event_invocation_logs WHERE created_at < NOW() - INTERVAL '%d days';",
+	"DELETE FROM hdb_catalog.event_invocation_logs WHERE created_at < NOW() - INTERVAL $1",
+	"DELETE FROM hdb_catalog.event_log WHERE created_at < NOW() - INTERVAL $1",
+	"DELETE FROM hdb_catalog.hdb_action_log WHERE created_at < NOW() - INTERVAL $1",
+	"DELETE FROM hdb_catalog.hdb_cron_event_invocation_logs WHERE created_at < NOW() - INTERVAL $1",
+	"DELETE FROM hdb_catalog.hdb_scheduled_event_invocation_logs WHERE created_at < NOW() - INTERVAL $1",
 }
 
-func enableHasuraEventCleaner() {
+func enableHasuraEventCleaner(ctx context.Context) error {
 	cfgMutex.RLock()
 	if !cfg.HasuraEventCleaner.Enable {
 		cfgMutex.RUnlock()
-		return
+		return nil
 	}
 
 	eventMetadataDb := cfg.HasuraEventCleaner.EventMetadataDb
@@ -37,7 +38,7 @@ func enableHasuraEventCleaner() {
 		logger.Warning(&libpack_logger.LogMessage{
 			Message: "Event metadata db URL not specified, event cleaner not active",
 		})
-		return
+		return nil
 	}
 
 	clearOlderThan := cfg.HasuraEventCleaner.ClearOlderThan
@@ -49,50 +50,81 @@ func enableHasuraEventCleaner() {
 		Pairs:   map[string]interface{}{"interval_in_days": clearOlderThan},
 	})
 
-	go func(dbURL string, clearOlderThan int, logger *libpack_logger.Logger) {
-		pool, err := pgxpool.New(context.Background(), dbURL)
-		if err != nil {
-			logger.Error(&libpack_logger.LogMessage{
-				Message: "Failed to create connection pool",
-				Pairs:   map[string]interface{}{"error": err.Error()},
-			})
-			return
-		}
+	// Parse pool configuration
+	poolConfig, err := pgxpool.ParseConfig(eventMetadataDb)
+	if err != nil {
+		return err
+	}
+
+	// Set connection pool limits
+	poolConfig.MaxConns = 10
+	poolConfig.MinConns = 2
+	poolConfig.MaxConnLifetime = time.Hour
+	poolConfig.MaxConnIdleTime = 30 * time.Minute
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		logger.Error(&libpack_logger.LogMessage{
+			Message: "Failed to create connection pool",
+			Pairs:   map[string]interface{}{"error": err.Error()},
+		})
+		return err
+	}
+
+	go func() {
 		defer pool.Close()
 
-		time.Sleep(initialDelay)
+		// Wait for initial delay or context cancellation
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(initialDelay):
+		}
 
 		logger.Info(&libpack_logger.LogMessage{
 			Message: "Initial cleanup of old events",
 		})
-		cleanEvents(pool, clearOlderThan, logger)
+		cleanEvents(ctx, pool, clearOlderThan, logger)
 
 		ticker := time.NewTicker(cleanupInterval)
 		defer ticker.Stop()
 
-		for range ticker.C {
-			logger.Info(&libpack_logger.LogMessage{
-				Message: "Cleaning up old events",
-			})
-			cleanEvents(pool, clearOlderThan, logger)
+		for {
+			select {
+			case <-ctx.Done():
+				logger.Info(&libpack_logger.LogMessage{
+					Message: "Stopping event cleaner",
+				})
+				return
+			case <-ticker.C:
+				logger.Info(&libpack_logger.LogMessage{
+					Message: "Cleaning up old events",
+				})
+				cleanEvents(ctx, pool, clearOlderThan, logger)
+			}
 		}
-	}(eventMetadataDb, clearOlderThan, logger)
+	}()
+
+	return nil
 }
 
-func cleanEvents(pool *pgxpool.Pool, clearOlderThan int, logger *libpack_logger.Logger) {
-	ctx := context.Background()
+func cleanEvents(ctx context.Context, pool *pgxpool.Pool, clearOlderThan int, logger *libpack_logger.Logger) {
 	var errors []error
 	var failedQueries []string
 
+	// Format interval parameter for PostgreSQL
+	interval := fmt.Sprintf("%d days", clearOlderThan)
+
 	for _, query := range delQueries {
-		_, err := pool.Exec(ctx, fmt.Sprintf(query, clearOlderThan))
+		// Use parameterized query with bound parameter to prevent SQL injection
+		_, err := pool.Exec(ctx, query, interval)
 		if err != nil {
 			errors = append(errors, err)
 			failedQueries = append(failedQueries, query)
 		} else {
 			logger.Debug(&libpack_logger.LogMessage{
 				Message: "Successfully executed query",
-				Pairs:   map[string]interface{}{"query": query},
+				Pairs:   map[string]interface{}{"query": query, "interval": interval},
 			})
 		}
 	}

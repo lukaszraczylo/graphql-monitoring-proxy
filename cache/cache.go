@@ -23,6 +23,10 @@ type CacheConfig struct {
 		DB       int    `json:"db"`
 		Enable   bool   `json:"enable"`
 	}
+	Memory struct {
+		MaxMemorySize int64 `json:"max_memory_size"` // Maximum memory size in bytes
+		MaxEntries    int64 `json:"max_entries"`     // Maximum number of entries
+	}
 	TTL int `json:"ttl"`
 }
 
@@ -38,6 +42,9 @@ type CacheClient interface {
 	Delete(key string)
 	Clear()
 	CountQueries() int64
+	// Memory usage reporting methods
+	GetMemoryUsage() int64   // Returns current memory usage in bytes
+	GetMaxMemorySize() int64 // Returns max memory size in bytes
 }
 
 var (
@@ -45,6 +52,18 @@ var (
 	config     *CacheConfig
 )
 
+// CalculateHash generates an MD5 hash from the request body.
+// For GraphQL requests, this includes both the query and variables,
+// ensuring that identical queries with different variables are cached separately.
+//
+// Example GraphQL request body:
+//
+//	{
+//	  "query": "query GetUser($id: ID!) { user(id: $id) { name } }",
+//	  "variables": { "id": "123" }
+//	}
+//
+// Different variable values will produce different cache keys.
 func CalculateHash(c *fiber.Ctx) string {
 	return strutil.Md5(c.Body())
 }
@@ -61,16 +80,51 @@ func EnableCache(cfg *CacheConfig) {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Using Redis cache",
 		})
-		cfg.Client = libpack_cache_redis.New(&libpack_cache_redis.RedisClientConfig{
+		redisClient, err := libpack_cache_redis.New(&libpack_cache_redis.RedisClientConfig{
 			RedisDB:       cfg.Redis.DB,
 			RedisServer:   cfg.Redis.URL,
 			RedisPassword: cfg.Redis.Password,
 		})
+		if err != nil {
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Failed to create Redis client",
+				Pairs:   map[string]interface{}{"error": err.Error()},
+			})
+			// Fall back to memory cache
+			cfg.Client = libpack_cache_memory.New(time.Duration(cfg.TTL) * time.Second)
+		} else {
+			cfg.Client = libpack_cache_redis.NewCacheWrapper(redisClient, cfg.Logger)
+		}
 	} else {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Using in-memory cache",
+			Pairs: map[string]interface{}{
+				"max_memory_size_bytes": cfg.Memory.MaxMemorySize,
+				"max_entries":           cfg.Memory.MaxEntries,
+			},
 		})
-		cfg.Client = libpack_cache_memory.New(time.Duration(cfg.TTL) * time.Second)
+
+		// Use memory size and entry limits if configured, otherwise use defaults
+		if cfg.Memory.MaxMemorySize > 0 || cfg.Memory.MaxEntries > 0 {
+			maxMemory := cfg.Memory.MaxMemorySize
+			if maxMemory <= 0 {
+				maxMemory = libpack_cache_memory.DefaultMaxMemorySize
+			}
+
+			maxEntries := cfg.Memory.MaxEntries
+			if maxEntries <= 0 {
+				maxEntries = libpack_cache_memory.DefaultMaxCacheSize
+			}
+
+			cfg.Client = libpack_cache_memory.NewWithSize(
+				time.Duration(cfg.TTL)*time.Second,
+				maxMemory,
+				maxEntries,
+			)
+		} else {
+			// Backward compatibility
+			cfg.Client = libpack_cache_memory.New(time.Duration(cfg.TTL) * time.Second)
+		}
 	}
 	config = cfg
 }
@@ -93,7 +147,15 @@ func CacheLookup(hash string) []byte {
 				})
 				return nil
 			}
-			defer reader.Close()
+			// Ensure reader is always closed, even on error
+			defer func() {
+				if closeErr := reader.Close(); closeErr != nil {
+					config.Logger.Error(&libpack_logger.LogMessage{
+						Message: "Failed to close gzip reader",
+						Pairs:   map[string]interface{}{"error": closeErr.Error(), "hash": hash},
+					})
+				}
+			}()
 
 			decompressed, err := io.ReadAll(reader)
 			if err != nil {
@@ -119,7 +181,17 @@ func CacheDelete(hash string) {
 		Message: "Deleting data from cache",
 		Pairs:   map[string]interface{}{"hash": hash},
 	})
-	atomic.AddInt64(&cacheStats.CachedQueries, -1)
+	// Use atomic operations with validation to prevent inconsistent statistics
+	for {
+		current := atomic.LoadInt64(&cacheStats.CachedQueries)
+		if current <= 0 {
+			break // Don't go below zero
+		}
+		if atomic.CompareAndSwapInt64(&cacheStats.CachedQueries, current, current-1) {
+			break
+		}
+		// Retry if CAS failed due to concurrent modification
+	}
 	config.Client.Delete(hash)
 }
 
@@ -172,8 +244,28 @@ func GetCacheStats() *CacheStats {
 	config.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Getting cache stats",
 	})
-	cacheStats.CachedQueries = CacheGetQueries()
-	return cacheStats
+	// Return a copy to avoid race conditions
+	return &CacheStats{
+		CacheHits:     atomic.LoadInt64(&cacheStats.CacheHits),
+		CacheMisses:   atomic.LoadInt64(&cacheStats.CacheMisses),
+		CachedQueries: CacheGetQueries(),
+	}
+}
+
+// GetCacheMemoryUsage returns the current memory usage of the cache in bytes
+func GetCacheMemoryUsage() int64 {
+	if !IsCacheInitialized() {
+		return 0
+	}
+	return config.Client.GetMemoryUsage()
+}
+
+// GetCacheMaxMemorySize returns the maximum memory size allowed for the cache in bytes
+func GetCacheMaxMemorySize() int64 {
+	if !IsCacheInitialized() {
+		return 0
+	}
+	return config.Client.GetMaxMemorySize()
 }
 
 func ShouldUseRedisCache(cfg *CacheConfig) bool {

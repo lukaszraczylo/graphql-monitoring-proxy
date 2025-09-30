@@ -1,14 +1,19 @@
 package main
 
 import (
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/goccy/go-json"
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/graphql-go/graphql/language/ast"
 	"github.com/graphql-go/graphql/language/parser"
+	"github.com/graphql-go/graphql/language/source"
+	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
 
@@ -23,6 +28,13 @@ var (
 	}
 	introspectionAllowedQueries = make(map[string]struct{})
 	allowedUrls                 = make(map[string]struct{})
+
+	// Cache for parsed GraphQL queries to avoid reparsing
+	parsedQueryCache *LRUCache
+
+	// Maximum size for parsed query cache
+	maxQueryCacheSize = 1000
+	currentCacheSize  int64 // Use atomic operations for this
 )
 
 func prepareQueriesAndExemptions() {
@@ -52,23 +64,149 @@ type parseGraphQLQueryResult struct {
 	shouldIgnore   bool
 }
 
+// AST node pools to reduce GC pressure
 var (
+	// Pool for request/response maps during unmarshaling
 	queryPool = sync.Pool{
 		New: func() interface{} {
 			return make(map[string]interface{}, 48)
 		},
 	}
+
+	// Pool for parse result objects
 	resultPool = sync.Pool{
 		New: func() interface{} {
 			return &parseGraphQLQueryResult{}
 		},
 	}
+
+	// Mutex for allocation tracking
+	allocsMutex = sync.Mutex{}
 )
 
+// The following variables are reserved for future GraphQL parsing optimization
+// and are not currently in use:
+// - fieldPool (Field object pool)
+// - operationPool (OperationDefinition object pool)
+// - namePool (Name object pool)
+// - documentPool (Document object pool)
+// - allocsCounter (for tracking allocation counts)
+// - allocationsSamp (for memory usage histograms)
+
+// Initialize the query parse cache with configurable size
+func initGraphQLParsing() {
+	// Use configured cache size, or default to CPU-based calculation
+	var cacheSize int
+	if cfg != nil && cfg.Cache.GraphQLQueryCacheSize > 0 {
+		cacheSize = cfg.Cache.GraphQLQueryCacheSize
+	} else {
+		// Fallback to CPU-based calculation
+		cacheSize = runtime.GOMAXPROCS(0) * 250
+	}
+	maxQueryCacheSize = cacheSize
+
+	// Initialize LRU cache with entry limit and 50MB size limit
+	parsedQueryCache = NewLRUCache(maxQueryCacheSize, 50*1024*1024)
+
+	if cfg != nil && cfg.Logger != nil {
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "GraphQL query cache initialized",
+			Pairs: map[string]interface{}{
+				"max_entries": maxQueryCacheSize,
+				"max_size_mb": 50,
+			},
+		})
+	}
+}
+
+// Store a parsed document in the cache with LRU eviction
+func cacheQuery(queryText string, document *ast.Document) {
+	if parsedQueryCache == nil {
+		return
+	}
+
+	// Store the document in the cache with timestamp for LRU
+	cacheEntry := &CachedQuery{
+		Document:  document,
+		Timestamp: time.Now(),
+	}
+
+	// The LRU cache handles eviction automatically
+	parsedQueryCache.Set(queryText, cacheEntry, int64(len(queryText)))
+	atomic.AddInt64(&currentCacheSize, 1)
+}
+
+// CachedQuery represents a cached GraphQL query with timestamp for LRU
+type CachedQuery struct {
+	Document  *ast.Document
+	Timestamp time.Time
+}
+
+// evictOldestQueries is no longer needed with LRU cache
+// The LRU cache handles eviction automatically
+
+// Check if we have a cached parsed query
+func getCachedQuery(queryText string) *ast.Document {
+	if parsedQueryCache == nil {
+		return nil
+	}
+
+	if entry, found := parsedQueryCache.Get(queryText); found {
+		if cachedQuery, ok := entry.(*CachedQuery); ok {
+			if cfg != nil && cfg.Monitoring != nil {
+				cfg.Monitoring.Increment(libpack_monitoring.MetricsGraphQLCacheHit, nil)
+			}
+			return cachedQuery.Document
+		}
+	}
+
+	if cfg != nil && cfg.Monitoring != nil {
+		cfg.Monitoring.Increment(libpack_monitoring.MetricsGraphQLCacheMiss, nil)
+	}
+	return nil
+}
+
+// Track and report memory allocations for GraphQL parsing
+func trackParsingAllocations() func() {
+	var m1 runtime.MemStats
+	runtime.ReadMemStats(&m1)
+
+	return func() {
+		var m2 runtime.MemStats
+		runtime.ReadMemStats(&m2)
+
+		// Calculate allocations
+		allocsMutex.Lock()
+		allocsDelta := int(m2.Mallocs - m1.Mallocs)
+		// Note: allocsCounter variable is currently unused but will be used in future
+		// allocsCounter += allocsDelta
+		allocsMutex.Unlock()
+
+		// Record allocation count metrics
+		if cfg != nil && cfg.Monitoring != nil {
+			cfg.Monitoring.IncrementFloat(libpack_monitoring.MetricsGraphQLParsingAllocs, nil, float64(allocsDelta))
+		}
+	}
+}
+
 func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
+	startTime := time.Now()
+
+	// Set up allocation tracking
+	trackAllocs := trackParsingAllocations()
+	defer trackAllocs()
+
 	// Get a result object from the pool and initialize it
 	res := resultPool.Get().(*parseGraphQLQueryResult)
-	*res = parseGraphQLQueryResult{shouldIgnore: true, activeEndpoint: cfg.Server.HostGraphQL}
+	*res = parseGraphQLQueryResult{shouldIgnore: true}
+
+	// Ensure we return the result to the pool on function exit
+	defer func() {
+		resultPool.Put(res)
+	}()
+
+	// Default to using the write endpoint
+	res.activeEndpoint = cfg.Server.HostGraphQL
 
 	// Get a map from the pool for JSON unmarshaling
 	m := queryPool.Get().(map[string]interface{})
@@ -79,6 +217,25 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 		}
 		queryPool.Put(m)
 	}()
+
+	// Add comprehensive input validation
+	bodySize := len(c.Body())
+
+	// Validate query size to prevent DoS attacks
+	if bodySize > 1024*1024 { // 1MB limit
+		if ifNotInTest() {
+			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
+		}
+		return res
+	}
+
+	// Validate minimum size
+	if bodySize < 2 { // At least "{}"
+		if ifNotInTest() {
+			cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
+		}
+		return res
+	}
 
 	// Unmarshal the request body
 	if err := json.Unmarshal(c.Body(), &m); err != nil {
@@ -97,32 +254,86 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 		return res
 	}
 
-	// Parse the GraphQL query
-	p, err := parser.Parse(parser.ParseParams{Source: query})
-	if err != nil {
-		if ifNotInTest() {
-			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+	// Try to get the query from cache first
+	var p *ast.Document
+	cachedDoc := getCachedQuery(query)
+
+	if cachedDoc != nil {
+		// Use the cached document
+		p = cachedDoc
+	} else {
+		// Parse the GraphQL query with improved source handling
+		src := source.NewSource(&source.Source{
+			Body: []byte(query),
+			Name: "GraphQL request",
+		})
+
+		var err error
+		p, err = parser.Parse(parser.ParseParams{Source: src})
+		if err != nil {
+			if ifNotInTest() {
+				cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+				cfg.Monitoring.Increment(libpack_monitoring.MetricsGraphQLParsingErrors, nil)
+			}
+			return res
 		}
-		return res
+
+		// Cache the successful parse result for future use
+		cacheQuery(query, p)
 	}
 
 	// Mark as a valid GraphQL query
 	res.shouldIgnore = false
 	res.operationName = "undefined"
 
-	// Process each definition in the query
+	// First scan for mutations - they take priority
+	hasMutation := false
+	var mutationName string
+
 	for _, d := range p.Definitions {
 		if oper, ok := d.(*ast.OperationDefinition); ok {
-			// Extract operation type and name
-			if res.operationType == "" {
-				res.operationType = strings.ToLower(oper.Operation)
+			operationType := strings.ToLower(oper.Operation)
+			if operationType == "mutation" {
+				hasMutation = true
+				res.operationType = "mutation"
 				if oper.Name != nil {
+					mutationName = oper.Name.Value
+					// Use mutation name immediately
+					res.operationName = mutationName
+				}
+				break // Found a mutation, no need to continue first pass
+			}
+		}
+	}
+
+	// Now process all definitions for other information
+	for _, d := range p.Definitions {
+		if oper, ok := d.(*ast.OperationDefinition); ok {
+			operationType := strings.ToLower(oper.Operation)
+
+			// If we already found a mutation, only update name if needed
+			if hasMutation {
+				// We already set operation type to mutation in first pass
+				// Only set name if we didn't find a mutation name earlier
+				if res.operationName == "undefined" && oper.Name != nil {
+					res.operationName = oper.Name.Value
+				}
+			} else {
+				// No mutation found, use the normal logic
+				if res.operationType == "" {
+					res.operationType = operationType
+				}
+
+				if res.operationName == "undefined" && oper.Name != nil {
 					res.operationName = oper.Name.Value
 				}
 			}
 
-			// Handle read-only endpoint routing
-			if cfg.Server.HostGraphQLReadOnly != "" && (res.operationType == "" || res.operationType != "mutation") {
+			// Handle endpoint routing - always use write endpoint for mutations
+			if res.operationType == "mutation" {
+				res.activeEndpoint = cfg.Server.HostGraphQL
+			} else if cfg.Server.HostGraphQLReadOnly != "" {
+				// Use read-only endpoint for non-mutation operations
 				res.activeEndpoint = cfg.Server.HostGraphQLReadOnly
 			}
 
@@ -133,7 +344,6 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 				}
 				_ = c.Status(403).SendString("The server is in read-only mode")
 				res.shouldBlock = true
-				resultPool.Put(res)
 				return res
 			}
 
@@ -144,11 +354,17 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 			if cfg.Security.BlockIntrospection && checkSelections(c, oper.GetSelectionSet().Selections) {
 				_ = c.Status(403).SendString("Introspection queries are not allowed")
 				res.shouldBlock = true
-				resultPool.Put(res)
 				return res
 			}
 		}
 	}
+
+	// Track parsing time
+	if ifNotInTest() && cfg.Monitoring != nil {
+		parseTime := float64(time.Since(startTime).Milliseconds())
+		cfg.Monitoring.IncrementFloat(libpack_monitoring.MetricsGraphQLParsingTime, nil, parseTime)
+	}
+
 	return res
 }
 
@@ -225,6 +441,7 @@ func checkSelections(c *fiber.Ctx, selections []ast.Selection) bool {
 }
 
 func checkIfContainsIntrospection(c *fiber.Ctx, query string) bool {
+	startTime := time.Now()
 	blocked := false
 
 	// Enable introspection blocking for tests
@@ -232,14 +449,35 @@ func checkIfContainsIntrospection(c *fiber.Ctx, query string) bool {
 		cfg.Security.BlockIntrospection = true
 	}
 
-	// Try parsing as a complete query first
-	p, err := parser.Parse(parser.ParseParams{Source: query})
-	if err == nil {
+	// Try to get cached parse result first
+	var p *ast.Document
+	cachedDoc := getCachedQuery(query)
+
+	if cachedDoc != nil {
+		p = cachedDoc
+	} else {
+		// Try parsing as a complete query
+		src := source.NewSource(&source.Source{
+			Body: []byte(query),
+			Name: "GraphQL introspection check",
+		})
+
+		var err error
+		p, err = parser.Parse(parser.ParseParams{Source: src})
+
+		if err == nil && p != nil {
+			// Cache the successful parse
+			cacheQuery(query, p)
+		}
+	}
+
+	if p != nil {
 		// It's a complete query, check all selections
 		for _, def := range p.Definitions {
 			if op, ok := def.(*ast.OperationDefinition); ok {
 				if op.SelectionSet != nil {
 					blocked = checkSelections(c, op.GetSelectionSet().Selections)
+					break
 				}
 			}
 		}
@@ -263,5 +501,15 @@ func checkIfContainsIntrospection(c *fiber.Ctx, query string) bool {
 		}
 		_ = c.Status(403).SendString("Introspection queries are not allowed")
 	}
+
+	// Track parsing time
+	if ifNotInTest() && cfg.Monitoring != nil {
+		parseTime := float64(time.Since(startTime).Milliseconds())
+		cfg.Monitoring.IncrementFloat(libpack_monitoring.MetricsGraphQLParsingTime, nil, parseTime)
+	}
+
 	return blocked
 }
+
+// NOTE: The clearQueryCache function has been removed as it was unused.
+// This functionality will be exposed through an API endpoint in a future release.

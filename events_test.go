@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
@@ -44,7 +45,8 @@ func (suite *EventsTestSuite) Test_EnableHasuraEventCleaner() {
 		cfgMutex.Unlock()
 
 		// Test function
-		enableHasuraEventCleaner()
+		ctx := context.Background()
+		enableHasuraEventCleaner(ctx)
 
 		// No assertions needed as we're just testing coverage
 		// The function should return early without error
@@ -70,7 +72,8 @@ func (suite *EventsTestSuite) Test_EnableHasuraEventCleaner() {
 		cfgMutex.Unlock()
 
 		// Test function
-		enableHasuraEventCleaner()
+		ctx := context.Background()
+		enableHasuraEventCleaner(ctx)
 
 		// No assertions needed as we're just testing coverage
 		// The function should log a warning and return early

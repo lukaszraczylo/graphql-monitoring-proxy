@@ -13,7 +13,6 @@ import (
 )
 
 func (suite *Tests) Test_parseGraphQLQuery() {
-
 	type results struct {
 		op_name      string
 		op_type      string
@@ -284,15 +283,15 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 			parseConfig()
 			// Create a context first, then modify its request directly
 			reqCtx := &fasthttp.RequestCtx{}
-			
+
 			// Set headers directly on the request
 			for k, v := range tt.suppliedQuery.headers {
 				reqCtx.Request.Header.Add(k, v)
 			}
-			
+
 			// Set the body
 			reqCtx.Request.AppendBody([]byte(tt.suppliedQuery.body))
-			
+
 			// Now create the fiber context with the request context
 			ctx := suite.app.AcquireCtx(reqCtx)
 
@@ -302,22 +301,22 @@ func (suite *Tests) Test_parseGraphQLQuery() {
 			// 	suite.app.ReleaseCtx(ctx)
 			// }()
 
-			assert.NotNil(ctx, "Fiber context is nil")
+			suite.NotNil(ctx, "Fiber context is nil")
 
 			if tt.suppliedSettings != nil {
 				cfg = tt.suppliedSettings
 			}
 			prepareQueriesAndExemptions()
 			parseResult := parseGraphQLQuery(ctx)
-			assert.Equal(tt.wantResults.op_type, parseResult.operationType, "Unexpected operation type "+tt.name)
-			assert.Equal(tt.wantResults.op_name, parseResult.operationName, "Unexpected operation name "+tt.name)
-			assert.Equal(tt.wantResults.is_cached, parseResult.cacheRequest, "Unexpected cache value "+tt.name)
-			assert.Equal(tt.wantResults.cached_ttl, parseResult.cacheTime, "Unexpected cache TTL value "+tt.name)
-			assert.Equal(tt.wantResults.shouldBlock, parseResult.shouldBlock, "Unexpected block value "+tt.name)
-			assert.Equal(tt.wantResults.shouldIgnore, parseResult.shouldIgnore, "Unexpected ignore value "+tt.name)
+			suite.Equal(tt.wantResults.op_type, parseResult.operationType, "Unexpected operation type "+tt.name)
+			suite.Equal(tt.wantResults.op_name, parseResult.operationName, "Unexpected operation name "+tt.name)
+			suite.Equal(tt.wantResults.is_cached, parseResult.cacheRequest, "Unexpected cache value "+tt.name)
+			suite.Equal(tt.wantResults.cached_ttl, parseResult.cacheTime, "Unexpected cache TTL value "+tt.name)
+			suite.Equal(tt.wantResults.shouldBlock, parseResult.shouldBlock, "Unexpected block value "+tt.name)
+			suite.Equal(tt.wantResults.shouldIgnore, parseResult.shouldIgnore, "Unexpected ignore value "+tt.name)
 
 			if tt.wantResults.returnCode > 0 {
-				assert.Equal(tt.wantResults.returnCode, ctx.Response().StatusCode(), "Unexpected return code", tt.name)
+				suite.Equal(tt.wantResults.returnCode, ctx.Response().StatusCode(), "Unexpected return code", tt.name)
 			}
 		})
 	}
@@ -345,9 +344,10 @@ func (suite *Tests) Test_parseGraphQLQuery_complex() {
 		body := fmt.Sprintf(`{"query": %q}`, query)
 		ctx := createTestContext(body)
 		result := parseGraphQLQuery(ctx)
-		assert.Equal("query", result.operationType)
-		assert.Equal("GetUser", result.operationName)
-		assert.False(result.shouldBlock)
+		// Since we now prioritize mutations when present in a GraphQL document with multiple operations
+		suite.Equal("mutation", result.operationType)
+		suite.Equal("UpdateUser", result.operationName)
+		suite.False(result.shouldBlock)
 	})
 
 	suite.Run("test query with custom directives", func() {
@@ -362,10 +362,10 @@ func (suite *Tests) Test_parseGraphQLQuery_complex() {
 		body := fmt.Sprintf(`{"query": %q}`, query)
 		ctx := createTestContext(body)
 		result := parseGraphQLQuery(ctx)
-		assert.Equal("query", result.operationType)
-		assert.Equal("GetUser", result.operationName)
-		assert.False(result.shouldBlock)
-		assert.False(result.shouldBlock)
+		suite.Equal("query", result.operationType)
+		suite.Equal("GetUser", result.operationName)
+		suite.False(result.shouldBlock)
+		suite.False(result.shouldBlock)
 	})
 }
 
@@ -393,7 +393,7 @@ func (suite *Tests) Test_checkAllowedURLs() {
 			ctx.Request().SetRequestURI(tt.path)
 			ctx.Request().URI().SetPath(tt.path)
 			result := checkAllowedURLs(ctx)
-			assert.Equal(tt.expected, result, "Unexpected result in test case: "+tt.name)
+			suite.Equal(tt.expected, result, "Unexpected result in test case: "+tt.name)
 		})
 	}
 }
@@ -421,7 +421,7 @@ func (suite *Tests) Test_checkIfContainsIntrospection() {
 			}
 			ctx := createTestContext("")
 			result := checkIfContainsIntrospection(ctx, tt.query)
-			assert.Equal(tt.expected, result)
+			suite.Equal(tt.expected, result)
 		})
 	}
 }
@@ -505,9 +505,9 @@ func (suite *Tests) Test_DeepIntrospectionQueries() {
 func TestIntrospectionQueryHandling(t *testing.T) {
 	tests := []struct {
 		name               string
-		blockIntrospection bool
-		allowedQueries     []string
 		query              string
+		allowedQueries     []string
+		blockIntrospection bool
 		wantBlocked        bool
 	}{
 		{

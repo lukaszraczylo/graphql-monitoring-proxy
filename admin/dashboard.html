@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GraphQL Proxy Admin Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 2em;
+            font-weight: 600;
+        }
+
+        .subtitle {
+            opacity: 0.9;
+            font-size: 0.95em;
+            margin-top: 5px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+
+        .card-title {
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #666;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .card-value {
+            font-size: 2.5em;
+            font-weight: 700;
+            color: #333;
+            line-height: 1;
+        }
+
+        .card-label {
+            font-size: 0.9em;
+            color: #888;
+            margin-top: 8px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-healthy {
+            background: #10b981;
+            box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2);
+        }
+
+        .status-unhealthy {
+            background: #ef4444;
+            box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2);
+        }
+
+        .status-unknown {
+            background: #6b7280;
+            box-shadow: 0 0 0 4px rgba(107, 114, 128, 0.2);
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .metric-row:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            color: #666;
+            font-size: 0.95em;
+        }
+
+        .metric-value {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #5568d3;
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-danger {
+            background: #ef4444;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .section-title {
+            font-size: 1.5em;
+            margin: 40px 0 20px 0;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .refresh-info {
+            text-align: center;
+            color: #888;
+            font-size: 0.85em;
+            margin-top: 30px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .badge-danger {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge-warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge-info {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .loading {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>GraphQL Proxy Admin Dashboard</h1>
+            <div class="subtitle">Real-time monitoring and management</div>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Health Status -->
+        <div class="card" id="health-card">
+            <div class="card-title">System Health</div>
+            <div>
+                <span class="status-indicator status-unknown loading" id="health-indicator"></span>
+                <span id="health-status">Loading...</span>
+            </div>
+        </div>
+
+        <!-- Key Metrics -->
+        <h2 class="section-title">Key Metrics</h2>
+        <div class="stats-grid">
+            <div class="card">
+                <div class="card-title">Request Coalescing</div>
+                <div class="card-value" id="coalescing-rate">--%</div>
+                <div class="card-label">Backend Savings</div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Retry Budget</div>
+                <div class="card-value" id="retry-tokens">--</div>
+                <div class="card-label">Available Tokens</div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">WebSocket Connections</div>
+                <div class="card-value" id="ws-connections">--</div>
+                <div class="card-label">Active Connections</div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Connection Pool</div>
+                <div class="card-value" id="pool-connections">--</div>
+                <div class="card-label">Active Connections</div>
+            </div>
+        </div>
+
+        <!-- Circuit Breaker -->
+        <h2 class="section-title">Circuit Breaker</h2>
+        <div class="card" id="circuit-breaker-card">
+            <div class="metric-row">
+                <span class="metric-label">Status</span>
+                <span class="metric-value" id="cb-state">
+                    <span class="badge badge-info loading">Loading...</span>
+                </span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Enabled</span>
+                <span class="metric-value" id="cb-enabled">--</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Max Failures</span>
+                <span class="metric-value" id="cb-max-failures">--</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Timeout</span>
+                <span class="metric-value" id="cb-timeout">--s</span>
+            </div>
+        </div>
+
+        <!-- Request Coalescing Details -->
+        <h2 class="section-title">Request Coalescing</h2>
+        <div class="card">
+            <div class="metric-row">
+                <span class="metric-label">Total Requests</span>
+                <span class="metric-value" id="coalescing-total">--</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Primary Requests</span>
+                <span class="metric-value" id="coalescing-primary">--</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Coalesced Requests</span>
+                <span class="metric-value" id="coalescing-coalesced">--</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Backend Savings</span>
+                <span class="metric-value" id="coalescing-savings">--%</span>
+            </div>
+            <div style="margin-top: 20px;">
+                <button class="btn" onclick="resetCoalescing()">Reset Statistics</button>
+            </div>
+        </div>
+
+        <!-- Retry Budget Details -->
+        <h2 class="section-title">Retry Budget</h2>
+        <div class="card">
+            <div class="metric-row">
+                <span class="metric-label">Current Tokens</span>
+                <span class="metric-value" id="retry-current-tokens">--</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Max Tokens</span>
+                <span class="metric-value" id="retry-max-tokens">--</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Total Attempts</span>
+                <span class="metric-value" id="retry-total">--</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Denied Retries</span>
+                <span class="metric-value" id="retry-denied">--</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Denial Rate</span>
+                <span class="metric-value" id="retry-denial-rate">--%</span>
+            </div>
+            <div style="margin-top: 20px;">
+                <button class="btn" onclick="resetRetryBudget()">Reset Statistics</button>
+            </div>
+        </div>
+
+        <div class="refresh-info">
+            Dashboard refreshes every 5 seconds
+        </div>
+    </div>
+
+    <script>
+        // Fetch and update dashboard data
+        async function updateDashboard() {
+            try {
+                // Update health
+                const health = await fetch('/admin/api/health').then(r => r.json());
+                updateHealth(health);
+
+                // Update circuit breaker
+                const cb = await fetch('/admin/api/circuit-breaker').then(r => r.json());
+                updateCircuitBreaker(cb);
+
+                // Update coalescing
+                const coalescing = await fetch('/admin/api/coalescing').then(r => r.json());
+                updateCoalescing(coalescing);
+
+                // Update retry budget
+                const retryBudget = await fetch('/admin/api/retry-budget').then(r => r.json());
+                updateRetryBudget(retryBudget);
+
+                // Update WebSocket
+                const ws = await fetch('/admin/api/websocket').then(r => r.json());
+                updateWebSocket(ws);
+
+                // Update connections
+                const connections = await fetch('/admin/api/connections').then(r => r.json());
+                updateConnections(connections);
+
+            } catch (error) {
+                console.error('Failed to update dashboard:', error);
+            }
+        }
+
+        function updateHealth(data) {
+            const indicator = document.getElementById('health-indicator');
+            const status = document.getElementById('health-status');
+
+            indicator.classList.remove('loading');
+
+            if (data.status === 'healthy') {
+                indicator.className = 'status-indicator status-healthy';
+                status.textContent = 'System Healthy';
+            } else if (data.status === 'unhealthy') {
+                indicator.className = 'status-indicator status-unhealthy';
+                status.textContent = 'System Unhealthy';
+            } else {
+                indicator.className = 'status-indicator status-unknown';
+                status.textContent = 'Status Unknown';
+            }
+        }
+
+        function updateCircuitBreaker(data) {
+            const stateEl = document.getElementById('cb-state');
+            stateEl.classList.remove('loading');
+
+            let badgeClass = 'badge-info';
+            if (data.state === 'closed') badgeClass = 'badge-success';
+            else if (data.state === 'open') badgeClass = 'badge-danger';
+            else if (data.state === 'half-open') badgeClass = 'badge-warning';
+
+            stateEl.innerHTML = `<span class="badge ${badgeClass}">${data.state || 'Unknown'}</span>`;
+
+            document.getElementById('cb-enabled').textContent = data.enabled ? 'Yes' : 'No';
+
+            if (data.config) {
+                document.getElementById('cb-max-failures').textContent = data.config.max_failures || '--';
+                document.getElementById('cb-timeout').textContent = (data.config.timeout || '--') + 's';
+            }
+        }
+
+        function updateCoalescing(data) {
+            document.getElementById('coalescing-rate').textContent =
+                (data.backend_savings_pct || 0).toFixed(1) + '%';
+            document.getElementById('coalescing-total').textContent =
+                (data.total_requests || 0).toLocaleString();
+            document.getElementById('coalescing-primary').textContent =
+                (data.primary_requests || 0).toLocaleString();
+            document.getElementById('coalescing-coalesced').textContent =
+                (data.coalesced_requests || 0).toLocaleString();
+            document.getElementById('coalescing-savings').textContent =
+                (data.backend_savings_pct || 0).toFixed(1) + '%';
+        }
+
+        function updateRetryBudget(data) {
+            document.getElementById('retry-tokens').textContent =
+                data.current_tokens || '--';
+            document.getElementById('retry-current-tokens').textContent =
+                data.current_tokens || '--';
+            document.getElementById('retry-max-tokens').textContent =
+                data.max_tokens || '--';
+            document.getElementById('retry-total').textContent =
+                (data.total_attempts || 0).toLocaleString();
+            document.getElementById('retry-denied').textContent =
+                (data.denied_retries || 0).toLocaleString();
+            document.getElementById('retry-denial-rate').textContent =
+                (data.denial_rate_pct || 0).toFixed(2) + '%';
+        }
+
+        function updateWebSocket(data) {
+            document.getElementById('ws-connections').textContent =
+                data.active_connections || 0;
+        }
+
+        function updateConnections(data) {
+            document.getElementById('pool-connections').textContent =
+                data.active_connections || 0;
+        }
+
+        async function resetCoalescing() {
+            try {
+                await fetch('/admin/api/coalescing/reset', { method: 'POST' });
+                updateDashboard();
+            } catch (error) {
+                alert('Failed to reset coalescing statistics');
+            }
+        }
+
+        async function resetRetryBudget() {
+            try {
+                await fetch('/admin/api/retry-budget/reset', { method: 'POST' });
+                updateDashboard();
+            } catch (error) {
+                alert('Failed to reset retry budget statistics');
+            }
+        }
+
+        // Initial load
+        updateDashboard();
+
+        // Refresh every 5 seconds
+        setInterval(updateDashboard, 5000);
+    </script>
+</body>
+</html>

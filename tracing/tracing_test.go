@@ -11,9 +11,9 @@ import (
 
 func TestParseTraceHeader(t *testing.T) {
 	tests := []struct {
+		want    *TraceSpanInfo
 		name    string
 		header  string
-		want    *TraceSpanInfo
 		wantErr bool
 	}{
 		{

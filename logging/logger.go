@@ -42,6 +42,7 @@ type Logger struct {
 	timeFormat  string
 	minLogLevel int
 	showCaller  bool
+	mu          sync.Mutex // Mutex to protect concurrent access to output
 }
 
 // LogMessage represents a log message with optional pairs.
@@ -82,7 +83,9 @@ func New() *Logger {
 
 // SetOutput sets the output destination for the logger.
 func (l *Logger) SetOutput(output io.Writer) *Logger {
+	l.mu.Lock()
 	l.output = output
+	l.mu.Unlock()
 	return l
 }
 
@@ -150,8 +153,11 @@ func (l *Logger) log(level int, m *LogMessage) {
 		fmt.Fprintln(os.Stderr, "Error marshalling log message:", err)
 		return
 	}
-
+	// Lock the mutex before writing to the output to prevent race conditions
+	l.mu.Lock()
 	_, err = l.output.Write(buffer.Bytes())
+	l.mu.Unlock()
+
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error writing log message:", err)
 	}

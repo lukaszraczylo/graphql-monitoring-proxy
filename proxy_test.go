@@ -9,7 +9,6 @@ import (
 )
 
 func (suite *Tests) Test_proxyTheRequest() {
-
 	supplied_headers := map[string]string{
 		"X-Forwarded-For": "127.0.0.1",
 		"Content-Type":    "application/json",
@@ -22,8 +21,8 @@ func (suite *Tests) Test_proxyTheRequest() {
 		host         string
 		hostRO       string
 		path         string
-		wantErr      bool
 		wantEndpoint string
+		wantErr      bool
 	}{
 		{
 			name:         "test_empty",
@@ -74,11 +73,19 @@ func (suite *Tests) Test_proxyTheRequest() {
 			wantErr:      false,
 			wantEndpoint: "https://telegram-bot.app/",
 		},
+		{
+			name:         "Test query string preservation",
+			body:         `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
+			host:         "https://telegram-bot.app/",
+			path:         "/v1/graphql?var=value&foo=bar",
+			headers:      supplied_headers,
+			wantErr:      false,
+			wantEndpoint: "https://telegram-bot.app/",
+		},
 	}
 
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
-
 			cfg = &config{}
 			parseConfig()
 			cfg.Server.HostGraphQL = tt.host
@@ -89,34 +96,33 @@ func (suite *Tests) Test_proxyTheRequest() {
 
 			// Create a request context first
 			reqCtx := &fasthttp.RequestCtx{}
-			
+
 			// Set headers directly on the request
 			for k, v := range tt.headers {
 				reqCtx.Request.Header.Add(k, v)
 			}
-			
+
 			// Set the body and other request properties
 			reqCtx.Request.SetBody([]byte(tt.body))
 			reqCtx.Request.SetRequestURI(tt.path)
 			reqCtx.Request.Header.SetMethod("POST")
-			
+
 			// Create fiber context with the request context
 			ctx := suite.app.AcquireCtx(reqCtx)
 			res := parseGraphQLQuery(ctx)
-			assert.NotNil(ctx, "Fiber context is nil", tt.name)
+			suite.NotNil(ctx, "Fiber context is nil", tt.name)
 			err := proxyTheRequest(ctx, res.activeEndpoint)
 			if tt.wantErr {
-				assert.NotNil(err, "Error is nil", tt.name)
+				suite.NotNil(err, "Error is nil", tt.name)
 			} else {
-				assert.Nil(err, "Error is not nil", tt.name)
+				suite.Nil(err, "Error is not nil", tt.name)
 			}
-			assert.Equal(tt.wantEndpoint, res.activeEndpoint, "Unexpected endpoint", tt.name)
+			suite.Equal(tt.wantEndpoint, res.activeEndpoint, "Unexpected endpoint", tt.name)
 		})
 	}
 }
 
 func (suite *Tests) Test_proxyTheRequestWithPayloads() {
-
 	tests := []struct {
 		name    string
 		payload string
@@ -149,9 +155,9 @@ func (suite *Tests) Test_proxyTheRequestWithPayloads() {
 			ctx := suite.app.AcquireCtx(&fasthttp.RequestCtx{})
 			err := proxyTheRequest(ctx, cfg.Server.HostGraphQL)
 			if tt.wantErr {
-				assert.NotNil(err)
+				suite.NotNil(err)
 			} else {
-				assert.Nil(err)
+				suite.Nil(err)
 			}
 		})
 	}
@@ -161,7 +167,7 @@ func (suite *Tests) Test_proxyTheRequestWithTimeouts() {
 	originalTimeout := cfg.Client.ClientTimeout
 	defer func() {
 		cfg.Client.ClientTimeout = originalTimeout
-		cfg.Client.FastProxyClient = createFasthttpClient(cfg.Client.ClientTimeout)
+		cfg.Client.FastProxyClient = createFasthttpClient(cfg)
 	}()
 
 	// Create a mock server
@@ -169,15 +175,15 @@ func (suite *Tests) Test_proxyTheRequestWithTimeouts() {
 		sleepDuration, _ := time.ParseDuration(r.Header.Get("X-Sleep-Duration"))
 		time.Sleep(sleepDuration)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"data":{"test":"response"}}`))
+		_, _ = w.Write([]byte(`{"data":{"test":"response"}}`))
 	}))
 	defer mockServer.Close()
 
 	tests := []struct {
 		name          string
-		clientTimeout int
 		sleepDuration string
 		body          string
+		clientTimeout int
 		wantErr       bool
 	}{
 		{
@@ -206,7 +212,7 @@ func (suite *Tests) Test_proxyTheRequestWithTimeouts() {
 	for _, tt := range tests {
 		suite.Run(tt.name, func() {
 			cfg.Client.ClientTimeout = tt.clientTimeout
-			cfg.Client.FastProxyClient = createFasthttpClient(cfg.Client.ClientTimeout)
+			cfg.Client.FastProxyClient = createFasthttpClient(cfg)
 			cfg.Server.HostGraphQL = mockServer.URL
 
 			req := &fasthttp.Request{}
@@ -226,9 +232,9 @@ func (suite *Tests) Test_proxyTheRequestWithTimeouts() {
 			err := proxyTheRequest(ctx, cfg.Server.HostGraphQL)
 
 			if tt.wantErr {
-				assert.NotNil(err, "Expected an error for test: %s", tt.name)
+				suite.NotNil(err, "Expected an error for test: %s", tt.name)
 			} else {
-				assert.Nil(err, "Expected no error for test: %s", tt.name)
+				suite.Nil(err, "Expected no error for test: %s", tt.name)
 			}
 		})
 	}

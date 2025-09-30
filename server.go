@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/google/uuid"
 
+	graphql "github.com/lukaszraczylo/go-simple-graphql"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
@@ -20,8 +21,22 @@ const (
 	healthCheckQueryStr = `{ __typename }`
 )
 
+// HealthCheckResponse represents the response structure for health check endpoints
+type HealthCheckResponse struct {
+	Status       string                      `json:"status"`       // overall status: "healthy" or "unhealthy"
+	Dependencies map[string]DependencyStatus `json:"dependencies"` // status of each dependency
+	Timestamp    string                      `json:"timestamp"`    // when the health check was performed
+}
+
+// DependencyStatus represents the status of a dependency
+type DependencyStatus struct {
+	Error        *string `json:"error,omitempty"`
+	Status       string  `json:"status"`
+	ResponseTime int64   `json:"responseTime"`
+}
+
 // StartHTTPProxy initializes and starts the HTTP proxy server.
-func StartHTTPProxy() {
+func StartHTTPProxy() error {
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Starting the HTTP proxy",
 	})
@@ -46,21 +61,41 @@ func StartHTTPProxy() {
 
 	server.Get("/healthz", healthCheck)
 	server.Get("/livez", healthCheck)
+	server.Get("/health", healthCheck)
+
+	// Register admin dashboard routes if enabled
+	if cfg.AdminDashboard.Enable {
+		adminDash := NewAdminDashboard(cfg.Logger)
+		adminDash.RegisterRoutes(server)
+	}
+
+	// WebSocket support - must be registered before catch-all routes
+	if cfg.WebSocket.Enable {
+		server.Get("/v1/graphql", func(c *fiber.Ctx) error {
+			if IsWebSocketRequest(c) {
+				wsp := GetWebSocketProxy()
+				if wsp != nil {
+					return wsp.HandleWebSocket(c)
+				}
+			}
+			return proxyTheRequestToDefault(c)
+		})
+	}
 
 	server.Post("/*", processGraphQLRequest)
 	server.Get("/*", proxyTheRequestToDefault)
 
 	cfg.Logger.Info(&libpack_logger.LogMessage{
-		Message: "GraphQL proxy started",
+		Message: "GraphQL proxy starting",
 		Pairs:   map[string]interface{}{"port": cfg.Server.PortGraphQL},
 	})
 
 	if err := server.Listen(fmt.Sprintf(":%d", cfg.Server.PortGraphQL)); err != nil {
-		cfg.Logger.Critical(&libpack_logger.LogMessage{
-			Message: "Can't start the service",
-			Pairs:   map[string]interface{}{"port": cfg.Server.PortGraphQL, "error": err.Error()},
-		})
+		return fmt.Errorf("failed to start HTTP proxy server on port %d: %w",
+			cfg.Server.PortGraphQL, err)
 	}
+
+	return nil
 }
 
 // proxyTheRequestToDefault proxies the request to the default GraphQL endpoint.
@@ -84,32 +119,140 @@ func checkAllowedURLs(c *fiber.Ctx) bool {
 	return ok
 }
 
-// healthCheck performs a health check on the GraphQL server.
+// healthCheck performs a comprehensive health check on the GraphQL server and its dependencies.
 func healthCheck(c *fiber.Ctx) error {
-	if len(cfg.Server.HealthcheckGraphQL) > 0 {
-		cfg.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Health check enabled",
-			Pairs:   map[string]interface{}{"url": cfg.Server.HealthcheckGraphQL},
-		})
+	// Prepare the response structure
+	response := HealthCheckResponse{
+		Status:       "healthy",
+		Dependencies: make(map[string]DependencyStatus),
+		Timestamp:    time.Now().UTC().Format(time.RFC3339),
+	}
 
-		_, err := cfg.Client.GQLClient.Query(healthCheckQueryStr, nil, nil)
+	// Configure checks from query parameters
+	checkGraphQL := true
+	checkRedis := cfg.Cache.CacheRedisEnable
+
+	// Parse query parameters to enable/disable specific checks
+	if c.Query("check_graphql") == "false" {
+		checkGraphQL = false
+	}
+	if c.Query("check_redis") == "false" {
+		checkRedis = false
+	}
+
+	// Check GraphQL backend service
+	if checkGraphQL {
+		startTime := time.Now()
+		graphqlStatus := DependencyStatus{
+			Status: "up",
+		}
+
+		// Try to connect to main GraphQL endpoint
+		endpoint := cfg.Server.HostGraphQL
+		if len(cfg.Server.HealthcheckGraphQL) > 0 {
+			endpoint = cfg.Server.HealthcheckGraphQL
+		}
+
+		// Create a new GraphQL client for the health check
+		tempClient := graphql.NewConnection()
+		tempClient.SetEndpoint(endpoint)
+		_, err := tempClient.Query(healthCheckQueryStr, nil, nil)
+
+		graphqlStatus.ResponseTime = time.Since(startTime).Milliseconds()
+
 		if err != nil {
+			errorMsg := err.Error()
+			graphqlStatus.Status = "down"
+			graphqlStatus.Error = &errorMsg
+			response.Status = "unhealthy"
+
 			cfg.Logger.Error(&libpack_logger.LogMessage{
-				Message: "Can't reach the GraphQL server",
-				Pairs:   map[string]interface{}{"error": err.Error()},
+				Message: "Health check: Can't reach the GraphQL server",
+				Pairs: map[string]interface{}{
+					"endpoint":         endpoint,
+					"error":            errorMsg,
+					"response_time_ms": graphqlStatus.ResponseTime,
+				},
 			})
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
-			return c.Status(fiber.StatusInternalServerError).SendString("Can't reach the GraphQL server with {__typename} query")
 		}
+
+		response.Dependencies["graphql"] = graphqlStatus
+	}
+
+	// Check Redis connectivity if enabled
+	if checkRedis && cfg.Cache.CacheRedisEnable {
+		startTime := time.Now()
+		redisStatus := DependencyStatus{
+			Status: "up",
+		}
+
+		// Implement proper Redis connectivity test
+		redisAccessible := false
+		var redisError error
+
+		if libpack_cache.IsCacheInitialized() {
+			// Try a simple Redis operation to test connectivity
+			testKey := "health_check_test"
+			testValue := []byte("test")
+
+			// Try to set and get a test value
+			libpack_cache.CacheStore(testKey, testValue)
+			retrievedValue := libpack_cache.CacheLookup(testKey)
+
+			if retrievedValue != nil && string(retrievedValue) == "test" {
+				redisAccessible = true
+				// Clean up test key
+				libpack_cache.CacheDelete(testKey)
+			} else {
+				redisError = fmt.Errorf("redis test operation failed")
+			}
+		} else {
+			redisError = fmt.Errorf("cache not initialized")
+		}
+
+		redisStatus.ResponseTime = time.Since(startTime).Milliseconds()
+
+		if !redisAccessible {
+			errorMsg := "Failed to connect to Redis"
+			if redisError != nil {
+				errorMsg = redisError.Error()
+			}
+			redisStatus.Status = "down"
+			redisStatus.Error = &errorMsg
+			response.Status = "unhealthy"
+
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Health check: Can't connect to Redis",
+				Pairs: map[string]interface{}{
+					"server":           cfg.Cache.CacheRedisURL,
+					"error":            errorMsg,
+					"response_time_ms": redisStatus.ResponseTime,
+				},
+			})
+		}
+
+		response.Dependencies["redis"] = redisStatus
+	}
+
+	// Determine appropriate HTTP status code
+	httpStatus := fiber.StatusOK
+	if response.Status == "unhealthy" {
+		httpStatus = fiber.StatusServiceUnavailable
 	}
 
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
-		Message: "Health check returning OK",
+		Message: "Health check completed",
+		Pairs: map[string]interface{}{
+			"status":       response.Status,
+			"dependencies": response.Dependencies,
+		},
 	})
-	return c.Status(fiber.StatusOK).SendString("Health check OK")
+
+	// Return JSON response
+	return c.Status(httpStatus).JSON(response)
 }
 
-// processGraphQLRequest handles the incoming GraphQL requests.
 // processGraphQLRequest handles the incoming GraphQL requests.
 func processGraphQLRequest(c *fiber.Ctx) error {
 	startTime := time.Now()
