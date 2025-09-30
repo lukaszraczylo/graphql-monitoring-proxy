@@ -173,18 +173,61 @@ func (ma *MetricsAggregator) publishMetrics() {
 		Hostname:      hostname,
 		LastUpdate:    time.Now(),
 		UptimeSeconds: time.Since(startTime).Seconds(),
-		Stats:         allStats,
 	}
 
-	// Extract specific sections for easier aggregation
+	// Extract specific sections - CRITICAL: we must set the correct structure
+	// Stats should contain the inner stats object with requests, cache_summary, etc.
 	if stats, ok := allStats["stats"].(map[string]interface{}); ok {
 		metrics.Stats = stats
+
+		// Also extract cache summary separately for easier access
 		if cacheSummary, ok := stats["cache_summary"].(map[string]interface{}); ok {
 			metrics.CacheSummary = cacheSummary
 		}
+
+		if ma.logger != nil {
+			// Log sample data to verify structure
+			requests, hasReq := stats["requests"].(map[string]interface{})
+			var totalReq float64
+			if hasReq {
+				if total, ok := requests["total"].(float64); ok {
+					totalReq = total
+				}
+			}
+			ma.logger.Debug(&libpack_logger.LogMessage{
+				Message: "Publishing metrics to Redis",
+				Pairs: map[string]interface{}{
+					"instance_id":    ma.instanceID,
+					"has_requests":   hasReq,
+					"total_requests": totalReq,
+					"uptime":         metrics.UptimeSeconds,
+				},
+			})
+		}
+	} else {
+		// Fallback: if stats extraction fails, use empty map
+		if ma.logger != nil {
+			ma.logger.Error(&libpack_logger.LogMessage{
+				Message: "Failed to extract stats from allStats - using empty stats",
+				Pairs: map[string]interface{}{
+					"instance_id": ma.instanceID,
+					"allStats_keys": func() []string {
+						keys := make([]string, 0, len(allStats))
+						for k := range allStats {
+							keys = append(keys, k)
+						}
+						return keys
+					}(),
+				},
+			})
+		}
+		metrics.Stats = make(map[string]interface{})
 	}
+
 	if health, ok := allStats["health"].(map[string]interface{}); ok {
 		metrics.Health = health
+	} else {
+		metrics.Health = make(map[string]interface{})
 	}
 	if cb, ok := allStats["circuit_breaker"].(map[string]interface{}); ok {
 		metrics.CircuitBreaker = cb
@@ -345,7 +388,21 @@ func (ma *MetricsAggregator) GetAggregatedMetrics() (*AggregatedMetrics, error) 
 // aggregateStats combines statistics from multiple instances
 func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[string]interface{} {
 	if len(instances) == 0 {
+		if ma.logger != nil {
+			ma.logger.Warning(&libpack_logger.LogMessage{
+				Message: "No instances to aggregate",
+			})
+		}
 		return make(map[string]interface{})
+	}
+
+	if ma.logger != nil {
+		ma.logger.Debug(&libpack_logger.LogMessage{
+			Message: "Aggregating stats from instances",
+			Pairs: map[string]interface{}{
+				"instance_count": len(instances),
+			},
+		})
 	}
 
 	// Initialize aggregated values
@@ -366,13 +423,26 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 		oldestUptime           float64
 	)
 
-	for _, instance := range instances {
+	for idx, instance := range instances {
 		// Track oldest uptime for cluster uptime
 		if oldestUptime == 0 || instance.UptimeSeconds < oldestUptime {
 			oldestUptime = instance.UptimeSeconds
 		}
 
 		// Aggregate request stats
+		if instance.Stats == nil {
+			if ma.logger != nil {
+				ma.logger.Warning(&libpack_logger.LogMessage{
+					Message: "Instance has nil Stats",
+					Pairs: map[string]interface{}{
+						"instance_id": instance.InstanceID,
+						"index":       idx,
+					},
+				})
+			}
+			continue
+		}
+
 		if stats, ok := instance.Stats["requests"].(map[string]interface{}); ok {
 			if total, ok := stats["total"].(float64); ok {
 				totalRequests += int64(total)
@@ -391,6 +461,22 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 			}
 			if avgRPS, ok := stats["avg_requests_per_second"].(float64); ok {
 				totalAvgRPS += avgRPS
+			}
+		} else {
+			if ma.logger != nil {
+				// Log what keys are actually in Stats for debugging
+				keys := make([]string, 0, len(instance.Stats))
+				for k := range instance.Stats {
+					keys = append(keys, k)
+				}
+				ma.logger.Warning(&libpack_logger.LogMessage{
+					Message: "Instance Stats missing 'requests' key",
+					Pairs: map[string]interface{}{
+						"instance_id": instance.InstanceID,
+						"stats_keys":  keys,
+						"index":       idx,
+					},
+				})
 			}
 		}
 

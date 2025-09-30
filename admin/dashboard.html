@@ -877,23 +877,49 @@
 
         // Update cluster statistics
         function updateClusterStats(clusterData, instancesData) {
+            // Debug logging
+            console.log('[Cluster] Received cluster data:', {
+                total_instances: clusterData.total_instances,
+                healthy_instances: clusterData.healthy_instances,
+                has_stats: !!clusterData.stats,
+                stats_keys: clusterData.stats ? Object.keys(clusterData.stats) : []
+            });
+
+            if (clusterData.stats) {
+                console.log('[Cluster] Stats structure:', {
+                    has_requests: !!clusterData.stats.requests,
+                    has_cache_summary: !!clusterData.stats.cache_summary,
+                    requests_data: clusterData.stats.requests
+                });
+            }
+
+            console.log('[Cluster] Instances data:', {
+                has_instances: !!instancesData,
+                instance_count: instancesData ? instancesData.instances?.length : 0,
+                instances: instancesData ? instancesData.instances : null
+            });
+
             // Show cluster sections
             document.getElementById('cluster-status-section').style.display = 'block';
             document.getElementById('instance-details-section').style.display = 'block';
             document.getElementById('overview-title').textContent = 'Cluster Overview';
 
             // Update cluster status
-            document.getElementById('cluster-total-instances').textContent = clusterData.total_instances;
-            document.getElementById('cluster-healthy-instances').textContent = clusterData.healthy_instances;
+            document.getElementById('cluster-total-instances').textContent = clusterData.total_instances || 0;
+            document.getElementById('cluster-healthy-instances').textContent = clusterData.healthy_instances || 0;
 
             // Update combined stats
             if (clusterData.stats) {
                 updateStats({ ...clusterData.stats, cluster_mode: true });
+            } else {
+                console.warn('[Cluster] No stats in clusterData');
             }
 
             // Update instance list
             if (instancesData && instancesData.instances) {
                 updateInstanceList(instancesData.instances, instancesData.current_instance);
+            } else {
+                console.warn('[Cluster] No instances in instancesData');
             }
         }
 
