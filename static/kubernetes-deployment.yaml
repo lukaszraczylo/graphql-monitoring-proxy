@@ -58,7 +58,7 @@ spec:
           - name: MONITORING_PORT
             value: "9393"
           - name: HOST_GRAPHQL
-            value: http://hasura-internal:8080/v1/graphql
+            value: http://hasura-internal:8080/
           - name: ENABLE_GLOBAL_CACHE
             value: "true"
           - name: CACHE_TTL

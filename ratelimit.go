@@ -208,7 +208,7 @@ func rateLimitedRequest(userID, userRole string) bool {
 	rateLimitMu.RUnlock()
 
 	if !ok || roleConfig.RateCounterTicker == nil {
-		cfg.Logger.Debug(&libpack_logger.LogMessage{
+		cfg.Logger.Warning(&libpack_logger.LogMessage{
 			Message: "Rate limit role not found or ticker not initialized - defaulting to deny",
 			Pairs:   map[string]interface{}{"user_role": userRole},
 		})

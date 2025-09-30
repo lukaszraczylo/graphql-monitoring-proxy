@@ -13,6 +13,7 @@ import (
 	"github.com/graphql-go/graphql/language/ast"
 	"github.com/graphql-go/graphql/language/parser"
 	"github.com/graphql-go/graphql/language/source"
+	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 )
 
@@ -92,13 +93,30 @@ var (
 // - allocsCounter (for tracking allocation counts)
 // - allocationsSamp (for memory usage histograms)
 
-// Initialize the query parse cache with a fixed size
+// Initialize the query parse cache with configurable size
 func initGraphQLParsing() {
-	// Set cache size based on available memory
-	maxQueryCacheSize = runtime.GOMAXPROCS(0) * 250
+	// Use configured cache size, or default to CPU-based calculation
+	var cacheSize int
+	if cfg != nil && cfg.Cache.GraphQLQueryCacheSize > 0 {
+		cacheSize = cfg.Cache.GraphQLQueryCacheSize
+	} else {
+		// Fallback to CPU-based calculation
+		cacheSize = runtime.GOMAXPROCS(0) * 250
+	}
+	maxQueryCacheSize = cacheSize
 
 	// Initialize LRU cache with entry limit and 50MB size limit
 	parsedQueryCache = NewLRUCache(maxQueryCacheSize, 50*1024*1024)
+
+	if cfg != nil && cfg.Logger != nil {
+		cfg.Logger.Debug(&libpack_logger.LogMessage{
+			Message: "GraphQL query cache initialized",
+			Pairs: map[string]interface{}{
+				"max_entries": maxQueryCacheSize,
+				"max_size_mb": 50,
+			},
+		})
+	}
 }
 
 // Store a parsed document in the cache with LRU eviction

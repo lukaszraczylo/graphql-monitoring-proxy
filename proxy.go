@@ -255,7 +255,7 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 	}
 
 	// Construct and validate proxy URL
-	proxyURL := currentEndpoint + c.Path()
+	proxyURL := currentEndpoint + c.OriginalURL()
 	if _, err := url.Parse(proxyURL); err != nil {
 		return fmt.Errorf("invalid URL: %v", err)
 	}
@@ -386,6 +386,50 @@ func performProxyRequestWithRetries(c *fiber.Ctx, proxyURL string) error {
 	return performProxyRequestWithEnhancedRetries(c, proxyURL, false)
 }
 
+// executeProxyAttempt performs a single proxy attempt with error handling
+func executeProxyAttempt(c *fiber.Ctx, proxyURL string) error {
+	// Additional safety check inside retry loop
+	if c == nil {
+		return retry.Unrecoverable(fmt.Errorf("fiber context became nil during retry"))
+	}
+
+	// Execute the proxy request
+	if err := doProxyRequestWithTimeout(c, proxyURL, cfg.Client.FastProxyClient); err != nil {
+		// Check if this is a connection error
+		if isConnectionError(err) {
+			notifyHealthManager(false)
+			return err // Connection errors are retryable
+		}
+
+		// Check if this is a timeout error - don't retry timeouts
+		if isTimeoutError(err) {
+			return retry.Unrecoverable(err)
+		}
+		return err
+	}
+
+	// Safety check before accessing response
+	if c == nil || c.Response() == nil {
+		return retry.Unrecoverable(fmt.Errorf("fiber context or response became nil"))
+	}
+
+	// Check status code and determine retry strategy
+	statusCode := c.Response().StatusCode()
+	shouldRetry, err := isRetryableStatusCode(statusCode)
+
+	if err == nil {
+		// Success case
+		notifyHealthManager(true)
+		return nil
+	}
+
+	if shouldRetry {
+		return err // Retryable error
+	}
+
+	return err // Non-retryable error (already wrapped with retry.Unrecoverable)
+}
+
 // performProxyRequestWithEnhancedRetries executes the proxy request with intelligent retry strategy
 func performProxyRequestWithEnhancedRetries(c *fiber.Ctx, proxyURL string, backendUnhealthy bool) error {
 	// Safety check for nil context
@@ -398,10 +442,11 @@ func performProxyRequestWithEnhancedRetries(c *fiber.Ctx, proxyURL string, backe
 	var maxDelayTime time.Duration
 
 	if backendUnhealthy {
-		// Backend is known to be unhealthy, use longer delays
-		attempts = 10
-		initialDelay = 2 * time.Second
-		maxDelayTime = 30 * time.Second
+		// Backend is known to be unhealthy, fail fast
+		// Circuit breaker should handle this, so reduce retries
+		attempts = 3
+		initialDelay = 500 * time.Millisecond
+		maxDelayTime = 5 * time.Second
 	} else {
 		// Normal retry strategy
 		attempts = 7
@@ -411,64 +456,7 @@ func performProxyRequestWithEnhancedRetries(c *fiber.Ctx, proxyURL string, backe
 
 	return retry.Do(
 		func() error {
-			// Additional safety check inside retry loop
-			if c == nil {
-				return retry.Unrecoverable(fmt.Errorf("fiber context became nil during retry"))
-			}
-
-			if err := doProxyRequestWithTimeout(c, proxyURL, cfg.Client.FastProxyClient); err != nil {
-				// Check if this is a connection error
-				if isConnectionError(err) {
-					// Notify health manager if available
-					if healthMgr := GetBackendHealthManager(); healthMgr != nil {
-						healthMgr.updateHealthStatus(false)
-					}
-					// Connection errors are retryable
-					return err
-				}
-
-				// Check if this is a timeout error - limited retries for timeouts
-				if strings.Contains(strings.ToLower(err.Error()), "timeout") ||
-					strings.Contains(strings.ToLower(err.Error()), "deadline exceeded") ||
-					strings.Contains(strings.ToLower(err.Error()), "context deadline exceeded") {
-					// Only retry timeouts a few times
-					return retry.Unrecoverable(err)
-				}
-				return err
-			}
-
-			// Safety check before accessing response
-			if c == nil || c.Response() == nil {
-				return retry.Unrecoverable(fmt.Errorf("fiber context or response became nil"))
-			}
-
-			statusCode := c.Response().StatusCode()
-
-			// Don't retry client errors (4xx) except for specific cases
-			if statusCode >= 400 && statusCode < 500 {
-				// Retry on 429 (rate limit) and 503 (service unavailable)
-				if statusCode == 429 || statusCode == 503 {
-					return fmt.Errorf("retryable status code: %d", statusCode)
-				}
-				// Other 4xx errors are not retryable
-				return retry.Unrecoverable(fmt.Errorf("client error: %d", statusCode))
-			}
-
-			// Retry on 5xx errors
-			if statusCode >= 500 {
-				return fmt.Errorf("server error: %d", statusCode)
-			}
-
-			// Success for 2xx and 3xx
-			if statusCode >= 200 && statusCode < 400 {
-				// Notify health manager of success if available
-				if healthMgr := GetBackendHealthManager(); healthMgr != nil {
-					healthMgr.updateHealthStatus(true)
-				}
-				return nil
-			}
-
-			return fmt.Errorf("unexpected status code: %d", statusCode)
+			return executeProxyAttempt(c, proxyURL)
 		},
 		retry.Attempts(attempts),
 		retry.DelayType(retry.BackOffDelay),
@@ -548,6 +536,49 @@ func isConnectionError(err error) bool {
 	}
 
 	return false
+}
+
+// isTimeoutError checks if the error is a timeout-related error
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "timeout") ||
+		strings.Contains(errStr, "deadline exceeded") ||
+		strings.Contains(errStr, "context deadline exceeded")
+}
+
+// isRetryableStatusCode determines if an HTTP status code should trigger a retry
+func isRetryableStatusCode(statusCode int) (bool, error) {
+	// Don't retry client errors (4xx) except for specific cases
+	if statusCode >= 400 && statusCode < 500 {
+		// Retry on 429 (rate limit) and 503 (service unavailable - misclassified as 4xx)
+		if statusCode == 429 || statusCode == 503 {
+			return true, fmt.Errorf("retryable status code: %d", statusCode)
+		}
+		// Other 4xx errors are not retryable
+		return false, retry.Unrecoverable(fmt.Errorf("client error: %d", statusCode))
+	}
+
+	// Retry on 5xx errors
+	if statusCode >= 500 {
+		return true, fmt.Errorf("server error: %d", statusCode)
+	}
+
+	// Success for 2xx and 3xx
+	if statusCode >= 200 && statusCode < 400 {
+		return false, nil // No error, no retry needed
+	}
+
+	return true, fmt.Errorf("unexpected status code: %d", statusCode)
+}
+
+// notifyHealthManager notifies the backend health manager of request success or failure
+func notifyHealthManager(success bool) {
+	if healthMgr := GetBackendHealthManager(); healthMgr != nil {
+		healthMgr.updateHealthStatus(success)
+	}
 }
 
 // handleCircuitOpenGracefulDegradation handles requests when the circuit breaker is open

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -34,7 +35,7 @@ func NewConnectionPoolManager(client *fasthttp.Client) *ConnectionPoolManager {
 		client:                client,
 		ctx:                   ctx,
 		cancel:                cancel,
-		keepAliveInterval:     15 * time.Second,
+		keepAliveInterval:     45 * time.Second, // Reduced frequency to lower backend load
 		cleanupInterval:       30 * time.Second,
 		recoveryCheckInterval: 60 * time.Second,
 	}
@@ -137,16 +138,32 @@ func (cpm *ConnectionPoolManager) performKeepAlive() {
 		return
 	}
 
-	// Use a minimal GraphQL query for keep-alive
+	// Skip keep-alive if we have recent successful connections
+	// This reduces unnecessary load when the system is actively processing requests
+	if cpm.connectionFailures.Load() == 0 && cpm.totalConnections.Load() > 0 {
+		// No recent failures and we have active connections, skip this keep-alive
+		return
+	}
+
+	// Use HEAD request for minimal overhead
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseRequest(req)
 	defer fasthttp.ReleaseResponse(resp)
 
-	req.SetRequestURI(cfg.Server.HostGraphQL)
-	req.Header.SetMethod("POST")
-	req.Header.SetContentType("application/json")
-	req.SetBody([]byte(`{"query":"{__typename}"}`))
+	// Try to use health check endpoint if available, otherwise use base URL
+	healthURL := cfg.Server.HealthcheckGraphQL
+	if healthURL == "" {
+		// Use base URL with proper path separator
+		baseURL := cfg.Server.HostGraphQL
+		if !strings.HasSuffix(baseURL, "/") {
+			baseURL += "/"
+		}
+		healthURL = baseURL + "healthz"
+	}
+
+	req.SetRequestURI(healthURL)
+	req.Header.SetMethod("HEAD") // HEAD is lighter than POST with body
 
 	// Short timeout for keep-alive
 	err := cpm.client.DoTimeout(req, resp, 3*time.Second)

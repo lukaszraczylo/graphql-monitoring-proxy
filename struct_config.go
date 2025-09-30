@@ -36,14 +36,15 @@ type config struct {
 		Enable          bool
 	}
 	Cache struct {
-		CacheRedisURL      string
-		CacheRedisPassword string
-		CacheTTL           int
-		CacheRedisDB       int
-		CacheEnable        bool
-		CacheRedisEnable   bool
-		CacheMaxMemorySize int
-		CacheMaxEntries    int
+		CacheRedisURL         string
+		CacheRedisPassword    string
+		CacheTTL              int
+		CacheRedisDB          int
+		CacheEnable           bool
+		CacheRedisEnable      bool
+		CacheMaxMemorySize    int
+		CacheMaxEntries       int
+		GraphQLQueryCacheSize int // Max number of parsed GraphQL queries to cache
 	}
 	Client struct {
 		GQLClient           *graphql.BaseClient
@@ -64,7 +65,7 @@ type config struct {
 		HostGraphQL         string
 		HostGraphQLReadOnly string
 		HealthcheckGraphQL  string
-		AllowURLs           []string // Per-endpoint circuit breaker configs
+		AllowURLs           []string // List of allowed URL paths for access control
 
 		PortGraphQL    int
 		PortMonitoring int
@@ -76,8 +77,7 @@ type config struct {
 		PurgeOnCrawl   bool
 	}
 	CircuitBreaker struct {
-		EndpointConfigs map[ // Maximum memory size in MB (0 = use default)
-		string]*EndpointCBConfig
+		EndpointConfigs       map[string]*EndpointCBConfig // Per-endpoint circuit breaker configurations
 		ExcludedStatusCodes   []int
 		MaxFailures           int
 		FailureRatio          float64

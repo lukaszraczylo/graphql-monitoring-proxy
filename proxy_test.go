@@ -73,6 +73,15 @@ func (suite *Tests) Test_proxyTheRequest() {
 			wantErr:      false,
 			wantEndpoint: "https://telegram-bot.app/",
 		},
+		{
+			name:         "Test query string preservation",
+			body:         `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
+			host:         "https://telegram-bot.app/",
+			path:         "/v1/graphql?var=value&foo=bar",
+			headers:      supplied_headers,
+			wantErr:      false,
+			wantEndpoint: "https://telegram-bot.app/",
+		},
 	}
 
 	for _, tt := range tests {

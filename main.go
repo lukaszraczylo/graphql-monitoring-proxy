@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -61,6 +62,45 @@ func getDetailsFromEnv[T any](key string, defaultValue T) T {
 	}
 }
 
+// validateJWTClaimPath validates JWT claim paths to prevent injection attacks
+func validateJWTClaimPath(path string) error {
+	if path == "" {
+		return nil // Empty path is valid (feature disabled)
+	}
+
+	// Prevent path traversal attempts
+	if strings.Contains(path, "..") {
+		return fmt.Errorf("invalid JWT claim path (contains '..'): %s", path)
+	}
+
+	// Prevent absolute paths
+	if strings.HasPrefix(path, "/") {
+		return fmt.Errorf("invalid JWT claim path (absolute path not allowed): %s", path)
+	}
+
+	// Limit depth to prevent DoS from deeply nested claims
+	parts := strings.Split(path, ".")
+	if len(parts) > 10 {
+		return fmt.Errorf("invalid JWT claim path (too deep, max 10 levels): %s", path)
+	}
+
+	// Validate each part contains only allowed characters
+	for _, part := range parts {
+		if part == "" {
+			return fmt.Errorf("invalid JWT claim path (empty part): %s", path)
+		}
+		// Allow alphanumeric, underscore, and hyphen
+		for _, ch := range part {
+			if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+				(ch >= '0' && ch <= '9') || ch == '_' || ch == '-') {
+				return fmt.Errorf("invalid JWT claim path (invalid character '%c'): %s", ch, path)
+			}
+		}
+	}
+
+	return nil
+}
+
 // parseConfig loads and parses the configuration.
 func parseConfig() {
 	libpack_config.PKG_NAME = "graphql_proxy"
@@ -73,6 +113,17 @@ func parseConfig() {
 	// Client configurations
 	c.Client.JWTUserClaimPath = getDetailsFromEnv("JWT_USER_CLAIM_PATH", "")
 	c.Client.JWTRoleClaimPath = getDetailsFromEnv("JWT_ROLE_CLAIM_PATH", "")
+
+	// Validate JWT claim paths for security
+	if err := validateJWTClaimPath(c.Client.JWTUserClaimPath); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ CRITICAL ERROR: Invalid JWT_USER_CLAIM_PATH: %v\n", err)
+		os.Exit(1)
+	}
+	if err := validateJWTClaimPath(c.Client.JWTRoleClaimPath); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ CRITICAL ERROR: Invalid JWT_ROLE_CLAIM_PATH: %v\n", err)
+		os.Exit(1)
+	}
+
 	c.Client.RoleFromHeader = getDetailsFromEnv("ROLE_FROM_HEADER", "")
 	c.Client.RoleRateLimit = getDetailsFromEnv("ROLE_RATE_LIMIT", false)
 	// In-memory cache
@@ -80,6 +131,8 @@ func parseConfig() {
 	c.Cache.CacheTTL = getDetailsFromEnv("CACHE_TTL", 60)
 	c.Cache.CacheMaxMemorySize = getDetailsFromEnv("CACHE_MAX_MEMORY_SIZE", 100) // Default 100MB
 	c.Cache.CacheMaxEntries = getDetailsFromEnv("CACHE_MAX_ENTRIES", 10000)      // Default 10000 entries
+	// GraphQL query parsing cache - auto-calculate based on CPU cores if not set
+	c.Cache.GraphQLQueryCacheSize = getDetailsFromEnv("GRAPHQL_QUERY_CACHE_SIZE", runtime.GOMAXPROCS(0)*250)
 	// Redis cache
 	c.Cache.CacheRedisEnable = getDetailsFromEnv("ENABLE_REDIS_CACHE", false)
 	c.Cache.CacheRedisURL = getDetailsFromEnv("CACHE_REDIS_URL", "localhost:6379")
@@ -158,6 +211,21 @@ func parseConfig() {
 
 	// Secure by default: TLS verification is enabled unless explicitly disabled
 	c.Client.DisableTLSVerify = getDetailsFromEnv("CLIENT_DISABLE_TLS_VERIFY", false)
+
+	// Warn if TLS verification is disabled (security risk)
+	if c.Client.DisableTLSVerify {
+		// Logger might not be initialized yet, will log after logger setup
+		defer func() {
+			if c.Logger != nil {
+				c.Logger.Warning(&libpack_logging.LogMessage{
+					Message: "⚠️  TLS certificate verification is DISABLED - This is a security risk in production!",
+					Pairs: map[string]interface{}{
+						"recommendation": "Enable TLS verification by removing CLIENT_DISABLE_TLS_VERIFY or setting it to false",
+					},
+				})
+			}
+		}()
+	}
 
 	// Create HTTP client with the optimized parameters
 	c.Client.FastProxyClient = createFasthttpClient(&c)

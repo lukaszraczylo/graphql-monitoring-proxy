@@ -121,7 +121,7 @@ func (suite *ConnectionResilienceTestSuite) TestConnectionPoolManager() {
 		poolMgr := NewConnectionPoolManager(cfg.Client.FastProxyClient)
 		suite.NotNil(poolMgr)
 		suite.NotNil(poolMgr.client)
-		suite.Equal(15*time.Second, poolMgr.keepAliveInterval)
+		suite.Equal(45*time.Second, poolMgr.keepAliveInterval) // Updated from 15s to 45s for lower backend load
 		suite.Equal(30*time.Second, poolMgr.cleanupInterval)
 		suite.Equal(60*time.Second, poolMgr.recoveryCheckInterval)
 	})
@@ -143,6 +143,10 @@ func (suite *ConnectionResilienceTestSuite) TestConnectionPoolManager() {
 	suite.Run("keep alive functionality", func() {
 		poolMgr := NewConnectionPoolManager(cfg.Client.FastProxyClient)
 		poolMgr.logger = cfg.Logger
+
+		// With the optimized keep-alive, it skips when no failures and connections exist
+		// So we first record a failure to force keep-alive to execute
+		poolMgr.RecordConnectionFailure()
 
 		// Test keep-alive with valid backend
 		poolMgr.performKeepAlive()
