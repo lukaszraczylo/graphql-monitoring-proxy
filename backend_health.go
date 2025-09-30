@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -142,9 +143,39 @@ func (bhm *BackendHealthManager) checkBackendHealth() bool {
 	defer fasthttp.ReleaseRequest(req)
 	defer fasthttp.ReleaseResponse(resp)
 
-	// Simple GraphQL introspection query for health check
+	// Determine the health check URL
+	// If backendURL is just "http://host:port" or "http://host:port/", append /v1/graphql
+	// If it has a path like "/v1/graphql", use that path
+	healthCheckURL := bhm.backendURL
+	hasGraphQLPath := false
+
+	if len(bhm.backendURL) > 0 {
+		// Simple check: if URL has a path component beyond just "/"
+		lastSlash := -1
+		protoEnd := 0
+		if idx := strings.Index(bhm.backendURL, "://"); idx >= 0 {
+			protoEnd = idx + 3
+		}
+		for i := protoEnd; i < len(bhm.backendURL); i++ {
+			if bhm.backendURL[i] == '/' {
+				lastSlash = i
+				break
+			}
+		}
+		// Has path if there's a slash after protocol and it's not the last char or followed by more path
+		hasGraphQLPath = lastSlash >= protoEnd && lastSlash < len(bhm.backendURL)-1
+
+		// If no GraphQL path, append /v1/graphql (standard Hasura endpoint)
+		if !hasGraphQLPath {
+			// Remove trailing slash if present
+			baseURL := strings.TrimSuffix(bhm.backendURL, "/")
+			healthCheckURL = baseURL + "/v1/graphql"
+		}
+	}
+
+	// Always send GraphQL introspection query for health check
 	healthQuery := `{"query":"{__typename}"}`
-	req.SetRequestURI(bhm.backendURL)
+	req.SetRequestURI(healthCheckURL)
 	req.Header.SetMethod(http.MethodPost)
 	req.Header.SetContentType("application/json")
 	req.SetBody([]byte(healthQuery))
@@ -155,7 +186,8 @@ func (bhm *BackendHealthManager) checkBackendHealth() bool {
 		bhm.logger.Debug(&libpack_logger.LogMessage{
 			Message: "Backend health check failed",
 			Pairs: map[string]interface{}{
-				"error": err.Error(),
+				"error":     err.Error(),
+				"check_url": healthCheckURL,
 			},
 		})
 		return false
@@ -169,6 +201,7 @@ func (bhm *BackendHealthManager) checkBackendHealth() bool {
 			Message: "Backend returned unhealthy status",
 			Pairs: map[string]interface{}{
 				"status_code": statusCode,
+				"check_url":   healthCheckURL,
 			},
 		})
 	}
