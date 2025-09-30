@@ -2,9 +2,11 @@ package main
 
 import (
 	"embed"
+	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
@@ -67,21 +69,90 @@ func (ad *AdminDashboard) serveDashboard(c *fiber.Ctx) error {
 
 // getStats returns overall proxy statistics
 func (ad *AdminDashboard) getStats(c *fiber.Ctx) error {
+	uptimeSeconds := time.Since(startTime).Seconds()
 	stats := map[string]interface{}{
-		"timestamp": time.Now().Format(time.RFC3339),
-		"uptime":    time.Since(startTime).Seconds(),
-		"version":   "0.27.0", // TODO: Get from build info
+		"timestamp":      time.Now().Format(time.RFC3339),
+		"uptime_seconds": uptimeSeconds,
+		"uptime_human":   formatDuration(time.Since(startTime)),
+		"version":        "0.27.0", // TODO: Get from build info
 	}
 
 	if cfg != nil && cfg.Monitoring != nil {
-		stats["metrics"] = map[string]interface{}{
-			"succeeded": getAdminMetricValue("graphql_proxy_succeeded_total"),
-			"failed":    getAdminMetricValue("graphql_proxy_failed_total"),
-			"skipped":   getAdminMetricValue("graphql_proxy_skipped_total"),
+		succeeded := getAdminMetricValue("graphql_proxy_succeeded_total")
+		failed := getAdminMetricValue("graphql_proxy_failed_total")
+		skipped := getAdminMetricValue("graphql_proxy_skipped_total")
+		total := succeeded + failed + skipped
+
+		// Request statistics
+		requestStats := map[string]interface{}{
+			"total":     total,
+			"succeeded": succeeded,
+			"failed":    failed,
+			"skipped":   skipped,
+		}
+
+		// Calculate rates and percentages
+		if total > 0 {
+			requestStats["success_rate_pct"] = float64(succeeded) / float64(total) * 100
+			requestStats["failure_rate_pct"] = float64(failed) / float64(total) * 100
+			requestStats["skip_rate_pct"] = float64(skipped) / float64(total) * 100
+		} else {
+			requestStats["success_rate_pct"] = 0.0
+			requestStats["failure_rate_pct"] = 0.0
+			requestStats["skip_rate_pct"] = 0.0
+		}
+
+		// Calculate average requests per second (lifetime)
+		if uptimeSeconds > 0 {
+			requestStats["avg_requests_per_second"] = float64(total) / uptimeSeconds
+		} else {
+			requestStats["avg_requests_per_second"] = 0.0
+		}
+
+		// Get current requests per second (last 1 second)
+		if rpsTracker := GetRPSTracker(); rpsTracker != nil {
+			requestStats["current_requests_per_second"] = rpsTracker.GetCurrentRPS()
+		} else {
+			requestStats["current_requests_per_second"] = 0.0
+		}
+
+		stats["requests"] = requestStats
+
+		// Get cache statistics summary
+		cacheStats := libpack_cache.GetCacheStats()
+		if cacheStats != nil {
+			totalCacheRequests := cacheStats.CacheHits + cacheStats.CacheMisses
+			hitRate := 0.0
+			if totalCacheRequests > 0 {
+				hitRate = float64(cacheStats.CacheHits) / float64(totalCacheRequests) * 100
+			}
+			stats["cache_summary"] = map[string]interface{}{
+				"hits":         cacheStats.CacheHits,
+				"misses":       cacheStats.CacheMisses,
+				"hit_rate_pct": hitRate,
+				"total_cached": cacheStats.CachedQueries,
+			}
 		}
 	}
 
 	return c.JSON(stats)
+}
+
+// formatDuration formats a duration into human-readable format
+func formatDuration(d time.Duration) string {
+	days := int(d.Hours() / 24)
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+	seconds := int(d.Seconds()) % 60
+
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh %dm %ds", days, hours, minutes, seconds)
+	} else if hours > 0 {
+		return fmt.Sprintf("%dh %dm %ds", hours, minutes, seconds)
+	} else if minutes > 0 {
+		return fmt.Sprintf("%dm %ds", minutes, seconds)
+	}
+	return fmt.Sprintf("%ds", seconds)
 }
 
 // getHealth returns health status
@@ -154,6 +225,35 @@ func (ad *AdminDashboard) getCacheStats(c *fiber.Ctx) error {
 		stats["ttl_seconds"] = cfg.Cache.CacheTTL
 		stats["max_memory_mb"] = cfg.Cache.CacheMaxMemorySize
 		stats["max_entries"] = cfg.Cache.CacheMaxEntries
+
+		// Get runtime cache statistics
+		cacheStats := libpack_cache.GetCacheStats()
+		if cacheStats != nil {
+			stats["cached_queries"] = cacheStats.CachedQueries
+			stats["cache_hits"] = cacheStats.CacheHits
+			stats["cache_misses"] = cacheStats.CacheMisses
+
+			// Calculate hit rate
+			totalRequests := cacheStats.CacheHits + cacheStats.CacheMisses
+			hitRate := 0.0
+			if totalRequests > 0 {
+				hitRate = float64(cacheStats.CacheHits) / float64(totalRequests) * 100
+			}
+			stats["hit_rate_pct"] = hitRate
+
+			// Get memory usage
+			memoryUsage := libpack_cache.GetCacheMemoryUsage()
+			maxMemory := libpack_cache.GetCacheMaxMemorySize()
+			stats["memory_usage_bytes"] = memoryUsage
+			stats["memory_usage_mb"] = float64(memoryUsage) / (1024 * 1024)
+
+			// Calculate memory usage percentage
+			memoryUsagePct := 0.0
+			if maxMemory > 0 {
+				memoryUsagePct = float64(memoryUsage) / float64(maxMemory) * 100
+			}
+			stats["memory_usage_pct"] = memoryUsagePct
+		}
 	}
 
 	return c.JSON(stats)

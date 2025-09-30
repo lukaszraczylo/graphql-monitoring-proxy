@@ -110,8 +110,19 @@ func TestAdminDashboard_GetStats(t *testing.T) {
 
 	// Verify stats structure
 	assert.NotEmpty(t, stats["timestamp"])
-	assert.NotNil(t, stats["uptime"])
+	assert.NotNil(t, stats["uptime_seconds"])
+	assert.NotNil(t, stats["uptime_human"])
 	assert.NotEmpty(t, stats["version"])
+	assert.NotNil(t, stats["requests"])
+
+	// Verify request stats structure
+	requests := stats["requests"].(map[string]interface{})
+	assert.NotNil(t, requests["total"])
+	assert.NotNil(t, requests["succeeded"])
+	assert.NotNil(t, requests["failed"])
+	assert.NotNil(t, requests["success_rate_pct"])
+	assert.NotNil(t, requests["avg_requests_per_second"])
+	assert.NotNil(t, requests["current_requests_per_second"])
 }
 
 func TestAdminDashboard_GetHealth(t *testing.T) {

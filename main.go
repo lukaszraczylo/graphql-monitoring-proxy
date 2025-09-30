@@ -387,6 +387,12 @@ func parseConfig() {
 		healthMgr.StartHealthChecking()
 	}
 
+	// Initialize RPS tracker for real-time requests per second monitoring
+	InitializeRPSTracker()
+	cfg.Logger.Info(&libpack_logging.LogMessage{
+		Message: "RPS tracker initialized",
+	})
+
 	// Load rate limit configuration with improved error handling
 	if err := loadRatelimitConfig(); err != nil {
 		// Log the error with clear guidance
