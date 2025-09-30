@@ -267,13 +267,33 @@ func (ma *MetricsAggregator) publishMetrics() {
 	pipe.SAdd(ctx, ma.publishKey, ma.instanceID)
 	pipe.Expire(ctx, ma.publishKey, ma.ttl*2) // Keep set alive
 
-	if _, err := pipe.Exec(ctx); err != nil {
+	cmds, err := pipe.Exec(ctx)
+	if err != nil {
 		if ma.logger != nil {
-			ma.logger.Warning(&libpack_logger.LogMessage{
-				Message: "Failed to publish metrics to Redis",
-				Pairs:   map[string]interface{}{"error": err.Error()},
+			ma.logger.Error(&libpack_logger.LogMessage{
+				Message: "❌ CRITICAL: Failed to publish metrics to Redis - cluster mode will not work!",
+				Pairs: map[string]interface{}{
+					"error":       err.Error(),
+					"instance_id": ma.instanceID,
+					"key":         key,
+					"redis_key":   ma.publishKey,
+				},
 			})
 		}
+		return
+	}
+
+	// Verify commands executed successfully
+	if ma.logger != nil {
+		ma.logger.Debug(&libpack_logger.LogMessage{
+			Message: "✓ Successfully published metrics to Redis",
+			Pairs: map[string]interface{}{
+				"instance_id": ma.instanceID,
+				"key":         key,
+				"cmds_count":  len(cmds),
+				"data_size":   len(data),
+			},
+		})
 	}
 }
 

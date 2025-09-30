@@ -319,6 +319,39 @@ func parseConfig() {
 		}
 	}
 
+	// Initialize metrics aggregator FIRST if Redis is enabled (even if cache is disabled)
+	// This allows cluster mode monitoring even when cache is off
+	if cfg.Cache.CacheRedisEnable {
+		cfg.Logger.Info(&libpack_logging.LogMessage{
+			Message: "Initializing metrics aggregator for cluster mode",
+			Pairs: map[string]interface{}{
+				"redis_url": cfg.Cache.CacheRedisURL,
+				"redis_db":  cfg.Cache.CacheRedisDB,
+			},
+		})
+
+		if err := InitializeMetricsAggregator(
+			cfg.Cache.CacheRedisURL,
+			cfg.Cache.CacheRedisPassword,
+			cfg.Cache.CacheRedisDB,
+			cfg.Logger,
+		); err != nil {
+			cfg.Logger.Error(&libpack_logging.LogMessage{
+				Message: "FAILED to initialize metrics aggregator - cluster mode will not work",
+				Pairs: map[string]interface{}{
+					"error": err.Error(),
+				},
+			})
+		} else {
+			cfg.Logger.Info(&libpack_logging.LogMessage{
+				Message: "✓ Metrics aggregator successfully initialized",
+				Pairs: map[string]interface{}{
+					"instance_id": GetMetricsAggregator().GetInstanceID(),
+				},
+			})
+		}
+	}
+
 	// Initialize cache if enabled
 	if cfg.Cache.CacheEnable || cfg.Cache.CacheRedisEnable {
 		cacheConfig := &libpack_cache.CacheConfig{
@@ -331,28 +364,6 @@ func parseConfig() {
 			cacheConfig.Redis.URL = cfg.Cache.CacheRedisURL
 			cacheConfig.Redis.Password = cfg.Cache.CacheRedisPassword
 			cacheConfig.Redis.DB = cfg.Cache.CacheRedisDB
-
-			// Initialize metrics aggregator for cluster mode when using Redis
-			if err := InitializeMetricsAggregator(
-				cfg.Cache.CacheRedisURL,
-				cfg.Cache.CacheRedisPassword,
-				cfg.Cache.CacheRedisDB,
-				cfg.Logger,
-			); err != nil {
-				cfg.Logger.Warning(&libpack_logging.LogMessage{
-					Message: "Failed to initialize metrics aggregator (cluster mode disabled)",
-					Pairs: map[string]interface{}{
-						"error": err.Error(),
-					},
-				})
-			} else {
-				cfg.Logger.Info(&libpack_logging.LogMessage{
-					Message: "Metrics aggregator enabled for cluster mode",
-					Pairs: map[string]interface{}{
-						"instance_id": GetMetricsAggregator().GetInstanceID(),
-					},
-				})
-			}
 		} else {
 			// Memory cache configurations
 			cacheConfig.Memory.MaxMemorySize = int64(cfg.Cache.CacheMaxMemorySize) * 1024 * 1024 // Convert MB to bytes
