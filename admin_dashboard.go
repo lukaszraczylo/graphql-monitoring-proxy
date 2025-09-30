@@ -102,11 +102,18 @@ func (ad *AdminDashboard) getStats(c *fiber.Ctx) error {
 			requestStats["skip_rate_pct"] = 0.0
 		}
 
-		// Calculate requests per second
+		// Calculate average requests per second (lifetime)
 		if uptimeSeconds > 0 {
-			requestStats["requests_per_second"] = float64(total) / uptimeSeconds
+			requestStats["avg_requests_per_second"] = float64(total) / uptimeSeconds
 		} else {
-			requestStats["requests_per_second"] = 0.0
+			requestStats["avg_requests_per_second"] = 0.0
+		}
+
+		// Get current requests per second (last 1 second)
+		if rpsTracker := GetRPSTracker(); rpsTracker != nil {
+			requestStats["current_requests_per_second"] = rpsTracker.GetCurrentRPS()
+		} else {
+			requestStats["current_requests_per_second"] = 0.0
 		}
 
 		stats["requests"] = requestStats

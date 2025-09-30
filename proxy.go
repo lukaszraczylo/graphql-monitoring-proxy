@@ -236,6 +236,11 @@ func createFasthttpClient(clientConfig *config) *fasthttp.Client {
 
 // proxyTheRequest handles the request proxying logic.
 func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
+	// Record request for RPS tracking
+	if rpsTracker := GetRPSTracker(); rpsTracker != nil {
+		rpsTracker.RecordRequest()
+	}
+
 	// Setup tracing if enabled
 	var span trace.Span
 	var ctx context.Context

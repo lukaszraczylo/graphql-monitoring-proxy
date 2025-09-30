@@ -121,7 +121,8 @@ func TestAdminDashboard_GetStats(t *testing.T) {
 	assert.NotNil(t, requests["succeeded"])
 	assert.NotNil(t, requests["failed"])
 	assert.NotNil(t, requests["success_rate_pct"])
-	assert.NotNil(t, requests["requests_per_second"])
+	assert.NotNil(t, requests["avg_requests_per_second"])
+	assert.NotNil(t, requests["current_requests_per_second"])
 }
 
 func TestAdminDashboard_GetHealth(t *testing.T) {
