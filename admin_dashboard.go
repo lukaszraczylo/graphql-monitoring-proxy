@@ -2,10 +2,12 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/websocket/v2"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
@@ -40,6 +42,9 @@ func (ad *AdminDashboard) RegisterRoutes(app *fiber.App) {
 	app.Get("/admin/api/retry-budget", ad.getRetryBudgetStats)
 	app.Get("/admin/api/coalescing", ad.getCoalescingStats)
 	app.Get("/admin/api/websocket", ad.getWebSocketStats)
+
+	// WebSocket endpoint for streaming statistics
+	app.Get("/admin/ws/stats", websocket.New(ad.handleStatsWebSocket))
 
 	// Control endpoints
 	app.Post("/admin/api/cache/clear", ad.clearCache)
@@ -359,6 +364,272 @@ func getAdminMetricValue(name string) int64 {
 		return 0
 	}
 	return int64(counter.Get())
+}
+
+// handleStatsWebSocket handles WebSocket connections for streaming statistics
+func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
+	if ad.logger != nil {
+		ad.logger.Info(&libpack_logger.LogMessage{
+			Message: "WebSocket client connected to stats stream",
+			Pairs: map[string]interface{}{
+				"remote_addr": c.RemoteAddr().String(),
+			},
+		})
+	}
+
+	// Cleanup on disconnect
+	defer func() {
+		if ad.logger != nil {
+			ad.logger.Info(&libpack_logger.LogMessage{
+				Message: "WebSocket client disconnected from stats stream",
+				Pairs: map[string]interface{}{
+					"remote_addr": c.RemoteAddr().String(),
+				},
+			})
+		}
+		c.Close()
+	}()
+
+	// Stream statistics every 2 seconds
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			// Gather all stats
+			stats := ad.gatherAllStats()
+
+			// Marshal to JSON
+			data, err := json.Marshal(stats)
+			if err != nil {
+				if ad.logger != nil {
+					ad.logger.Error(&libpack_logger.LogMessage{
+						Message: "Failed to marshal stats for WebSocket",
+						Pairs:   map[string]interface{}{"error": err.Error()},
+					})
+				}
+				return
+			}
+
+			// Send to client
+			if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
+				if ad.logger != nil {
+					ad.logger.Debug(&libpack_logger.LogMessage{
+						Message: "Failed to write to WebSocket (client likely disconnected)",
+						Pairs:   map[string]interface{}{"error": err.Error()},
+					})
+				}
+				return
+			}
+
+		default:
+			// Check for control messages from client (ping/pong)
+			_, _, err := c.ReadMessage()
+			if err != nil {
+				// Client disconnected or error reading
+				return
+			}
+		}
+	}
+}
+
+// gatherAllStats collects all statistics into a single structure
+func (ad *AdminDashboard) gatherAllStats() map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// Main stats
+	uptimeSeconds := time.Since(startTime).Seconds()
+	stats := map[string]interface{}{
+		"timestamp":      time.Now().Format(time.RFC3339),
+		"uptime_seconds": uptimeSeconds,
+		"uptime_human":   formatDuration(time.Since(startTime)),
+		"version":        "0.27.0",
+	}
+
+	if cfg != nil && cfg.Monitoring != nil {
+		succeeded := getAdminMetricValue("graphql_proxy_succeeded_total")
+		failed := getAdminMetricValue("graphql_proxy_failed_total")
+		skipped := getAdminMetricValue("graphql_proxy_skipped_total")
+		total := succeeded + failed + skipped
+
+		requestStats := map[string]interface{}{
+			"total":     total,
+			"succeeded": succeeded,
+			"failed":    failed,
+			"skipped":   skipped,
+		}
+
+		if total > 0 {
+			requestStats["success_rate_pct"] = float64(succeeded) / float64(total) * 100
+			requestStats["failure_rate_pct"] = float64(failed) / float64(total) * 100
+			requestStats["skip_rate_pct"] = float64(skipped) / float64(total) * 100
+		} else {
+			requestStats["success_rate_pct"] = 0.0
+			requestStats["failure_rate_pct"] = 0.0
+			requestStats["skip_rate_pct"] = 0.0
+		}
+
+		if uptimeSeconds > 0 {
+			requestStats["avg_requests_per_second"] = float64(total) / uptimeSeconds
+		} else {
+			requestStats["avg_requests_per_second"] = 0.0
+		}
+
+		if rpsTracker := GetRPSTracker(); rpsTracker != nil {
+			requestStats["current_requests_per_second"] = rpsTracker.GetCurrentRPS()
+		} else {
+			requestStats["current_requests_per_second"] = 0.0
+		}
+
+		stats["requests"] = requestStats
+
+		// Cache summary
+		cacheStats := libpack_cache.GetCacheStats()
+		if cacheStats != nil {
+			totalCacheRequests := cacheStats.CacheHits + cacheStats.CacheMisses
+			hitRate := 0.0
+			if totalCacheRequests > 0 {
+				hitRate = float64(cacheStats.CacheHits) / float64(totalCacheRequests) * 100
+			}
+			stats["cache_summary"] = map[string]interface{}{
+				"hits":         cacheStats.CacheHits,
+				"misses":       cacheStats.CacheMisses,
+				"hit_rate_pct": hitRate,
+				"total_cached": cacheStats.CachedQueries,
+			}
+		}
+	}
+
+	result["stats"] = stats
+
+	// Health
+	healthMgr := GetBackendHealthManager()
+	health := map[string]interface{}{
+		"status": "unknown",
+		"backend": map[string]interface{}{
+			"healthy": false,
+		},
+	}
+
+	if healthMgr != nil {
+		isHealthy := healthMgr.IsHealthy()
+		health["backend"] = map[string]interface{}{
+			"healthy":              isHealthy,
+			"consecutive_failures": healthMgr.GetConsecutiveFailures(),
+			"last_check":           healthMgr.GetLastHealthCheck().Format(time.RFC3339),
+		}
+
+		if isHealthy {
+			health["status"] = "healthy"
+		} else {
+			health["status"] = "unhealthy"
+		}
+	}
+	result["health"] = health
+
+	// Circuit breaker
+	cbStatus := map[string]interface{}{
+		"enabled": false,
+		"state":   "unknown",
+	}
+
+	if cfg != nil {
+		cbStatus["enabled"] = cfg.CircuitBreaker.Enable
+
+		if cb != nil {
+			cbMutex.RLock()
+			state := cb.State()
+			cbMutex.RUnlock()
+
+			cbStatus["state"] = state.String()
+			cbStatus["config"] = map[string]interface{}{
+				"max_failures":           cfg.CircuitBreaker.MaxFailures,
+				"failure_ratio":          cfg.CircuitBreaker.FailureRatio,
+				"timeout":                cfg.CircuitBreaker.Timeout,
+				"max_requests_half_open": cfg.CircuitBreaker.MaxRequestsInHalfOpen,
+				"return_cached_on_open":  cfg.CircuitBreaker.ReturnCachedOnOpen,
+			}
+		}
+	}
+	result["circuit_breaker"] = cbStatus
+
+	// Cache stats
+	cacheStats := map[string]interface{}{
+		"enabled": false,
+	}
+
+	if cfg != nil {
+		cacheStats["enabled"] = cfg.Cache.CacheEnable
+		cacheStats["redis_enabled"] = cfg.Cache.CacheRedisEnable
+		cacheStats["ttl_seconds"] = cfg.Cache.CacheTTL
+		cacheStats["max_memory_mb"] = cfg.Cache.CacheMaxMemorySize
+		cacheStats["max_entries"] = cfg.Cache.CacheMaxEntries
+
+		runtimeCacheStats := libpack_cache.GetCacheStats()
+		if runtimeCacheStats != nil {
+			cacheStats["cached_queries"] = runtimeCacheStats.CachedQueries
+			cacheStats["cache_hits"] = runtimeCacheStats.CacheHits
+			cacheStats["cache_misses"] = runtimeCacheStats.CacheMisses
+
+			totalRequests := runtimeCacheStats.CacheHits + runtimeCacheStats.CacheMisses
+			hitRate := 0.0
+			if totalRequests > 0 {
+				hitRate = float64(runtimeCacheStats.CacheHits) / float64(totalRequests) * 100
+			}
+			cacheStats["hit_rate_pct"] = hitRate
+
+			memoryUsage := libpack_cache.GetCacheMemoryUsage()
+			maxMemory := libpack_cache.GetCacheMaxMemorySize()
+			cacheStats["memory_usage_bytes"] = memoryUsage
+			cacheStats["memory_usage_mb"] = float64(memoryUsage) / (1024 * 1024)
+
+			memoryUsagePct := 0.0
+			if maxMemory > 0 {
+				memoryUsagePct = float64(memoryUsage) / float64(maxMemory) * 100
+			}
+			cacheStats["memory_usage_pct"] = memoryUsagePct
+		}
+	}
+	result["cache"] = cacheStats
+
+	// Connection stats
+	poolMgr := GetConnectionPoolManager()
+	connStats := map[string]interface{}{
+		"available": false,
+	}
+
+	if poolMgr != nil {
+		connStats = poolMgr.GetConnectionStats()
+		connStats["available"] = true
+	}
+	result["connections"] = connStats
+
+	// Retry budget
+	rb := GetRetryBudget()
+	if rb == nil {
+		result["retry_budget"] = map[string]interface{}{"enabled": false}
+	} else {
+		result["retry_budget"] = rb.GetStats()
+	}
+
+	// Coalescing
+	rc := GetRequestCoalescer()
+	if rc == nil {
+		result["coalescing"] = map[string]interface{}{"enabled": false}
+	} else {
+		result["coalescing"] = rc.GetStats()
+	}
+
+	// WebSocket
+	wsp := GetWebSocketProxy()
+	if wsp == nil {
+		result["websocket"] = map[string]interface{}{"enabled": false}
+	} else {
+		result["websocket"] = wsp.GetStats()
+	}
+
+	return result
 }
 
 var startTime = time.Now()
