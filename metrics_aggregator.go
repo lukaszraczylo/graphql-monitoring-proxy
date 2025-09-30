@@ -34,7 +34,8 @@ type InstanceMetrics struct {
 	LastUpdate     time.Time              `json:"last_update"`
 	UptimeSeconds  float64                `json:"uptime_seconds"`
 	Stats          map[string]interface{} `json:"stats"`
-	CacheSummary   map[string]interface{} `json:"cache_summary,omitempty"`
+	Cache          map[string]interface{} `json:"cache,omitempty"`         // Full cache details including memory
+	CacheSummary   map[string]interface{} `json:"cache_summary,omitempty"` // Deprecated: kept for compatibility
 	Health         map[string]interface{} `json:"health"`
 	CircuitBreaker map[string]interface{} `json:"circuit_breaker,omitempty"`
 	RetryBudget    map[string]interface{} `json:"retry_budget,omitempty"`
@@ -77,15 +78,44 @@ func InitializeMetricsAggregator(redisURL, redisPassword string, redisDB int, lo
 		opt.Password = redisPassword
 	}
 
-	// Create Redis client
+	// Create Redis client with connection timeouts
+	opt.DialTimeout = 2 * time.Second
+	opt.ReadTimeout = 2 * time.Second
+	opt.WriteTimeout = 2 * time.Second
+	opt.PoolTimeout = 3 * time.Second
+	opt.MaxRetries = 2
+
 	client := redis.NewClient(opt)
 
-	// Test connection
+	// Test connection with detailed error reporting
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := client.Ping(ctx).Err(); err != nil {
+		// Log detailed connection error
+		if logger != nil {
+			logger.Error(&libpack_logger.LogMessage{
+				Message: "❌ CRITICAL: Redis connection test FAILED during initialization",
+				Pairs: map[string]interface{}{
+					"error":        err.Error(),
+					"redis_url":    redisURL,
+					"redis_db":     redisDB,
+					"has_password": redisPassword != "",
+				},
+			})
+		}
 		return fmt.Errorf("failed to connect to Redis: %w", err)
+	}
+
+	// Log successful connection
+	if logger != nil {
+		logger.Info(&libpack_logger.LogMessage{
+			Message: "✓ Redis connection test PASSED",
+			Pairs: map[string]interface{}{
+				"redis_url": redisURL,
+				"redis_db":  redisDB,
+			},
+		})
 	}
 
 	// Generate unique instance ID (hostname + UUID for uniqueness)
@@ -156,12 +186,52 @@ func (ma *MetricsAggregator) startPublishing() {
 // publishMetrics collects current metrics and stores them in Redis
 // Note: This is exported for testing/debugging via admin API
 func (ma *MetricsAggregator) publishMetrics() {
+	// Defensive: check if aggregator is still valid
+	if ma == nil {
+		return
+	}
+
 	ma.mu.RLock()
 	defer ma.mu.RUnlock()
+
+	// Log that we're attempting to publish (use INFO level for visibility)
+	if ma.logger != nil {
+		ma.logger.Info(&libpack_logger.LogMessage{
+			Message: "Publishing metrics to Redis",
+			Pairs: map[string]interface{}{
+				"instance_id": ma.instanceID,
+			},
+		})
+	}
+
+	// Safety check: ensure global config is initialized
+	if cfg == nil {
+		if ma.logger != nil {
+			ma.logger.Warning(&libpack_logger.LogMessage{
+				Message: "Cannot publish metrics - global config not initialized yet",
+				Pairs: map[string]interface{}{
+					"instance_id": ma.instanceID,
+				},
+			})
+		}
+		return
+	}
 
 	// Gather all stats using the admin dashboard's method
 	dashboard := NewAdminDashboard(ma.logger)
 	allStats := dashboard.gatherAllStats()
+
+	if len(allStats) == 0 {
+		if ma.logger != nil {
+			ma.logger.Warning(&libpack_logger.LogMessage{
+				Message: "gatherAllStats returned empty/nil result",
+				Pairs: map[string]interface{}{
+					"instance_id": ma.instanceID,
+				},
+			})
+		}
+		return
+	}
 
 	// Create instance metrics
 	hostname, _ := os.Hostname()
@@ -181,7 +251,7 @@ func (ma *MetricsAggregator) publishMetrics() {
 	if stats, ok := allStats["stats"].(map[string]interface{}); ok {
 		metrics.Stats = stats
 
-		// Also extract cache summary separately for easier access
+		// Also extract cache summary separately for easier access (deprecated but kept for compatibility)
 		if cacheSummary, ok := stats["cache_summary"].(map[string]interface{}); ok {
 			metrics.CacheSummary = cacheSummary
 		}
@@ -195,8 +265,8 @@ func (ma *MetricsAggregator) publishMetrics() {
 					totalReq = total
 				}
 			}
-			ma.logger.Debug(&libpack_logger.LogMessage{
-				Message: "Publishing metrics to Redis",
+			ma.logger.Info(&libpack_logger.LogMessage{
+				Message: "Metrics gathered successfully",
 				Pairs: map[string]interface{}{
 					"instance_id":    ma.instanceID,
 					"has_requests":   hasReq,
@@ -223,6 +293,11 @@ func (ma *MetricsAggregator) publishMetrics() {
 			})
 		}
 		metrics.Stats = make(map[string]interface{})
+	}
+
+	// Extract full cache details (includes memory usage)
+	if cache, ok := allStats["cache"].(map[string]interface{}); ok {
+		metrics.Cache = cache
 	}
 
 	if health, ok := allStats["health"].(map[string]interface{}); ok {
@@ -260,7 +335,9 @@ func (ma *MetricsAggregator) publishMetrics() {
 
 	// Store in Redis hash with TTL
 	key := fmt.Sprintf("%s:%s", ma.publishKey, ma.instanceID)
-	ctx, cancel := context.WithTimeout(ma.ctx, 2*time.Second)
+
+	// Create a fresh context with timeout to avoid inheriting cancelled parent context
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	pipe := ma.redisClient.Pipeline()
@@ -286,7 +363,7 @@ func (ma *MetricsAggregator) publishMetrics() {
 
 	// Verify commands executed successfully
 	if ma.logger != nil {
-		ma.logger.Debug(&libpack_logger.LogMessage{
+		ma.logger.Info(&libpack_logger.LogMessage{
 			Message: "✓ Successfully published metrics to Redis",
 			Pairs: map[string]interface{}{
 				"instance_id": ma.instanceID,
@@ -300,6 +377,7 @@ func (ma *MetricsAggregator) publishMetrics() {
 
 // removeInstanceMetrics cleans up metrics from Redis on shutdown
 func (ma *MetricsAggregator) removeInstanceMetrics() {
+	// Create a fresh context with timeout for cleanup
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
@@ -307,7 +385,15 @@ func (ma *MetricsAggregator) removeInstanceMetrics() {
 	pipe := ma.redisClient.Pipeline()
 	pipe.Del(ctx, key)
 	pipe.SRem(ctx, ma.publishKey, ma.instanceID)
-	pipe.Exec(ctx)
+	_, err := pipe.Exec(ctx)
+
+	if err != nil && ma.logger != nil {
+		ma.logger.Warning(&libpack_logger.LogMessage{
+			Message: "Failed to remove instance metrics from Redis during shutdown",
+			Pairs:   map[string]interface{}{"instance_id": ma.instanceID, "error": err.Error()},
+		})
+		return
+	}
 
 	if ma.logger != nil {
 		ma.logger.Info(&libpack_logger.LogMessage{
@@ -319,7 +405,8 @@ func (ma *MetricsAggregator) removeInstanceMetrics() {
 
 // GetAggregatedMetrics retrieves and aggregates metrics from all instances
 func (ma *MetricsAggregator) GetAggregatedMetrics() (*AggregatedMetrics, error) {
-	ctx, cancel := context.WithTimeout(ma.ctx, 5*time.Second)
+	// Create a fresh context with timeout to avoid inheriting cancelled parent context
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Get all instance IDs
@@ -352,18 +439,22 @@ func (ma *MetricsAggregator) GetAggregatedMetrics() (*AggregatedMetrics, error) 
 	instances := make([]InstanceMetrics, 0, len(instanceIDs))
 	perInstance := make(map[string]InstanceMetrics)
 	healthyCount := 0
+	staleCount := 0
+	errorCount := 0
 
 	for i, cmd := range cmds {
 		data, err := cmd.Result()
 		if err != nil {
-			if ma.logger != nil {
-				ma.logger.Debug(&libpack_logger.LogMessage{
-					Message: "Failed to get instance metrics",
-					Pairs: map[string]interface{}{
-						"instance_id": instanceIDs[i],
-						"error":       err.Error(),
-					},
-				})
+			errorCount++
+			// Clean up stale instance ID from the set
+			if err == redis.Nil {
+				staleCount++
+				// Remove stale instance from set in background
+				go func(instID string) {
+					cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 2*time.Second)
+					defer cleanupCancel()
+					ma.redisClient.SRem(cleanupCtx, ma.publishKey, instID)
+				}(instanceIDs[i])
 			}
 			continue
 		}
@@ -379,8 +470,25 @@ func (ma *MetricsAggregator) GetAggregatedMetrics() (*AggregatedMetrics, error) 
 			continue
 		}
 
-		// Check if instance is stale (not updated in 2x TTL)
-		if time.Since(metrics.LastUpdate) > ma.ttl*2 {
+		// Check if instance is stale (not updated in 1 minute)
+		instanceAge := time.Since(metrics.LastUpdate)
+		if instanceAge > 1*time.Minute {
+			staleCount++
+			// Clean up stale instance from set in background
+			go func(instID string, age time.Duration) {
+				cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cleanupCancel()
+				ma.redisClient.SRem(cleanupCtx, ma.publishKey, instID)
+				if ma.logger != nil {
+					ma.logger.Info(&libpack_logger.LogMessage{
+						Message: "Removed inactive instance",
+						Pairs: map[string]interface{}{
+							"instance_id":      instID,
+							"inactive_seconds": age.Seconds(),
+						},
+					})
+				}
+			}(instanceIDs[i], instanceAge)
 			continue // Skip stale instances
 		}
 
@@ -393,6 +501,19 @@ func (ma *MetricsAggregator) GetAggregatedMetrics() (*AggregatedMetrics, error) 
 		}
 	}
 
+	// Log cleanup stats if we found stale instances
+	if ma.logger != nil && (staleCount > 0 || errorCount > 0) {
+		ma.logger.Info(&libpack_logger.LogMessage{
+			Message: "Cleaned up stale instance IDs from Redis",
+			Pairs: map[string]interface{}{
+				"total_in_set":    len(instanceIDs),
+				"valid_instances": len(instances),
+				"stale_cleaned":   staleCount,
+				"errors":          errorCount,
+			},
+		})
+	}
+
 	// Aggregate statistics
 	aggregated := &AggregatedMetrics{
 		TotalInstances:   len(instances),
@@ -401,6 +522,16 @@ func (ma *MetricsAggregator) GetAggregatedMetrics() (*AggregatedMetrics, error) 
 		CombinedStats:    ma.aggregateStats(instances),
 		Instances:        instances,
 		PerInstanceStats: perInstance,
+	}
+
+	if ma.logger != nil {
+		ma.logger.Info(&libpack_logger.LogMessage{
+			Message: "Successfully aggregated cluster metrics",
+			Pairs: map[string]interface{}{
+				"total_instances":   len(instances),
+				"healthy_instances": healthyCount,
+			},
+		})
 	}
 
 	return aggregated, nil
@@ -418,7 +549,7 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 	}
 
 	if ma.logger != nil {
-		ma.logger.Debug(&libpack_logger.LogMessage{
+		ma.logger.Info(&libpack_logger.LogMessage{
 			Message: "Aggregating stats from instances",
 			Pairs: map[string]interface{}{
 				"instance_count": len(instances),
@@ -435,6 +566,7 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 		totalCacheHits         int64
 		totalCacheMisses       int64
 		totalCachedQueries     int64
+		totalMemoryUsageMB     float64
 		totalCurrentRPS        float64
 		totalAvgRPS            float64
 		totalActiveConnections int64
@@ -442,6 +574,18 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 		totalCoalescedRequests int64
 		totalPrimaryRequests   int64
 		oldestUptime           float64
+
+		// Retry budget stats
+		totalRetryAllowed  int64
+		totalRetryDenied   int64
+		totalRetryAttempts int64
+		retryBudgetEnabled = false
+
+		// Circuit breaker stats
+		cbOpenCount           int
+		cbHalfOpenCount       int
+		cbClosedCount         int
+		circuitBreakerEnabled = false
 	)
 
 	for idx, instance := range instances {
@@ -501,7 +645,7 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 			}
 		}
 
-		// Aggregate cache stats
+		// Aggregate cache stats from CacheSummary (backward compatibility)
 		if len(instance.CacheSummary) > 0 {
 			if hits, ok := instance.CacheSummary["hits"].(float64); ok {
 				totalCacheHits += int64(hits)
@@ -511,6 +655,13 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 			}
 			if cached, ok := instance.CacheSummary["total_cached"].(float64); ok {
 				totalCachedQueries += int64(cached)
+			}
+		}
+
+		// Aggregate memory usage from full cache details
+		if len(instance.Cache) > 0 {
+			if memMB, ok := instance.Cache["memory_usage_mb"].(float64); ok {
+				totalMemoryUsageMB += memMB
 			}
 		}
 
@@ -537,6 +688,39 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 				totalPrimaryRequests += int64(primary)
 			}
 		}
+
+		// Aggregate retry budget stats
+		if len(instance.RetryBudget) > 0 {
+			if enabled, ok := instance.RetryBudget["enabled"].(bool); ok && enabled {
+				retryBudgetEnabled = true
+			}
+			if allowed, ok := instance.RetryBudget["allowed_retries"].(float64); ok {
+				totalRetryAllowed += int64(allowed)
+			}
+			if denied, ok := instance.RetryBudget["denied_retries"].(float64); ok {
+				totalRetryDenied += int64(denied)
+			}
+			if attempts, ok := instance.RetryBudget["total_attempts"].(float64); ok {
+				totalRetryAttempts += int64(attempts)
+			}
+		}
+
+		// Aggregate circuit breaker stats
+		if len(instance.CircuitBreaker) > 0 {
+			if enabled, ok := instance.CircuitBreaker["enabled"].(bool); ok && enabled {
+				circuitBreakerEnabled = true
+			}
+			if state, ok := instance.CircuitBreaker["state"].(string); ok {
+				switch state {
+				case "open":
+					cbOpenCount++
+				case "half-open":
+					cbHalfOpenCount++
+				case "closed":
+					cbClosedCount++
+				}
+			}
+		}
 	}
 
 	// Calculate derived metrics
@@ -557,7 +741,25 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 		backendSavings = float64(totalCoalescedRequests) / float64(totalCoalRequests) * 100
 	}
 
-	return map[string]interface{}{
+	// Calculate retry budget denial rate
+	retryDenialRate := 0.0
+	if totalRetryAttempts > 0 {
+		retryDenialRate = float64(totalRetryDenied) / float64(totalRetryAttempts) * 100
+	}
+
+	// Determine overall circuit breaker state
+	cbState := "unknown"
+	if circuitBreakerEnabled {
+		if cbOpenCount > 0 {
+			cbState = "open" // If any instance is open, cluster is in degraded state
+		} else if cbHalfOpenCount > 0 {
+			cbState = "half-open"
+		} else if cbClosedCount > 0 {
+			cbState = "closed"
+		}
+	}
+
+	result := map[string]interface{}{
 		"cluster_mode":    true,
 		"total_instances": len(instances),
 		"cluster_uptime":  oldestUptime,
@@ -576,6 +778,9 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 			"hit_rate_pct": cacheHitRate,
 			"total_cached": totalCachedQueries,
 		},
+		"memory": map[string]interface{}{
+			"total_usage_mb": totalMemoryUsageMB,
+		},
 		"connections": map[string]interface{}{
 			"total_active": totalActiveConnections,
 		},
@@ -583,11 +788,40 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 			"total_connections": totalWSConnections,
 		},
 		"coalescing": map[string]interface{}{
+			"enabled":                  len(instances) > 0, // enabled if we have instances with data
 			"total_coalesced_requests": totalCoalescedRequests,
 			"total_primary_requests":   totalPrimaryRequests,
 			"backend_savings_pct":      backendSavings,
+			"coalescing_rate_pct":      backendSavings,
+		},
+		"retry_budget": map[string]interface{}{
+			"enabled":         retryBudgetEnabled,
+			"allowed_retries": totalRetryAllowed,
+			"denied_retries":  totalRetryDenied,
+			"total_attempts":  totalRetryAttempts,
+			"denial_rate_pct": retryDenialRate,
+		},
+		"circuit_breaker": map[string]interface{}{
+			"enabled":            circuitBreakerEnabled,
+			"state":              cbState,
+			"instances_open":     cbOpenCount,
+			"instances_closed":   cbClosedCount,
+			"instances_halfopen": cbHalfOpenCount,
 		},
 	}
+
+	if ma.logger != nil {
+		ma.logger.Info(&libpack_logger.LogMessage{
+			Message: "Aggregation complete",
+			Pairs: map[string]interface{}{
+				"total_requests":  totalRequests,
+				"total_memory_mb": totalMemoryUsageMB,
+				"instance_count":  len(instances),
+			},
+		})
+	}
+
+	return result
 }
 
 // Shutdown stops the metrics aggregator
@@ -617,7 +851,8 @@ func (ma *MetricsAggregator) GetInstanceID() string {
 
 // IsClusterMode returns true if multiple instances are detected
 func (ma *MetricsAggregator) IsClusterMode() bool {
-	ctx, cancel := context.WithTimeout(ma.ctx, 2*time.Second)
+	// Create a fresh context with timeout to avoid inheriting cancelled parent context
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	count, err := ma.redisClient.SCard(ctx, ma.publishKey).Result()

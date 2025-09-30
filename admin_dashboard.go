@@ -89,9 +89,9 @@ func (ad *AdminDashboard) getStats(c *fiber.Ctx) error {
 	}
 
 	if cfg != nil && cfg.Monitoring != nil {
-		succeeded := getAdminMetricValue("graphql_proxy_succeeded_total")
-		failed := getAdminMetricValue("graphql_proxy_failed_total")
-		skipped := getAdminMetricValue("graphql_proxy_skipped_total")
+		succeeded := getAdminMetricValue("requests_succesful")
+		failed := getAdminMetricValue("requests_failed")
+		skipped := getAdminMetricValue("requests_skipped")
 		total := succeeded + failed + skipped
 
 		// Request statistics
@@ -252,18 +252,24 @@ func (ad *AdminDashboard) getCacheStats(c *fiber.Ctx) error {
 			}
 			stats["hit_rate_pct"] = hitRate
 
-			// Get memory usage
-			memoryUsage := libpack_cache.GetCacheMemoryUsage()
-			maxMemory := libpack_cache.GetCacheMaxMemorySize()
-			stats["memory_usage_bytes"] = memoryUsage
-			stats["memory_usage_mb"] = float64(memoryUsage) / (1024 * 1024)
+			// Get memory usage only for in-memory cache
+			if cfg.Cache.CacheEnable && !cfg.Cache.CacheRedisEnable {
+				memoryUsage := libpack_cache.GetCacheMemoryUsage()
+				maxMemory := libpack_cache.GetCacheMaxMemorySize()
+				stats["memory_usage_bytes"] = memoryUsage
+				stats["memory_usage_mb"] = float64(memoryUsage) / (1024 * 1024)
 
-			// Calculate memory usage percentage
-			memoryUsagePct := 0.0
-			if maxMemory > 0 {
-				memoryUsagePct = float64(memoryUsage) / float64(maxMemory) * 100
+				// Calculate memory usage percentage
+				memoryUsagePct := 0.0
+				if maxMemory > 0 {
+					memoryUsagePct = float64(memoryUsage) / float64(maxMemory) * 100
+				}
+				stats["memory_usage_pct"] = memoryUsagePct
+			} else {
+				// For Redis cache, memory tracking not available per instance
+				stats["memory_usage_mb"] = -1 // Sentinel value for "not applicable"
+				stats["memory_usage_pct"] = -1
 			}
-			stats["memory_usage_pct"] = memoryUsagePct
 		}
 	}
 
@@ -500,28 +506,18 @@ func (ad *AdminDashboard) forcePublish(c *fiber.Ctx) error {
 		})
 	}
 
-	// Call publishMetrics directly
-	aggregator.publishMetrics()
-
-	// Wait a moment then check if it worked
-	time.Sleep(500 * time.Millisecond)
-
-	metrics, err := aggregator.GetAggregatedMetrics()
-	if err != nil {
-		return c.JSON(map[string]interface{}{
-			"success":      false,
-			"publish_done": true,
-			"error":        err.Error(),
-			"check_logs":   "Look for ❌ CRITICAL or ✓ Successfully published messages",
-		})
-	}
+	// Trigger publish in goroutine to avoid blocking
+	go aggregator.publishMetrics()
 
 	return c.JSON(map[string]interface{}{
-		"success":         true,
-		"publish_done":    true,
-		"instances_found": metrics.TotalInstances,
-		"message":         fmt.Sprintf("Found %d instance(s) after forced publish", metrics.TotalInstances),
-		"check_logs":      "Look for ✓ Successfully published metrics to Redis",
+		"success":   true,
+		"triggered": true,
+		"message":   "Publish triggered in background",
+		"next_steps": []string{
+			"Wait 2 seconds",
+			"Check GET /admin/api/cluster/debug",
+			"Check server logs for ✓ Successfully published or ❌ CRITICAL errors",
+		},
 	})
 }
 
@@ -644,9 +640,9 @@ func (ad *AdminDashboard) gatherAllStats() map[string]interface{} {
 	}
 
 	if cfg != nil && cfg.Monitoring != nil {
-		succeeded := getAdminMetricValue("graphql_proxy_succeeded_total")
-		failed := getAdminMetricValue("graphql_proxy_failed_total")
-		skipped := getAdminMetricValue("graphql_proxy_skipped_total")
+		succeeded := getAdminMetricValue("requests_succesful")
+		failed := getAdminMetricValue("requests_failed")
+		skipped := getAdminMetricValue("requests_skipped")
 		total := succeeded + failed + skipped
 
 		requestStats := map[string]interface{}{

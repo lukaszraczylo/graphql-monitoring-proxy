@@ -652,6 +652,12 @@
         let clusterModeEnabled = false;
         let clusterModeAvailable = false;
 
+        // Smoothing buffers for metrics (10-second moving average at 2s intervals = 5 data points)
+        const smoothingWindow = 5;
+        const rpsBuffer = [];
+        const successRateBuffer = [];
+        const cacheHitRateBuffer = [];
+
         // Initialize charts
         function initCharts() {
             const rpsCtx = document.getElementById('rps-chart').getContext('2d');
@@ -911,6 +917,13 @@
             // Update combined stats
             if (clusterData.stats) {
                 updateStats({ ...clusterData.stats, cluster_mode: true });
+
+                // Update memory usage from cluster stats
+                if (clusterData.stats.memory) {
+                    updateCacheStats({
+                        memory_usage_mb: clusterData.stats.memory.total_usage_mb || 0
+                    });
+                }
             } else {
                 console.warn('[Cluster] No stats in clusterData');
             }
@@ -963,16 +976,39 @@
                 const requests = stats.requests || {};
                 const cache = instance.cache_summary || stats.cache_summary || {};
 
+                const failedCount = requests.failed || 0;
+                const totalCount = requests.total || 0;
+                const failureInfo = failedCount > 0 ? ` (${failedCount} failed)` : '';
+
                 const metrics = [
-                    { label: 'Total Requests', value: (requests.total || 0).toLocaleString() },
-                    { label: 'Success Rate', value: (requests.success_rate_pct || 0).toFixed(1) + '%' },
-                    { label: 'Current RPS', value: (requests.current_requests_per_second || 0).toFixed(1) },
-                    { label: 'Cache Hit Rate', value: (cache.hit_rate_pct || 0).toFixed(1) + '%' }
+                    {
+                        label: 'Total Requests',
+                        value: formatNumber(totalCount),
+                        title: totalCount.toLocaleString() + ' total requests' + failureInfo
+                    },
+                    {
+                        label: 'Success Rate',
+                        value: (requests.success_rate_pct || 0).toFixed(1) + '%',
+                        title: null
+                    },
+                    {
+                        label: 'Current RPS',
+                        value: (requests.current_requests_per_second || 0).toFixed(1),
+                        title: null
+                    },
+                    {
+                        label: 'Cache Hit Rate',
+                        value: (cache.hit_rate_pct || 0).toFixed(1) + '%',
+                        title: null
+                    }
                 ];
 
                 metrics.forEach(metric => {
                     const metricDiv = document.createElement('div');
                     metricDiv.className = 'instance-metric';
+                    if (metric.title) {
+                        metricDiv.title = metric.title;
+                    }
                     metricDiv.innerHTML = `
                         <div class="instance-metric-label">${metric.label}</div>
                         <div class="instance-metric-value">${metric.value}</div>
@@ -997,6 +1033,50 @@
             return `${minutes}m`;
         }
 
+        // Format large numbers compactly (1.2M, 3.4K, etc)
+        function formatNumber(num) {
+            if (num === undefined || num === null) return '0';
+
+            const absNum = Math.abs(num);
+            if (absNum >= 1000000000) {
+                return (num / 1000000000).toFixed(1) + 'B';
+            }
+            if (absNum >= 1000000) {
+                return (num / 1000000).toFixed(1) + 'M';
+            }
+            if (absNum >= 1000) {
+                return (num / 1000).toFixed(1) + 'K';
+            }
+            return num.toLocaleString();
+        }
+
+        // Smooth metric values using moving average
+        function smoothMetric(buffer, newValue) {
+            buffer.push(newValue);
+            if (buffer.length > smoothingWindow) {
+                buffer.shift(); // Remove oldest value
+            }
+            // Calculate average
+            const sum = buffer.reduce((a, b) => a + b, 0);
+            return sum / buffer.length;
+        }
+
+        // Get trend indicator (↑ ↗ → ↘ ↓)
+        function getTrendIndicator(buffer) {
+            if (buffer.length < 2) return '→';
+            const recent = buffer.slice(-3); // Last 3 values
+            const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
+            const diff = recent[recent.length - 1] - recent[0];
+            const percentChange = Math.abs(diff / (avg || 1)) * 100;
+
+            if (percentChange < 5) return '→'; // Stable
+            if (diff > 0) {
+                return percentChange > 15 ? '↑' : '↗'; // Strong/moderate increase
+            } else {
+                return percentChange > 15 ? '↓' : '↘'; // Strong/moderate decrease
+            }
+        }
+
         // Update all statistics
         function updateAllStats(data) {
             if (data.stats) updateStats(data.stats);
@@ -1019,69 +1099,105 @@
             if (data.requests) {
                 const req = data.requests;
 
-                // Total requests
-                document.getElementById('total-requests').textContent =
-                    (req.total || 0).toLocaleString();
-                document.getElementById('succeeded-requests').textContent =
-                    (req.succeeded || 0).toLocaleString();
-                document.getElementById('failed-requests').textContent =
-                    (req.failed || 0).toLocaleString();
+                // Total requests with compact formatting
+                document.getElementById('total-requests').textContent = formatNumber(req.total || 0);
+                document.getElementById('total-requests').title = (req.total || 0).toLocaleString() + ' total requests';
 
-                // Success rate
-                const successRate = req.success_rate_pct || 0;
+                document.getElementById('succeeded-requests').textContent = formatNumber(req.succeeded || 0);
+                document.getElementById('succeeded-requests').title = (req.succeeded || 0).toLocaleString() + ' succeeded';
+
+                document.getElementById('failed-requests').textContent = formatNumber(req.failed || 0);
+                document.getElementById('failed-requests').title = (req.failed || 0).toLocaleString() + ' failed';
+
+                // Show failure details if there are failures
+                if (req.failed > 0) {
+                    const failureRate = (req.failed / (req.total || 1) * 100).toFixed(2);
+                    document.getElementById('failed-requests').title += ` (${failureRate}% failure rate)`;
+                }
+
+                // Success rate with smoothing
+                const rawSuccessRate = req.success_rate_pct || 0;
+                const smoothedSuccessRate = smoothMetric(successRateBuffer, rawSuccessRate);
+                const successTrend = getTrendIndicator(successRateBuffer);
+
                 document.getElementById('success-rate').textContent =
-                    successRate.toFixed(1) + '%';
+                    smoothedSuccessRate.toFixed(1) + '% ' + successTrend;
+                document.getElementById('success-rate').title =
+                    `10s avg: ${smoothedSuccessRate.toFixed(2)}% | Current: ${rawSuccessRate.toFixed(2)}%`;
                 document.getElementById('success-progress').style.width =
-                    successRate + '%';
+                    smoothedSuccessRate + '%';
 
-                // RPS
-                const currentRPS = req.current_requests_per_second || 0;
+                // RPS with smoothing
+                const rawRPS = req.current_requests_per_second || 0;
+                const smoothedRPS = smoothMetric(rpsBuffer, rawRPS);
+                const rpsTrend = getTrendIndicator(rpsBuffer);
+
                 document.getElementById('current-rps').textContent =
-                    currentRPS.toFixed(1);
+                    smoothedRPS.toFixed(1) + ' ' + rpsTrend;
+                document.getElementById('current-rps').title =
+                    `10s avg: ${smoothedRPS.toFixed(2)} | Current: ${rawRPS.toFixed(2)}`;
+
                 document.getElementById('avg-rps').textContent =
                     (req.avg_requests_per_second || 0).toFixed(1);
 
-                // Update RPS chart
-                updateChart(rpsChart, rpsData, currentRPS);
+                // Update RPS chart with smoothed value
+                updateChart(rpsChart, rpsData, smoothedRPS);
             }
 
-            // Cache summary
+            // Cache summary with smoothing
             if (data.cache_summary) {
                 const cache = data.cache_summary;
 
-                const hitRate = cache.hit_rate_pct || 0;
+                const rawHitRate = cache.hit_rate_pct || 0;
+                const smoothedHitRate = smoothMetric(cacheHitRateBuffer, rawHitRate);
+                const hitRateTrend = getTrendIndicator(cacheHitRateBuffer);
+
                 document.getElementById('cache-hit-rate').textContent =
-                    hitRate.toFixed(1) + '%';
+                    smoothedHitRate.toFixed(1) + '% ' + hitRateTrend;
+                document.getElementById('cache-hit-rate').title =
+                    `10s avg: ${smoothedHitRate.toFixed(2)}% | Current: ${rawHitRate.toFixed(2)}%`;
                 document.getElementById('cache-hit-progress').style.width =
-                    hitRate + '%';
+                    smoothedHitRate + '%';
 
-                document.getElementById('cache-hits').textContent =
-                    (cache.hits || 0).toLocaleString();
-                document.getElementById('cache-hits-detail').textContent =
-                    (cache.hits || 0).toLocaleString();
-                document.getElementById('cache-misses').textContent =
-                    (cache.misses || 0).toLocaleString();
-                document.getElementById('cached-queries').textContent =
-                    (cache.total_cached || 0).toLocaleString();
+                document.getElementById('cache-hits').textContent = formatNumber(cache.hits || 0);
+                document.getElementById('cache-hits').title = (cache.hits || 0).toLocaleString() + ' cache hits';
 
-                // Update cache hit rate chart
-                updateChart(cacheChart, cacheData, hitRate);
+                document.getElementById('cache-hits-detail').textContent = formatNumber(cache.hits || 0);
+                document.getElementById('cache-hits-detail').title = (cache.hits || 0).toLocaleString();
+
+                document.getElementById('cache-misses').textContent = formatNumber(cache.misses || 0);
+                document.getElementById('cache-misses').title = (cache.misses || 0).toLocaleString() + ' cache misses';
+
+                document.getElementById('cached-queries').textContent = formatNumber(cache.total_cached || 0);
+                document.getElementById('cached-queries').title = (cache.total_cached || 0).toLocaleString() + ' unique queries cached';
+
+                // Update cache hit rate chart with smoothed value
+                updateChart(cacheChart, cacheData, smoothedHitRate);
             }
         }
 
         // Update cache detailed stats
         function updateCacheStats(data) {
             if (data.memory_usage_mb !== undefined) {
-                document.getElementById('cache-memory').textContent =
-                    data.memory_usage_mb.toFixed(2) + ' MB';
-            }
+                if (data.memory_usage_mb === -1) {
+                    // Redis cache - memory tracking not available
+                    document.getElementById('cache-memory').textContent = 'N/A';
+                    document.getElementById('cache-memory').title = 'Memory tracking not available for Redis cache';
+                    document.getElementById('cache-memory-pct').textContent = 'Redis cache';
+                    document.getElementById('memory-progress').style.width = '0%';
+                } else {
+                    document.getElementById('cache-memory').textContent =
+                        data.memory_usage_mb.toFixed(2) + ' MB';
+                    document.getElementById('cache-memory').title = 'In-memory cache usage';
 
-            if (data.memory_usage_pct !== undefined) {
-                const memPct = data.memory_usage_pct;
-                document.getElementById('cache-memory-pct').textContent =
-                    memPct.toFixed(1) + '% used';
-                document.getElementById('memory-progress').style.width =
-                    memPct + '%';
+                    if (data.memory_usage_pct !== undefined) {
+                        const memPct = data.memory_usage_pct;
+                        document.getElementById('cache-memory-pct').textContent =
+                            memPct.toFixed(1) + '% used';
+                        document.getElementById('memory-progress').style.width =
+                            memPct + '%';
+                    }
+                }
             }
         }
 
