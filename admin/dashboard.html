@@ -914,6 +914,11 @@
             document.getElementById('cluster-total-instances').textContent = clusterData.total_instances || 0;
             document.getElementById('cluster-healthy-instances').textContent = clusterData.healthy_instances || 0;
 
+            // Update cluster info in toggle label
+            const totalInstances = clusterData.total_instances || 0;
+            document.getElementById('cluster-info').textContent =
+                `(${totalInstances} instance${totalInstances !== 1 ? 's' : ''} available)`;
+
             // Update combined stats
             if (clusterData.stats) {
                 updateStats({ ...clusterData.stats, cluster_mode: true });
