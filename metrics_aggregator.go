@@ -154,6 +154,7 @@ func (ma *MetricsAggregator) startPublishing() {
 }
 
 // publishMetrics collects current metrics and stores them in Redis
+// Note: This is exported for testing/debugging via admin API
 func (ma *MetricsAggregator) publishMetrics() {
 	ma.mu.RLock()
 	defer ma.mu.RUnlock()

@@ -50,6 +50,7 @@ func (ad *AdminDashboard) RegisterRoutes(app *fiber.App) {
 	app.Get("/admin/api/cluster/stats", ad.getClusterStats)
 	app.Get("/admin/api/cluster/instances", ad.getClusterInstances)
 	app.Get("/admin/api/cluster/debug", ad.getClusterDebug)
+	app.Post("/admin/api/cluster/force-publish", ad.forcePublish)
 
 	// Control endpoints
 	app.Post("/admin/api/cache/clear", ad.clearCache)
@@ -487,6 +488,41 @@ func getMapKeys(m map[string]interface{}) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+// forcePublish forces an immediate metrics publish for testing
+func (ad *AdminDashboard) forcePublish(c *fiber.Ctx) error {
+	aggregator := GetMetricsAggregator()
+	if aggregator == nil {
+		return c.Status(503).JSON(map[string]interface{}{
+			"error":   "Aggregator not initialized",
+			"success": false,
+		})
+	}
+
+	// Call publishMetrics directly
+	aggregator.publishMetrics()
+
+	// Wait a moment then check if it worked
+	time.Sleep(500 * time.Millisecond)
+
+	metrics, err := aggregator.GetAggregatedMetrics()
+	if err != nil {
+		return c.JSON(map[string]interface{}{
+			"success":      false,
+			"publish_done": true,
+			"error":        err.Error(),
+			"check_logs":   "Look for ❌ CRITICAL or ✓ Successfully published messages",
+		})
+	}
+
+	return c.JSON(map[string]interface{}{
+		"success":         true,
+		"publish_done":    true,
+		"instances_found": metrics.TotalInstances,
+		"message":         fmt.Sprintf("Found %d instance(s) after forced publish", metrics.TotalInstances),
+		"check_logs":      "Look for ✓ Successfully published metrics to Redis",
+	})
 }
 
 // Helper to get metric value for admin dashboard
