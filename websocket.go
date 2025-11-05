@@ -90,8 +90,14 @@ func (wsp *WebSocketProxy) HandleWebSocket(c *fiber.Ctx) error {
 
 	// Capture headers from the upgrade request to forward to backend
 	headers := make(http.Header)
+	var subprotocols []string
+
 	for key, value := range c.Request().Header.All() {
 		keyStr := string(key)
+		// Capture subprotocol separately
+		if keyStr == "Sec-Websocket-Protocol" || keyStr == "Sec-WebSocket-Protocol" {
+			subprotocols = append(subprotocols, string(value))
+		}
 		// Forward important headers including WebSocket subprotocol
 		// Skip only connection-establishment headers that will be regenerated
 		if keyStr != "Connection" && keyStr != "Upgrade" &&
@@ -101,11 +107,16 @@ func (wsp *WebSocketProxy) HandleWebSocket(c *fiber.Ctx) error {
 		}
 	}
 
+	// Configure WebSocket with subprotocol support
+	config := websocket.Config{
+		Subprotocols: subprotocols,
+	}
+
 	return websocket.New(func(clientConn *websocket.Conn) {
 		// Use background context for long-lived WebSocket connections
 		// The original request context expires after the upgrade
 		wsp.handleConnection(context.Background(), clientConn, headers)
-	})(c)
+	}, config)(c)
 }
 
 // handleConnection manages a single WebSocket connection
