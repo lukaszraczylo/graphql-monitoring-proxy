@@ -69,19 +69,33 @@ func ensureDefaultLabels(labels *map[string]string, podName string) {
 }
 
 func appendSortedLabels(buf *bytes.Buffer, labels map[string]string) {
-	keys := getSortedKeys(labels)
+	if len(labels) == 0 {
+		return
+	}
+
+	// Create a snapshot to avoid concurrent access issues
+	labelsCopy := make(map[string]string, len(labels))
+	for k, v := range labels {
+		labelsCopy[k] = v
+	}
+
+	keys := getSortedKeys(labelsCopy)
 	for i, k := range keys {
 		if i > 0 {
 			buf.WriteByte(',')
 		}
 		buf.WriteString(k)
 		buf.WriteString(`="`)
-		buf.WriteString(labels[k])
+		buf.WriteString(labelsCopy[k])
 		buf.WriteByte('"')
 	}
 }
 
 func getSortedKeys(labels map[string]string) []string {
+	if labels == nil {
+		return []string{}
+	}
+
 	labelsKey := labelsToString(labels)
 
 	// Check if the sorted keys are already cached
@@ -89,7 +103,7 @@ func getSortedKeys(labels map[string]string) []string {
 		return keys.([]string)
 	}
 
-	// Compute the sorted keys
+	// Compute the sorted keys - create a snapshot to avoid concurrent access issues
 	keys := make([]string, 0, len(labels))
 	for k := range labels {
 		keys = append(keys, k)
@@ -103,9 +117,17 @@ func getSortedKeys(labels map[string]string) []string {
 }
 
 func labelsToString(labels map[string]string) string {
+	if labels == nil {
+		return ""
+	}
+
+	// Create a snapshot of the map to avoid concurrent access issues
 	keys := make([]string, 0, len(labels))
-	for k := range labels {
+	values := make(map[string]string, len(labels))
+
+	for k, v := range labels {
 		keys = append(keys, k)
+		values[k] = v
 	}
 	sort.Strings(keys)
 
@@ -113,7 +135,7 @@ func labelsToString(labels map[string]string) string {
 	for _, k := range keys {
 		sb.WriteString(k)
 		sb.WriteByte('=')
-		sb.WriteString(labels[k])
+		sb.WriteString(values[k])
 		sb.WriteByte(';')
 	}
 	return sb.String()
@@ -168,13 +190,23 @@ func compile_metrics_with_labels(name string, labels map[string]string) string {
 
 	buf.WriteString(name)
 
-	keys := getSortedKeys(labels)
+	if len(labels) == 0 {
+		return buf.String()
+	}
+
+	// Create a snapshot to avoid concurrent access issues
+	labelsCopy := make(map[string]string, len(labels))
+	for k, v := range labels {
+		labelsCopy[k] = v
+	}
+
+	keys := getSortedKeys(labelsCopy)
 
 	for _, k := range keys {
 		buf.WriteByte('_')
 		buf.WriteString(k)
 		buf.WriteByte('_')
-		buf.WriteString(labels[k])
+		buf.WriteString(labelsCopy[k])
 	}
 
 	return buf.String()
