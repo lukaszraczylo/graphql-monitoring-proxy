@@ -92,7 +92,8 @@ func (wsp *WebSocketProxy) HandleWebSocket(c *fiber.Ctx) error {
 	headers := make(http.Header)
 	for key, value := range c.Request().Header.All() {
 		keyStr := string(key)
-		// Forward important headers (skip connection-specific ones)
+		// Forward important headers including WebSocket subprotocol
+		// Skip only connection-establishment headers that will be regenerated
 		if keyStr != "Connection" && keyStr != "Upgrade" &&
 			keyStr != "Sec-Websocket-Key" && keyStr != "Sec-Websocket-Version" &&
 			keyStr != "Sec-Websocket-Extensions" {
@@ -146,6 +147,17 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 		return
 	}
 	defer backendConn.Close()
+
+	if wsp.logger != nil {
+		wsp.logger.Debug(&libpack_logger.LogMessage{
+			Message: "Backend WebSocket connection established",
+			Pairs: map[string]interface{}{
+				"connection_id":     connectionID,
+				"subprotocol":       backendConn.Subprotocol(),
+				"has_authorization": headers.Get("Authorization") != "",
+			},
+		})
+	}
 
 	// Set up bidirectional proxying
 	var wg sync.WaitGroup
@@ -326,9 +338,18 @@ func (wsp *WebSocketProxy) dialBackend(ctx context.Context, headers http.Header)
 	// Append GraphQL WebSocket path
 	wsURL = wsURL + "/v1/graphql"
 
+	// Extract subprotocols from headers (e.g., graphql-ws, graphql-transport-ws)
+	var subprotocols []string
+	if proto := headers.Get("Sec-WebSocket-Protocol"); proto != "" {
+		subprotocols = []string{proto}
+		// Remove from headers since it will be set via Subprotocols field
+		headers.Del("Sec-WebSocket-Protocol")
+	}
+
 	// Use gorilla websocket dialer
 	dialer := gorillaws.Dialer{
 		HandshakeTimeout: 10 * time.Second,
+		Subprotocols:     subprotocols,
 	}
 
 	// Dial the backend with forwarded headers
