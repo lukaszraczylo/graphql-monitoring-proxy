@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -167,7 +168,8 @@ func TestWebSocketProxy_DialBackend_URLConversion(t *testing.T) {
 			// We can't fully test dialBackend without a real WebSocket server,
 			// but we can verify the URL conversion logic
 			ctx := context.Background()
-			_, err := wsp.dialBackend(ctx)
+			headers := http.Header{}
+			_, err := wsp.dialBackend(ctx, headers)
 
 			// We expect an error since there's no server, but we verify the conversion happened
 			assert.Error(t, err) // Should fail to connect to non-existent server
