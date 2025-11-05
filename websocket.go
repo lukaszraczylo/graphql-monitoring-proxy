@@ -311,6 +311,9 @@ func (wsp *WebSocketProxy) dialBackend(ctx context.Context) (*gorillaws.Conn, er
 		wsURL = "wss://" + wsURL[8:]
 	}
 
+	// Append GraphQL WebSocket path
+	wsURL = wsURL + "/v1/graphql"
+
 	// Use gorilla websocket dialer
 	dialer := gorillaws.Dialer{
 		HandshakeTimeout: 10 * time.Second,
