@@ -89,7 +89,9 @@ func (wsp *WebSocketProxy) HandleWebSocket(c *fiber.Ctx) error {
 	}
 
 	return websocket.New(func(clientConn *websocket.Conn) {
-		wsp.handleConnection(c.Context(), clientConn)
+		// Use background context for long-lived WebSocket connections
+		// The original request context expires after the upgrade
+		wsp.handleConnection(context.Background(), clientConn)
 	})(c)
 }
 
