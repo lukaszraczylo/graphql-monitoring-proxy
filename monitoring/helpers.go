@@ -69,25 +69,42 @@ func ensureDefaultLabels(labels *map[string]string, podName string) {
 }
 
 func appendSortedLabels(buf *bytes.Buffer, labels map[string]string) {
-	if len(labels) == 0 {
+	// Add defer/recover to prevent panics from crashing the application
+	defer func() {
+		if r := recover(); r != nil {
+			// Log the panic but don't crash
+			fmt.Fprintf(os.Stderr, "Recovered from panic in appendSortedLabels: %v\n", r)
+		}
+	}()
+
+	if len(labels) == 0 || buf == nil {
 		return
 	}
 
 	// Create a snapshot to avoid concurrent access issues
 	labelsCopy := make(map[string]string, len(labels))
 	for k, v := range labels {
+		if k == "" {
+			continue // Skip empty keys
+		}
 		labelsCopy[k] = v
+	}
+
+	if len(labelsCopy) == 0 {
+		return
 	}
 
 	keys := getSortedKeys(labelsCopy)
 	for i, k := range keys {
-		if i > 0 {
-			buf.WriteByte(',')
+		if v, ok := labelsCopy[k]; ok {
+			if i > 0 {
+				buf.WriteByte(',')
+			}
+			buf.WriteString(k)
+			buf.WriteString(`="`)
+			buf.WriteString(v)
+			buf.WriteByte('"')
 		}
-		buf.WriteString(k)
-		buf.WriteString(`="`)
-		buf.WriteString(labelsCopy[k])
-		buf.WriteByte('"')
 	}
 }
 
@@ -117,7 +134,15 @@ func getSortedKeys(labels map[string]string) []string {
 }
 
 func labelsToString(labels map[string]string) string {
-	if labels == nil {
+	// Add defer/recover to prevent panics from crashing the application
+	defer func() {
+		if r := recover(); r != nil {
+			// Log the panic but don't crash
+			fmt.Fprintf(os.Stderr, "Recovered from panic in labelsToString: %v\n", r)
+		}
+	}()
+
+	if len(labels) == 0 {
 		return ""
 	}
 
@@ -126,17 +151,34 @@ func labelsToString(labels map[string]string) string {
 	values := make(map[string]string, len(labels))
 
 	for k, v := range labels {
+		if k == "" {
+			continue // Skip empty keys
+		}
 		keys = append(keys, k)
 		values[k] = v
 	}
+
+	if len(keys) == 0 {
+		return ""
+	}
+
 	sort.Strings(keys)
 
+	// Pre-allocate the builder with estimated capacity to avoid reallocation
 	var sb strings.Builder
+	estimatedSize := 0
 	for _, k := range keys {
-		sb.WriteString(k)
-		sb.WriteByte('=')
-		sb.WriteString(values[k])
-		sb.WriteByte(';')
+		estimatedSize += len(k) + len(values[k]) + 2 // key + value + '=' + ';'
+	}
+	sb.Grow(estimatedSize)
+
+	for _, k := range keys {
+		if v, ok := values[k]; ok {
+			sb.WriteString(k)
+			sb.WriteByte('=')
+			sb.WriteString(v)
+			sb.WriteByte(';')
+		}
 	}
 	return sb.String()
 }
@@ -186,6 +228,14 @@ func is_special_rune(r rune) bool {
 }
 
 func compile_metrics_with_labels(name string, labels map[string]string) string {
+	// Add defer/recover to prevent panics from crashing the application
+	defer func() {
+		if r := recover(); r != nil {
+			// Log the panic but don't crash
+			fmt.Fprintf(os.Stderr, "Recovered from panic in compile_metrics_with_labels: %v\n", r)
+		}
+	}()
+
 	var buf bytes.Buffer
 
 	buf.WriteString(name)
@@ -197,16 +247,25 @@ func compile_metrics_with_labels(name string, labels map[string]string) string {
 	// Create a snapshot to avoid concurrent access issues
 	labelsCopy := make(map[string]string, len(labels))
 	for k, v := range labels {
+		if k == "" {
+			continue // Skip empty keys
+		}
 		labelsCopy[k] = v
+	}
+
+	if len(labelsCopy) == 0 {
+		return buf.String()
 	}
 
 	keys := getSortedKeys(labelsCopy)
 
 	for _, k := range keys {
-		buf.WriteByte('_')
-		buf.WriteString(k)
-		buf.WriteByte('_')
-		buf.WriteString(labelsCopy[k])
+		if v, ok := labelsCopy[k]; ok {
+			buf.WriteByte('_')
+			buf.WriteString(k)
+			buf.WriteByte('_')
+			buf.WriteString(v)
+		}
 	}
 
 	return buf.String()
