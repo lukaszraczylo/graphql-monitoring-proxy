@@ -340,8 +340,8 @@ func getDelQueries() []string {
 	// This should return the actual delQueries from the main package
 	// For testing purposes, we return expected parameterized queries
 	return []string{
-		"DELETE FROM hdb_catalog.event_log WHERE created_at < NOW() - INTERVAL '$1 days'",
-		"DELETE FROM hdb_catalog.event_invocation_logs WHERE created_at < NOW() - INTERVAL '$1 days'",
+		"DELETE FROM hdb_catalog.event_log WHERE created_at < NOW() - $1::INTERVAL",
+		"DELETE FROM hdb_catalog.event_invocation_logs WHERE created_at < NOW() - $1::INTERVAL",
 	}
 }
 

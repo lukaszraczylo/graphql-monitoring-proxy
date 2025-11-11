@@ -15,12 +15,13 @@ const (
 )
 
 // Use parameterized queries to prevent SQL injection
+// Cast $1 to interval type to allow proper parameterized interval values
 var delQueries = [...]string{
-	"DELETE FROM hdb_catalog.event_invocation_logs WHERE created_at < NOW() - INTERVAL $1",
-	"DELETE FROM hdb_catalog.event_log WHERE created_at < NOW() - INTERVAL $1",
-	"DELETE FROM hdb_catalog.hdb_action_log WHERE created_at < NOW() - INTERVAL $1",
-	"DELETE FROM hdb_catalog.hdb_cron_event_invocation_logs WHERE created_at < NOW() - INTERVAL $1",
-	"DELETE FROM hdb_catalog.hdb_scheduled_event_invocation_logs WHERE created_at < NOW() - INTERVAL $1",
+	"DELETE FROM hdb_catalog.event_invocation_logs WHERE created_at < NOW() - $1::INTERVAL",
+	"DELETE FROM hdb_catalog.event_log WHERE created_at < NOW() - $1::INTERVAL",
+	"DELETE FROM hdb_catalog.hdb_action_log WHERE created_at < NOW() - $1::INTERVAL",
+	"DELETE FROM hdb_catalog.hdb_cron_event_invocation_logs WHERE created_at < NOW() - $1::INTERVAL",
+	"DELETE FROM hdb_catalog.hdb_scheduled_event_invocation_logs WHERE created_at < NOW() - $1::INTERVAL",
 }
 
 func enableHasuraEventCleaner(ctx context.Context) error {

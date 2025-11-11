@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/goccy/go-json"
 	fiber "github.com/gofiber/fiber/v2"
@@ -36,6 +37,40 @@ var (
 	maxQueryCacheSize = 1000
 	currentCacheSize  int64 // Use atomic operations for this
 )
+
+// sanitizeOperationName removes null bytes and other invalid characters from operation names
+// This prevents panics when creating metrics with invalid label values
+func sanitizeOperationName(name string) string {
+	if name == "" || name == "undefined" {
+		return name
+	}
+
+	var buf strings.Builder
+	buf.Grow(len(name))
+
+	for _, r := range name {
+		// Skip null bytes entirely
+		if r == '\x00' {
+			continue
+		}
+		// Replace control characters with underscores
+		if r < 32 || r == 127 {
+			buf.WriteByte('_')
+			continue
+		}
+		// Only allow printable characters
+		if unicode.IsPrint(r) {
+			buf.WriteRune(r)
+		}
+	}
+
+	result := buf.String()
+	// Return "undefined" if we ended up with an empty string after sanitization
+	if result == "" {
+		return "undefined"
+	}
+	return result
+}
 
 func prepareQueriesAndExemptions() {
 	introspectionAllowedQueries = make(map[string]struct{})
@@ -298,8 +333,8 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 				res.operationType = "mutation"
 				if oper.Name != nil {
 					mutationName = oper.Name.Value
-					// Use mutation name immediately
-					res.operationName = mutationName
+					// Use mutation name immediately, sanitized to prevent metric panics
+					res.operationName = sanitizeOperationName(mutationName)
 				}
 				break // Found a mutation, no need to continue first pass
 			}
@@ -316,7 +351,7 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 				// We already set operation type to mutation in first pass
 				// Only set name if we didn't find a mutation name earlier
 				if res.operationName == "undefined" && oper.Name != nil {
-					res.operationName = oper.Name.Value
+					res.operationName = sanitizeOperationName(oper.Name.Value)
 				}
 			} else {
 				// No mutation found, use the normal logic
@@ -325,7 +360,7 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 				}
 
 				if res.operationName == "undefined" && oper.Name != nil {
-					res.operationName = oper.Name.Value
+					res.operationName = sanitizeOperationName(oper.Name.Value)
 				}
 			}
 

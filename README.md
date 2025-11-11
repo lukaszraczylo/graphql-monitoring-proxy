@@ -425,6 +425,8 @@ You can now specify the read-only GraphQL endpoint by setting the `HOST_GRAPHQL_
 
 You can check out the [example of combined deployment with RW and read-only hasura](static/kubernetes-single-deployment-with-ro.yaml).
 
+**Important:** When using a read-only Hasura instance connected to a PostgreSQL read replica, you **must** disable event trigger processing on that instance by setting `HASURA_GRAPHQL_EVENTS_FETCH_INTERVAL=0` in the read-only Hasura container environment variables. This prevents the read-only instance from attempting to process event triggers (which require write access to event log tables), avoiding "cannot set transaction read-write mode during recovery" errors.
+
 ### Resilience
 
 #### Circuit Breaker Pattern
@@ -722,6 +724,8 @@ Following tables are being cleaned:
 - `hdb_catalog.hdb_action_log`
 - `hdb_catalog.hdb_cron_event_invocation_logs`
 - `hdb_catalog.hdb_scheduled_event_invocation_logs`
+
+**Important for RO/RW setups:** The `HASURA_EVENT_METADATA_DB` connection string must point to the **read-write primary database** where the `hdb_catalog` schema resides. The cleaner executes DELETE operations which require write permissions. Do not point this to a read-only replica.
 
 
 ### Security

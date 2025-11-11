@@ -68,6 +68,36 @@ func ensureDefaultLabels(labels *map[string]string, podName string) {
 	}
 }
 
+// sanitizeLabelValue removes or replaces characters that are invalid in metric labels
+// This includes null bytes, newlines, carriage returns, quotes, and backslashes
+func sanitizeLabelValue(value string) string {
+	if value == "" {
+		return value
+	}
+
+	var buf strings.Builder
+	buf.Grow(len(value))
+
+	for _, r := range value {
+		switch r {
+		case '\x00': // null byte
+			continue // Skip null bytes entirely
+		case '\n', '\r', '\t': // newlines, carriage returns, tabs
+			buf.WriteByte(' ') // Replace with space
+		case '"', '\\': // quotes and backslashes need escaping
+			buf.WriteByte('\\')
+			buf.WriteRune(r)
+		default:
+			// Only allow printable ASCII and common unicode characters
+			if unicode.IsPrint(r) {
+				buf.WriteRune(r)
+			}
+		}
+	}
+
+	return buf.String()
+}
+
 func appendSortedLabels(buf *bytes.Buffer, labels map[string]string) {
 	// Add defer/recover to prevent panics from crashing the application
 	defer func() {
@@ -87,7 +117,8 @@ func appendSortedLabels(buf *bytes.Buffer, labels map[string]string) {
 		if k == "" {
 			continue // Skip empty keys
 		}
-		labelsCopy[k] = v
+		// Sanitize the label value to remove null bytes and other invalid characters
+		labelsCopy[k] = sanitizeLabelValue(v)
 	}
 
 	if len(labelsCopy) == 0 {

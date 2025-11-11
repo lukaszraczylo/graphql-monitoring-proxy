@@ -97,6 +97,9 @@ spec:
               value: "error"
             - name: HASURA_GRAPHQL_SERVER_PORT
               value: "8088"
+            # Disable event trigger processing on read-only instance
+            - name: HASURA_GRAPHQL_EVENTS_FETCH_INTERVAL
+              value: "0"
 
         - name: graphql-proxy
           image: ghcr.io/lukaszraczylo/graphql-monitoring-proxy:latest
