@@ -82,6 +82,36 @@ func (suite *Tests) Test_proxyTheRequest() {
 			wantErr:      false,
 			wantEndpoint: "https://telegram-bot.app/",
 		},
+		{
+			name:         "Test mutation with multiple operations (bug fix regression test)",
+			body:         `{"query":"mutation getOrCreateUser { insert_tg_users_one(object: {id: 123}) { id } } query otherQuery { users { id } }"}`,
+			host:         "https://telegram-bot.app/",
+			hostRO:       "https://google.com/",
+			path:         "/v1/graphql",
+			headers:      supplied_headers,
+			wantErr:      false,
+			wantEndpoint: "https://telegram-bot.app/",
+		},
+		{
+			name:         "Test mutation followed by fragment (bug fix regression test)",
+			body:         `{"query":"mutation insertUser { insert_users_one(object: {name: \"test\"}) { ...userFields } } fragment userFields on users { id name }"}`,
+			host:         "https://telegram-bot.app/",
+			hostRO:       "https://google.com/",
+			path:         "/v1/graphql",
+			headers:      supplied_headers,
+			wantErr:      false,
+			wantEndpoint: "https://telegram-bot.app/",
+		},
+		{
+			name:         "Test complex mutation document (main-bot style)",
+			body:         `{"query":"mutation getOrCreateUser($user_id: bigint!, $group_id: bigint!) { insert_tg_users_one(object: {id: $user_id}, on_conflict: {constraint: tg_users_pkey, update_columns: last_seen}) { id } insert_tg_groups_one(object: {id: $group_id}, on_conflict: {constraint: tg_groups_pkey, update_columns: last_seen}) { id } }"}`,
+			host:         "https://telegram-bot.app/",
+			hostRO:       "https://google.com/",
+			path:         "/v1/graphql",
+			headers:      supplied_headers,
+			wantErr:      false,
+			wantEndpoint: "https://telegram-bot.app/",
+		},
 	}
 
 	for _, tt := range tests {
