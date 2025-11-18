@@ -364,14 +364,6 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 				}
 			}
 
-			// Handle endpoint routing - always use write endpoint for mutations
-			if res.operationType == "mutation" {
-				res.activeEndpoint = cfg.Server.HostGraphQL
-			} else if cfg.Server.HostGraphQLReadOnly != "" {
-				// Use read-only endpoint for non-mutation operations
-				res.activeEndpoint = cfg.Server.HostGraphQLReadOnly
-			}
-
 			// Block mutations in read-only mode
 			if res.operationType == "mutation" && cfg.Server.ReadOnlyMode {
 				if ifNotInTest() {
@@ -392,6 +384,15 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 				return res
 			}
 		}
+	}
+
+	// Handle endpoint routing AFTER processing all definitions
+	// This ensures mutations are always routed to the write endpoint
+	if res.operationType == "mutation" {
+		res.activeEndpoint = cfg.Server.HostGraphQL
+	} else if cfg.Server.HostGraphQLReadOnly != "" {
+		// Use read-only endpoint for non-mutation operations
+		res.activeEndpoint = cfg.Server.HostGraphQLReadOnly
 	}
 
 	// Track parsing time
