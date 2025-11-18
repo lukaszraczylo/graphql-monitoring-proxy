@@ -401,7 +401,10 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 		cfg.Monitoring.IncrementFloat(libpack_monitoring.MetricsGraphQLParsingTime, nil, parseTime)
 	}
 
-	return res
+	// Create a copy to return, since the original will be returned to the pool
+	// This prevents race conditions where concurrent requests could modify the same result
+	result := *res
+	return &result
 }
 
 // processDirectives extracts caching directives from the operation
