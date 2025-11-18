@@ -272,6 +272,17 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 
 	// Parse the GraphQL query
 	parsedResult := parseGraphQLQuery(c)
+
+	// Debug logging for mutation routing analysis (enabled when LOG_LEVEL=DEBUG)
+	if cfg.LogLevel == "DEBUG" {
+		var m map[string]interface{}
+		if err := json.Unmarshal(c.Body(), &m); err == nil {
+			if query, ok := m["query"].(string); ok {
+				debugParseGraphQLQuery(c, query)
+			}
+		}
+	}
+
 	if parsedResult.shouldBlock {
 		return c.Status(fiber.StatusForbidden).SendString("Request blocked")
 	}
