@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1763487282350,
+  "lastUpdate": 1763523005260,
   "repoUrl": "https://github.com/lukaszraczylo/graphql-monitoring-proxy",
   "entries": {
     "Benchmark": [
@@ -122804,6 +122804,942 @@ window.BENCHMARK_DATA = {
             "value": 1,
             "unit": "allocs/op",
             "extra": "57836425 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "2182556+lukaszraczylo@users.noreply.github.com",
+            "name": "lukaszraczylo",
+            "username": "lukaszraczylo"
+          },
+          "committer": {
+            "email": "41898282+github-actions[bot]@users.noreply.github.com",
+            "name": "github-actions[bot]",
+            "username": "github-actions[bot]"
+          },
+          "distinct": true,
+          "id": "ee5618c6997e4066bf170910234de9f725a1b047",
+          "message": "Update go.mod and go.sum\n\nSigned-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+          "timestamp": "2025-11-19T03:21:29Z",
+          "tree_id": "6b5d1897c71626e5526a22098dc2b1fd191ca850",
+          "url": "https://github.com/lukaszraczylo/graphql-monitoring-proxy/commit/ee5618c6997e4066bf170910234de9f725a1b047"
+        },
+        "date": 1763523003763,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkAPIAuthentication",
+            "value": 13009,
+            "unit": "ns/op\t    6993 B/op\t      34 allocs/op",
+            "extra": "91322 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAPIAuthentication - ns/op",
+            "value": 13009,
+            "unit": "ns/op",
+            "extra": "91322 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAPIAuthentication - B/op",
+            "value": 6993,
+            "unit": "B/op",
+            "extra": "91322 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkAPIAuthentication - allocs/op",
+            "value": 34,
+            "unit": "allocs/op",
+            "extra": "91322 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSecurityOperations/API_Authentication",
+            "value": 16442,
+            "unit": "ns/op\t    7299 B/op\t      38 allocs/op",
+            "extra": "67509 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSecurityOperations/API_Authentication - ns/op",
+            "value": 16442,
+            "unit": "ns/op",
+            "extra": "67509 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSecurityOperations/API_Authentication - B/op",
+            "value": 7299,
+            "unit": "B/op",
+            "extra": "67509 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSecurityOperations/API_Authentication - allocs/op",
+            "value": 38,
+            "unit": "allocs/op",
+            "extra": "67509 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSecurityOperations/Path_Validation",
+            "value": 12150,
+            "unit": "ns/op\t    1139 B/op\t      12 allocs/op",
+            "extra": "97678 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSecurityOperations/Path_Validation - ns/op",
+            "value": 12150,
+            "unit": "ns/op",
+            "extra": "97678 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSecurityOperations/Path_Validation - B/op",
+            "value": 1139,
+            "unit": "B/op",
+            "extra": "97678 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSecurityOperations/Path_Validation - allocs/op",
+            "value": 12,
+            "unit": "allocs/op",
+            "extra": "97678 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSecurityOperations/Log_Sanitization",
+            "value": 2280,
+            "unit": "ns/op\t    1481 B/op\t      22 allocs/op",
+            "extra": "510379 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSecurityOperations/Log_Sanitization - ns/op",
+            "value": 2280,
+            "unit": "ns/op",
+            "extra": "510379 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSecurityOperations/Log_Sanitization - B/op",
+            "value": 1481,
+            "unit": "B/op",
+            "extra": "510379 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSecurityOperations/Log_Sanitization - allocs/op",
+            "value": 22,
+            "unit": "allocs/op",
+            "extra": "510379 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkLRUCacheSet",
+            "value": 404.2,
+            "unit": "ns/op\t     151 B/op\t       4 allocs/op",
+            "extra": "2955939 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkLRUCacheSet - ns/op",
+            "value": 404.2,
+            "unit": "ns/op",
+            "extra": "2955939 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkLRUCacheSet - B/op",
+            "value": 151,
+            "unit": "B/op",
+            "extra": "2955939 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkLRUCacheSet - allocs/op",
+            "value": 4,
+            "unit": "allocs/op",
+            "extra": "2955939 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkLRUCacheGet",
+            "value": 172.3,
+            "unit": "ns/op\t      13 B/op\t       1 allocs/op",
+            "extra": "6797541 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkLRUCacheGet - ns/op",
+            "value": 172.3,
+            "unit": "ns/op",
+            "extra": "6797541 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkLRUCacheGet - B/op",
+            "value": 13,
+            "unit": "B/op",
+            "extra": "6797541 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkLRUCacheGet - allocs/op",
+            "value": 1,
+            "unit": "allocs/op",
+            "extra": "6797541 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkLRUCacheConcurrent",
+            "value": 356.6,
+            "unit": "ns/op\t      86 B/op\t       2 allocs/op",
+            "extra": "3389238 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkLRUCacheConcurrent - ns/op",
+            "value": 356.6,
+            "unit": "ns/op",
+            "extra": "3389238 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkLRUCacheConcurrent - B/op",
+            "value": 86,
+            "unit": "B/op",
+            "extra": "3389238 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkLRUCacheConcurrent - allocs/op",
+            "value": 2,
+            "unit": "allocs/op",
+            "extra": "3389238 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateFilePath",
+            "value": 31596,
+            "unit": "ns/op\t    2874 B/op\t      31 allocs/op",
+            "extra": "38204 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateFilePath - ns/op",
+            "value": 31596,
+            "unit": "ns/op",
+            "extra": "38204 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateFilePath - B/op",
+            "value": 2874,
+            "unit": "B/op",
+            "extra": "38204 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateFilePath - allocs/op",
+            "value": 31,
+            "unit": "allocs/op",
+            "extra": "38204 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBufferPoolOperations",
+            "value": 8.992,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "134430471 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBufferPoolOperations - ns/op",
+            "value": 8.992,
+            "unit": "ns/op",
+            "extra": "134430471 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBufferPoolOperations - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "134430471 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBufferPoolOperations - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "134430471 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGzipWriterPoolOperations",
+            "value": 10396,
+            "unit": "ns/op\t     112 B/op\t       2 allocs/op",
+            "extra": "106992 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGzipWriterPoolOperations - ns/op",
+            "value": 10396,
+            "unit": "ns/op",
+            "extra": "106992 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGzipWriterPoolOperations - B/op",
+            "value": 112,
+            "unit": "B/op",
+            "extra": "106992 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGzipWriterPoolOperations - allocs/op",
+            "value": 2,
+            "unit": "allocs/op",
+            "extra": "106992 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSanitizeForLogging",
+            "value": 4649,
+            "unit": "ns/op\t    2531 B/op\t      40 allocs/op",
+            "extra": "253154 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSanitizeForLogging - ns/op",
+            "value": 4649,
+            "unit": "ns/op",
+            "extra": "253154 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSanitizeForLogging - B/op",
+            "value": 2531,
+            "unit": "B/op",
+            "extra": "253154 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSanitizeForLogging - allocs/op",
+            "value": 40,
+            "unit": "allocs/op",
+            "extra": "253154 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSanitizeHeaders",
+            "value": 1004,
+            "unit": "ns/op\t     424 B/op\t       8 allocs/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSanitizeHeaders - ns/op",
+            "value": 1004,
+            "unit": "ns/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSanitizeHeaders - B/op",
+            "value": 424,
+            "unit": "B/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSanitizeHeaders - allocs/op",
+            "value": 8,
+            "unit": "allocs/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRegisterComponent",
+            "value": 84.13,
+            "unit": "ns/op\t     148 B/op\t       0 allocs/op",
+            "extra": "19717681 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRegisterComponent - ns/op",
+            "value": 84.13,
+            "unit": "ns/op",
+            "extra": "19717681 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRegisterComponent - B/op",
+            "value": 148,
+            "unit": "B/op",
+            "extra": "19717681 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRegisterComponent - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "19717681 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheLookupInMemory",
+            "value": 44.59,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "29058836 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheLookupInMemory - ns/op",
+            "value": 44.59,
+            "unit": "ns/op",
+            "extra": "29058836 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheLookupInMemory - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "29058836 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheLookupInMemory - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "29058836 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheStoreInMemory",
+            "value": 400.1,
+            "unit": "ns/op\t     480 B/op\t       6 allocs/op",
+            "extra": "3112564 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheStoreInMemory - ns/op",
+            "value": 400.1,
+            "unit": "ns/op",
+            "extra": "3112564 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheStoreInMemory - B/op",
+            "value": 480,
+            "unit": "B/op",
+            "extra": "3112564 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheStoreInMemory - allocs/op",
+            "value": 6,
+            "unit": "allocs/op",
+            "extra": "3112564 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheSet",
+            "value": 198.9,
+            "unit": "ns/op\t     128 B/op\t       3 allocs/op",
+            "extra": "6074132 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheSet - ns/op",
+            "value": 198.9,
+            "unit": "ns/op",
+            "extra": "6074132 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheSet - B/op",
+            "value": 128,
+            "unit": "B/op",
+            "extra": "6074132 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheSet - allocs/op",
+            "value": 3,
+            "unit": "allocs/op",
+            "extra": "6074132 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheGet",
+            "value": 73.97,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "16204906 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheGet - ns/op",
+            "value": 73.97,
+            "unit": "ns/op",
+            "extra": "16204906 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheGet - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "16204906 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheGet - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "16204906 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheExpire",
+            "value": 5144978,
+            "unit": "ns/op\t    1713 B/op\t      15 allocs/op",
+            "extra": "232 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheExpire - ns/op",
+            "value": 5144978,
+            "unit": "ns/op",
+            "extra": "232 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheExpire - B/op",
+            "value": 1713,
+            "unit": "B/op",
+            "extra": "232 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheExpire - allocs/op",
+            "value": 15,
+            "unit": "allocs/op",
+            "extra": "232 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheStats",
+            "value": 0.0000052,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheStats - ns/op",
+            "value": 0.0000052,
+            "unit": "ns/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheStats - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMemCacheStats - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheSet",
+            "value": 5843,
+            "unit": "ns/op\t     281 B/op\t       6 allocs/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheSet - ns/op",
+            "value": 5843,
+            "unit": "ns/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheSet - B/op",
+            "value": 281,
+            "unit": "B/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheSet - allocs/op",
+            "value": 6,
+            "unit": "allocs/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheGet",
+            "value": 75.7,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "16147065 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheGet - ns/op",
+            "value": 75.7,
+            "unit": "ns/op",
+            "extra": "16147065 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheGet - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "16147065 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheGet - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "16147065 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheDelete",
+            "value": 405.7,
+            "unit": "ns/op\t     160 B/op\t       6 allocs/op",
+            "extra": "2963802 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheDelete - ns/op",
+            "value": 405.7,
+            "unit": "ns/op",
+            "extra": "2963802 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheDelete - B/op",
+            "value": 160,
+            "unit": "B/op",
+            "extra": "2963802 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCacheDelete - allocs/op",
+            "value": 6,
+            "unit": "allocs/op",
+            "extra": "2963802 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNew",
+            "value": 0.3149,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNew - ns/op",
+            "value": 0.3149,
+            "unit": "ns/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNew - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNew - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNewChangeTimeFormat",
+            "value": 0.3121,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNewChangeTimeFormat - ns/op",
+            "value": 0.3121,
+            "unit": "ns/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNewChangeTimeFormat - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNewChangeTimeFormat - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNewChangeLogLevel",
+            "value": 0.311,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNewChangeLogLevel - ns/op",
+            "value": 0.311,
+            "unit": "ns/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNewChangeLogLevel - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNewChangeLogLevel - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNewChangeTimeFormatAndLogLevel",
+            "value": 0.3118,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNewChangeTimeFormatAndLogLevel - ns/op",
+            "value": 0.3118,
+            "unit": "ns/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNewChangeTimeFormatAndLogLevel - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_NewLogger/BenchmarkNewChangeTimeFormatAndLogLevel - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "1000000000 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Debug",
+            "value": 875.8,
+            "unit": "ns/op\t     454 B/op\t       5 allocs/op",
+            "extra": "1404597 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Debug - ns/op",
+            "value": 875.8,
+            "unit": "ns/op",
+            "extra": "1404597 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Debug - B/op",
+            "value": 454,
+            "unit": "B/op",
+            "extra": "1404597 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Debug - allocs/op",
+            "value": 5,
+            "unit": "allocs/op",
+            "extra": "1404597 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Info",
+            "value": 867.6,
+            "unit": "ns/op\t     456 B/op\t       5 allocs/op",
+            "extra": "1396074 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Info - ns/op",
+            "value": 867.6,
+            "unit": "ns/op",
+            "extra": "1396074 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Info - B/op",
+            "value": 456,
+            "unit": "B/op",
+            "extra": "1396074 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Info - allocs/op",
+            "value": 5,
+            "unit": "allocs/op",
+            "extra": "1396074 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Warn",
+            "value": 878.4,
+            "unit": "ns/op\t     460 B/op\t       5 allocs/op",
+            "extra": "1375147 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Warn - ns/op",
+            "value": 878.4,
+            "unit": "ns/op",
+            "extra": "1375147 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Warn - B/op",
+            "value": 460,
+            "unit": "B/op",
+            "extra": "1375147 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Warn - allocs/op",
+            "value": 5,
+            "unit": "allocs/op",
+            "extra": "1375147 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Error",
+            "value": 991.8,
+            "unit": "ns/op\t     489 B/op\t       5 allocs/op",
+            "extra": "1254090 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Error - ns/op",
+            "value": 991.8,
+            "unit": "ns/op",
+            "extra": "1254090 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Error - B/op",
+            "value": 489,
+            "unit": "B/op",
+            "extra": "1254090 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Error - allocs/op",
+            "value": 5,
+            "unit": "allocs/op",
+            "extra": "1254090 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Fatal",
+            "value": 902.4,
+            "unit": "ns/op\t     469 B/op\t       5 allocs/op",
+            "extra": "1336264 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Fatal - ns/op",
+            "value": 902.4,
+            "unit": "ns/op",
+            "extra": "1336264 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Fatal - B/op",
+            "value": 469,
+            "unit": "B/op",
+            "extra": "1336264 times\n4 procs"
+          },
+          {
+            "name": "Benchmark_Log_Fatal - allocs/op",
+            "value": 5,
+            "unit": "allocs/op",
+            "extra": "1336264 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGetMetricsName",
+            "value": 1834,
+            "unit": "ns/op\t     528 B/op\t      10 allocs/op",
+            "extra": "586341 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGetMetricsName - ns/op",
+            "value": 1834,
+            "unit": "ns/op",
+            "extra": "586341 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGetMetricsName - B/op",
+            "value": 528,
+            "unit": "B/op",
+            "extra": "586341 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGetMetricsName - allocs/op",
+            "value": 10,
+            "unit": "allocs/op",
+            "extra": "586341 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCompileMetricsWithLabels",
+            "value": 639,
+            "unit": "ns/op\t     224 B/op\t       4 allocs/op",
+            "extra": "1877216 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCompileMetricsWithLabels - ns/op",
+            "value": 639,
+            "unit": "ns/op",
+            "extra": "1877216 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCompileMetricsWithLabels - B/op",
+            "value": 224,
+            "unit": "B/op",
+            "extra": "1877216 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCompileMetricsWithLabels - allocs/op",
+            "value": 4,
+            "unit": "allocs/op",
+            "extra": "1877216 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateMetricsName",
+            "value": 721.7,
+            "unit": "ns/op\t     320 B/op\t       6 allocs/op",
+            "extra": "1670559 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateMetricsName - ns/op",
+            "value": 721.7,
+            "unit": "ns/op",
+            "extra": "1670559 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateMetricsName - B/op",
+            "value": 320,
+            "unit": "B/op",
+            "extra": "1670559 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateMetricsName - allocs/op",
+            "value": 6,
+            "unit": "allocs/op",
+            "extra": "1670559 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBufferPool",
+            "value": 11.78,
+            "unit": "ns/op\t       0 B/op\t       0 allocs/op",
+            "extra": "100000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBufferPool - ns/op",
+            "value": 11.78,
+            "unit": "ns/op",
+            "extra": "100000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBufferPool - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "100000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBufferPool - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "100000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGzipWriterPool",
+            "value": 9805,
+            "unit": "ns/op\t     142 B/op\t       3 allocs/op",
+            "extra": "118398 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGzipWriterPool - ns/op",
+            "value": 9805,
+            "unit": "ns/op",
+            "extra": "118398 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGzipWriterPool - B/op",
+            "value": 142,
+            "unit": "B/op",
+            "extra": "118398 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGzipWriterPool - allocs/op",
+            "value": 3,
+            "unit": "allocs/op",
+            "extra": "118398 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGzipReaderPool",
+            "value": 397.2,
+            "unit": "ns/op\t     562 B/op\t       2 allocs/op",
+            "extra": "3608362 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGzipReaderPool - ns/op",
+            "value": 397.2,
+            "unit": "ns/op",
+            "extra": "3608362 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGzipReaderPool - B/op",
+            "value": 562,
+            "unit": "B/op",
+            "extra": "3608362 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkGzipReaderPool - allocs/op",
+            "value": 2,
+            "unit": "allocs/op",
+            "extra": "3608362 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkWithoutPool",
+            "value": 22.18,
+            "unit": "ns/op\t      64 B/op\t       1 allocs/op",
+            "extra": "53549840 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkWithoutPool - ns/op",
+            "value": 22.18,
+            "unit": "ns/op",
+            "extra": "53549840 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkWithoutPool - B/op",
+            "value": 64,
+            "unit": "B/op",
+            "extra": "53549840 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkWithoutPool - allocs/op",
+            "value": 1,
+            "unit": "allocs/op",
+            "extra": "53549840 times\n4 procs"
           }
         ]
       }
