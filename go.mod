@@ -13,13 +13,13 @@ require (
 	github.com/gofiber/websocket/v2 v2.2.1
 	github.com/gofrs/flock v0.13.0
 	github.com/google/uuid v1.6.0
-	github.com/gookit/goutil v0.7.1
+	github.com/gookit/goutil v0.7.2
 	github.com/gorilla/websocket v1.5.3
 	github.com/graphql-go/graphql v0.8.1
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/lukaszraczylo/ask v0.0.0-20240916204100-6e9ef53a62d9
 	github.com/lukaszraczylo/go-ratecounter v0.1.12
-	github.com/lukaszraczylo/go-simple-graphql v1.2.84
+	github.com/lukaszraczylo/go-simple-graphql v1.2.89
 	github.com/redis/go-redis/v9 v9.16.0
 	github.com/sony/gobreaker v1.0.0
 	github.com/stretchr/testify v1.11.1
