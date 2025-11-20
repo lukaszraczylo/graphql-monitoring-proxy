@@ -9,7 +9,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.33.0
 	github.com/avast/retry-go/v4 v4.7.0
 	github.com/goccy/go-json v0.10.5
-	github.com/gofiber/fiber/v2 v2.52.9
+	github.com/gofiber/fiber/v2 v2.52.10
 	github.com/gofiber/websocket/v2 v2.2.1
 	github.com/gofrs/flock v0.13.0
 	github.com/google/uuid v1.6.0
@@ -20,7 +20,7 @@ require (
 	github.com/lukaszraczylo/ask v0.0.0-20240916204100-6e9ef53a62d9
 	github.com/lukaszraczylo/go-ratecounter v0.1.12
 	github.com/lukaszraczylo/go-simple-graphql v1.2.89
-	github.com/redis/go-redis/v9 v9.16.0
+	github.com/redis/go-redis/v9 v9.17.0
 	github.com/sony/gobreaker v1.0.0
 	github.com/stretchr/testify v1.11.1
 	github.com/valyala/fasthttp v1.68.0
@@ -61,7 +61,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.38.0 // indirect
 	go.opentelemetry.io/otel/metric v1.38.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
-	golang.org/x/crypto v0.44.0 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sync v0.18.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
