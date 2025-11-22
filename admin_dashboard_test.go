@@ -215,11 +215,13 @@ func TestAdminDashboard_GetCacheStats(t *testing.T) {
 			CacheMaxMemorySize    int
 			CacheMaxEntries       int
 			GraphQLQueryCacheSize int
+			PerUserCacheDisabled  bool
 		}{
-			CacheEnable:        true,
-			CacheTTL:           60,
-			CacheMaxMemorySize: 100,
-			CacheMaxEntries:    10000,
+			CacheEnable:          true,
+			CacheTTL:             60,
+			CacheMaxMemorySize:   100,
+			CacheMaxEntries:      10000,
+			PerUserCacheDisabled: false,
 		},
 	}
 

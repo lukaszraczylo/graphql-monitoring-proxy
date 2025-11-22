@@ -155,6 +155,7 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `CACHE_TTL`               | The cache TTL                           | `60`                       |
 | `CACHE_MAX_MEMORY_SIZE`   | Maximum memory size for cache in MB     | `100`                      |
 | `CACHE_MAX_ENTRIES`       | Maximum number of entries in cache      | `10000`                    |
+| `CACHE_PER_USER_DISABLED` | **⚠️ SECURITY**: Disable per-user cache isolation | `false` (**DO NOT** set to `true` in multi-user apps) |
 | `ENABLE_REDIS_CACHE`      | Enable distributed Redis cache          | `false`                    |
 | `CACHE_REDIS_URL`         | URL to redis server / cluster endpoint  | `localhost:6379`           |
 | `CACHE_REDIS_PASSWORD`    | Redis connection password               | ``                         |
@@ -347,19 +348,38 @@ The admin dashboard (`/admin`) provides:
 The cache engine is enabled in the background by default, using no additional resources.
 You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` or `ENABLE_REDIS_CACHE` environment variable to `true` - which will enable the cache for all queries without introspection. You can leave the global cache disabled and enable the cache for specific queries by adding the `@cached` directive to the query.
 
-**Important**: The cache key is calculated from the **entire request body**, which includes both the GraphQL query and variables. This means:
+**Important**: The cache key is calculated from the **request body + user context (user ID and role)**. This means:
 - Identical queries with different variables are cached separately
-- Identical queries with different variable values get their own cache entries
-- This ensures correct caching behavior for parameterized queries
+- **Identical queries from different users are cached separately** (security isolation)
+- **Identical queries with different roles are cached separately** (prevents privilege escalation)
+- This ensures correct caching behavior and prevents data leakage between users
+
+**🔒 Security Update (v0.27.0+)**: Cache keys now include user context by default to prevent security vulnerabilities where users could see each other's cached data. This is enabled by default and should NOT be disabled in multi-user applications.
 
 Example:
 ```graphql
-# These two requests will have DIFFERENT cache keys:
+# These requests will have DIFFERENT cache keys:
+
+# Different variables
 query GetUser($id: ID!) { user(id: $id) { name } }
-variables: { "id": "123" }
+variables: { "id": "123" }  // Cache key: MD5(body + user:alice + role:user)
 
 query GetUser($id: ID!) { user(id: $id) { name } }
-variables: { "id": "456" }
+variables: { "id": "456" }  // Cache key: MD5(body + user:alice + role:user)
+
+# Different users (SECURITY: prevents data leakage)
+query GetMyProfile { me { email } }
+Authorization: Bearer token_for_alice  // Cache key: MD5(body + user:alice + role:user)
+
+query GetMyProfile { me { email } }
+Authorization: Bearer token_for_bob    // Cache key: MD5(body + user:bob + role:user)
+
+# Different roles (SECURITY: prevents privilege escalation)
+query GetData { data { value } }
+Authorization: Bearer token_admin  // Cache key: MD5(body + user:alice + role:admin)
+
+query GetData { data { value } }
+Authorization: Bearer token_user   // Cache key: MD5(body + user:alice + role:user)
 ```
 
 In the case of the `@cached` you can add additional parameters to the directive which will set the cache for specific queries to the provided time.

@@ -44,7 +44,8 @@ type config struct {
 		CacheRedisEnable      bool
 		CacheMaxMemorySize    int
 		CacheMaxEntries       int
-		GraphQLQueryCacheSize int // Max number of parsed GraphQL queries to cache
+		GraphQLQueryCacheSize int  // Max number of parsed GraphQL queries to cache
+		PerUserCacheDisabled  bool // Disable per-user cache isolation (SECURITY RISK - not recommended)
 	}
 	Client struct {
 		GQLClient           *graphql.BaseClient

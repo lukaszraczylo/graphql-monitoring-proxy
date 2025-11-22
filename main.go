@@ -133,6 +133,27 @@ func parseConfig() {
 	c.Cache.CacheMaxEntries = getDetailsFromEnv("CACHE_MAX_ENTRIES", 10000)      // Default 10000 entries
 	// GraphQL query parsing cache - auto-calculate based on CPU cores if not set
 	c.Cache.GraphQLQueryCacheSize = getDetailsFromEnv("GRAPHQL_QUERY_CACHE_SIZE", runtime.GOMAXPROCS(0)*250)
+
+	// SECURITY: Per-user cache isolation (enabled by default for security)
+	// Set CACHE_PER_USER_DISABLED=true ONLY if you have a single-user application
+	// or understand the security implications of shared cache across users
+	c.Cache.PerUserCacheDisabled = getDetailsFromEnv("CACHE_PER_USER_DISABLED", false)
+
+	// Log warning if per-user caching is disabled
+	if c.Cache.PerUserCacheDisabled {
+		defer func() {
+			if c.Logger != nil {
+				c.Logger.Warning(&libpack_logging.LogMessage{
+					Message: "⚠️  Per-user cache isolation is DISABLED - Users may see each other's cached data!",
+					Pairs: map[string]interface{}{
+						"security_risk":  "CRITICAL - Do not use in multi-user applications",
+						"recommendation": "Remove CACHE_PER_USER_DISABLED or set it to false",
+					},
+				})
+			}
+		}()
+	}
+
 	// Redis cache
 	c.Cache.CacheRedisEnable = getDetailsFromEnv("ENABLE_REDIS_CACHE", false)
 	c.Cache.CacheRedisURL = getDetailsFromEnv("CACHE_REDIS_URL", "localhost:6379")
@@ -355,8 +376,9 @@ func parseConfig() {
 	// Initialize cache if enabled
 	if cfg.Cache.CacheEnable || cfg.Cache.CacheRedisEnable {
 		cacheConfig := &libpack_cache.CacheConfig{
-			Logger: cfg.Logger,
-			TTL:    cfg.Cache.CacheTTL,
+			Logger:               cfg.Logger,
+			TTL:                  cfg.Cache.CacheTTL,
+			PerUserCacheDisabled: cfg.Cache.PerUserCacheDisabled,
 		}
 		// Redis cache configurations
 		if cfg.Cache.CacheRedisEnable {

@@ -33,8 +33,9 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerCacheFallback() {
 	ctx := app.AcquireCtx(requestCtx)
 	defer app.ReleaseCtx(ctx)
 
-	// Calculate the cache key that would be used
-	cacheKey := libpack_cache.CalculateHash(ctx)
+	// Calculate the cache key that would be used (with default user context since no auth headers)
+	// extractUserInfo() returns ("-", "-") when no auth is present
+	cacheKey := libpack_cache.CalculateHash(ctx, "-", "-")
 
 	// Add a test response to the cache
 	cachedResponse := []byte(`{"data":{"test":"cached-response"}}`)
@@ -158,8 +159,9 @@ func (suite *CircuitBreakerTestSuite) TestCacheDisabledFallback() {
 	ctx := app.AcquireCtx(requestCtx)
 	defer app.ReleaseCtx(ctx)
 
-	// Calculate cache key and store a response
-	cacheKey := libpack_cache.CalculateHash(ctx)
+	// Calculate cache key and store a response (with default user context since no auth headers)
+	// extractUserInfo() returns ("-", "-") when no auth is present
+	cacheKey := libpack_cache.CalculateHash(ctx, "-", "-")
 	cachedResponse := []byte(`{"data":{"test":"cached-response"}}`)
 	libpack_cache.CacheStore(cacheKey, cachedResponse)
 

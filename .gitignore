@@ -3,3 +3,5 @@ test.sh
 banned.json*
 dist/
 coverage.out
+CLAUDE.md
+graphql-monitoring-proxy

@@ -20,7 +20,7 @@ func (suite *Tests) Test_CalculateHash() {
 	// Test with empty body
 	suite.Run("empty body", func() {
 		ctx.Request().SetBody([]byte(""))
-		hash := CalculateHash(ctx)
+		hash := CalculateHash(ctx, "user1", "admin")
 		assert.NotEmpty(hash)
 		assert.Equal(32, len(hash)) // MD5 hash is 32 characters
 	})
@@ -28,7 +28,7 @@ func (suite *Tests) Test_CalculateHash() {
 	// Test with non-empty body
 	suite.Run("non-empty body", func() {
 		ctx.Request().SetBody([]byte("test body"))
-		hash := CalculateHash(ctx)
+		hash := CalculateHash(ctx, "user1", "admin")
 		assert.NotEmpty(hash)
 		assert.Equal(32, len(hash))
 	})
@@ -36,10 +36,10 @@ func (suite *Tests) Test_CalculateHash() {
 	// Test with different bodies produce different hashes
 	suite.Run("different bodies", func() {
 		ctx.Request().SetBody([]byte("body1"))
-		hash1 := CalculateHash(ctx)
+		hash1 := CalculateHash(ctx, "user1", "admin")
 
 		ctx.Request().SetBody([]byte("body2"))
-		hash2 := CalculateHash(ctx)
+		hash2 := CalculateHash(ctx, "user1", "admin")
 
 		assert.NotEqual(hash1, hash2)
 	})
@@ -51,10 +51,10 @@ func (suite *Tests) Test_CalculateHash() {
 		query2 := []byte(`{"query":"query GetUser($id: ID!) { user(id: $id) { name } }","variables":{"id":"456"}}`)
 
 		ctx.Request().SetBody(query1)
-		hash1 := CalculateHash(ctx)
+		hash1 := CalculateHash(ctx, "user1", "admin")
 
 		ctx.Request().SetBody(query2)
-		hash2 := CalculateHash(ctx)
+		hash2 := CalculateHash(ctx, "user1", "admin")
 
 		assert.NotEqual(hash1, hash2, "Different variables should produce different cache keys")
 	})
@@ -66,12 +66,82 @@ func (suite *Tests) Test_CalculateHash() {
 		query2 := []byte(`{"query":"query GetUsers { users { name } }","variables":{}}`)
 
 		ctx.Request().SetBody(query1)
-		hash1 := CalculateHash(ctx)
+		hash1 := CalculateHash(ctx, "user1", "admin")
 
 		ctx.Request().SetBody(query2)
-		hash2 := CalculateHash(ctx)
+		hash2 := CalculateHash(ctx, "user1", "admin")
 
 		assert.NotEqual(hash1, hash2, "Query with and without variables object should produce different cache keys")
+	})
+
+	// SECURITY TEST: Different users should get different cache keys
+	suite.Run("different users produce different cache keys", func() {
+		// Same query, same variables, but different users - CRITICAL SECURITY TEST
+		query := []byte(`{"query":"query GetMyProfile { me { id email } }"}`)
+		ctx.Request().SetBody(query)
+
+		hash1 := CalculateHash(ctx, "user1", "admin")
+		hash2 := CalculateHash(ctx, "user2", "user")
+
+		assert.NotEqual(hash1, hash2, "Different users MUST produce different cache keys to prevent data leakage")
+	})
+
+	// SECURITY TEST: Same user should get same cache key
+	suite.Run("same user produces same cache key", func() {
+		// Same query, same user
+		query := []byte(`{"query":"query GetMyProfile { me { id email } }"}`)
+		ctx.Request().SetBody(query)
+
+		hash1 := CalculateHash(ctx, "user1", "admin")
+		hash2 := CalculateHash(ctx, "user1", "admin")
+
+		assert.Equal(hash1, hash2, "Same user should get same cache key for cache effectiveness")
+	})
+
+	// SECURITY TEST: Different roles should get different cache keys
+	suite.Run("different roles produce different cache keys", func() {
+		// Same query, same user ID, but different roles
+		query := []byte(`{"query":"query GetData { data { value } }"}`)
+		ctx.Request().SetBody(query)
+
+		hash1 := CalculateHash(ctx, "user1", "admin")
+		hash2 := CalculateHash(ctx, "user1", "user")
+
+		assert.NotEqual(hash1, hash2, "Different roles MUST produce different cache keys to prevent privilege escalation")
+	})
+
+	// SECURITY TEST: Empty user context should be normalized
+	suite.Run("empty user context is normalized", func() {
+		query := []byte(`{"query":"query GetPublic { public { data } }"}`)
+		ctx.Request().SetBody(query)
+
+		// Empty strings should be normalized to "-"
+		hash1 := CalculateHash(ctx, "", "")
+		hash2 := CalculateHash(ctx, "-", "-")
+
+		assert.Equal(hash1, hash2, "Empty user context should be normalized to prevent cache key collisions")
+	})
+
+	// BACKWARD COMPATIBILITY TEST: Legacy mode without user context
+	suite.Run("legacy mode without user context", func() {
+		// Setup config with per-user cache disabled
+		oldConfig := config
+		config = &CacheConfig{
+			Logger:               libpack_logger.New(),
+			Client:               libpack_cache_memory.New(5 * time.Minute),
+			TTL:                  60,
+			PerUserCacheDisabled: true, // Disable per-user caching
+		}
+		defer func() { config = oldConfig }()
+
+		query := []byte(`{"query":"query GetData { data { value } }"}`)
+		ctx.Request().SetBody(query)
+
+		// In legacy mode, different users should get the SAME cache key (backward compatibility)
+		hash1 := CalculateHash(ctx, "user1", "admin")
+		hash2 := CalculateHash(ctx, "user2", "user")
+
+		assert.Equal(hash1, hash2, "With per-user cache disabled, all users get same cache key (backward compatibility)")
 	})
 }
 
@@ -112,8 +182,6 @@ func (suite *Tests) Test_CacheDelete() {
 	suite.Run("uninitialized cache", func() {
 		// Save current config
 		oldConfig := config
-
-		// Set config to nil
 		config = nil
 
 		// This should not cause any errors
@@ -156,8 +224,6 @@ func (suite *Tests) Test_CacheStoreWithTTL() {
 	suite.Run("uninitialized cache", func() {
 		// Save current config
 		oldConfig := config
-
-		// Set config to nil
 		config = nil
 
 		// This should not cause any errors
@@ -194,8 +260,6 @@ func (suite *Tests) Test_CacheGetQueries() {
 	suite.Run("uninitialized cache", func() {
 		// Save current config
 		oldConfig := config
-
-		// Set config to nil
 		config = nil
 
 		// This should return 0
@@ -280,8 +344,6 @@ func (suite *Tests) Test_GetCacheStats() {
 	suite.Run("uninitialized cache", func() {
 		// Save current config
 		oldConfig := config
-
-		// Set config to nil
 		config = nil
 
 		// This should return empty stats

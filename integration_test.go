@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gookit/goutil/strutil"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 	"github.com/sony/gobreaker"
@@ -115,7 +114,8 @@ func (suite *Tests) TestCachingAndCircuitBreakerInteraction() {
 	suite.Equal(responseBody, firstResponseBody, "Response body should match server response")
 
 	// Calculate hash the same way the system does, before releasing context
-	cacheKey := strutil.Md5(ctx.Body())
+	// Use default user context ("-", "-") since no auth headers are set in this test
+	cacheKey := libpack_cache.CalculateHash(ctx, "-", "-")
 
 	// Store in cache directly for test
 	libpack_cache.CacheStore(cacheKey, []byte(responseBody))

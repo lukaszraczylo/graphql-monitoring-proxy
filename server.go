@@ -327,8 +327,11 @@ func extractUserInfo(c *fiber.Ctx) (string, string) {
 
 // handleCaching manages the caching logic for GraphQL requests
 func handleCaching(c *fiber.Ctx, parsedResult *parseGraphQLQueryResult, userID string) (bool, error) {
-	// Calculate query hash for cache key
-	calculatedQueryHash := libpack_cache.CalculateHash(c)
+	// Extract user role for cache key (in addition to userID already passed)
+	_, userRole := extractUserInfo(c)
+
+	// Calculate query hash for cache key - now includes user context for security
+	calculatedQueryHash := libpack_cache.CalculateHash(c, userID, userRole)
 
 	// Set cache time from header or default
 	if parsedResult.cacheTime == 0 {

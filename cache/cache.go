@@ -3,6 +3,7 @@ package libpack_cache
 import (
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"sync/atomic"
 	"time"
@@ -27,7 +28,9 @@ type CacheConfig struct {
 		MaxMemorySize int64 `json:"max_memory_size"` // Maximum memory size in bytes
 		MaxEntries    int64 `json:"max_entries"`     // Maximum number of entries
 	}
-	TTL int `json:"ttl"`
+	TTL                  int  `json:"ttl"`
+	IncludeUserContext   bool `json:"include_user_context"`    // Include user ID and role in cache key
+	PerUserCacheDisabled bool `json:"per_user_cache_disabled"` // Disable per-user caching (backward compatibility)
 }
 
 type CacheStats struct {
@@ -52,9 +55,13 @@ var (
 	config     *CacheConfig
 )
 
-// CalculateHash generates an MD5 hash from the request body.
+// CalculateHash generates an MD5 hash from the request body and optionally user context.
 // For GraphQL requests, this includes both the query and variables,
 // ensuring that identical queries with different variables are cached separately.
+//
+// SECURITY FIX: This function now includes user ID and role in the cache key by default
+// to prevent data leakage between authenticated users. Set CACHE_PER_USER_DISABLED=true
+// to revert to the old behavior (NOT RECOMMENDED for multi-user applications).
 //
 // Example GraphQL request body:
 //
@@ -63,8 +70,39 @@ var (
 //	  "variables": { "id": "123" }
 //	}
 //
-// Different variable values will produce different cache keys.
-func CalculateHash(c *fiber.Ctx) string {
+// With user context enabled (default):
+//   - Same query, same variables, same user → same cache key
+//   - Same query, same variables, different user → different cache key
+//
+// Different variable values will always produce different cache keys.
+func CalculateHash(c *fiber.Ctx, userID string, userRole string) string {
+	cacheKeyData := string(c.Body())
+
+	// Include user context in cache key (default behavior for security)
+	// Only skip if explicitly disabled via configuration (backward compatibility)
+	if config != nil && !config.PerUserCacheDisabled {
+		// Normalize empty user values to prevent cache key collisions
+		if userID == "" {
+			userID = "-"
+		}
+		if userRole == "" {
+			userRole = "-"
+		}
+
+		// Append user context to ensure cache isolation between users
+		cacheKeyData = fmt.Sprintf("%s|uid:%s|role:%s", cacheKeyData, userID, userRole)
+	}
+
+	return strutil.Md5(cacheKeyData)
+}
+
+// CalculateHashLegacy generates a cache hash using only the request body (DEPRECATED).
+// This function exists for backward compatibility only and should NOT be used
+// in production multi-user applications as it creates a security vulnerability
+// where users can see each other's cached data.
+//
+// Deprecated: Use CalculateHash with user context instead.
+func CalculateHashLegacy(c *fiber.Ctx) string {
 	return strutil.Md5(c.Body())
 }
 

@@ -332,8 +332,11 @@ func performProxyRequest(c *fiber.Ctx, proxyURL string) error {
 		return performProxyRequestWithRetries(c, proxyURL)
 	}
 
-	// Calculate cache key for potential fallback
-	cacheKey := libpack_cache.CalculateHash(c)
+	// Extract user context for cache key (needed for circuit breaker fallback)
+	userID, userRole := extractUserInfo(c)
+
+	// Calculate cache key for potential fallback - includes user context for security
+	cacheKey := libpack_cache.CalculateHash(c, userID, userRole)
 
 	// Execute request through circuit breaker
 	_, err := cb.Execute(func() (interface{}, error) {
