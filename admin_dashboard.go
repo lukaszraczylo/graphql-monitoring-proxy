@@ -208,9 +208,17 @@ func (ad *AdminDashboard) getCircuitBreakerStatus(c *fiber.Ctx) error {
 		if cb != nil {
 			cbMutex.RLock()
 			state := cb.State()
+			counts := cb.Counts()
 			cbMutex.RUnlock()
 
 			status["state"] = state.String()
+			status["counts"] = map[string]interface{}{
+				"requests":              counts.Requests,
+				"total_successes":       counts.TotalSuccesses,
+				"total_failures":        counts.TotalFailures,
+				"consecutive_successes": counts.ConsecutiveSuccesses,
+				"consecutive_failures":  counts.ConsecutiveFailures,
+			}
 			status["config"] = map[string]interface{}{
 				"max_failures":           cfg.CircuitBreaker.MaxFailures,
 				"failure_ratio":          cfg.CircuitBreaker.FailureRatio,
@@ -732,9 +740,17 @@ func (ad *AdminDashboard) gatherAllStats() map[string]interface{} {
 		if cb != nil {
 			cbMutex.RLock()
 			state := cb.State()
+			counts := cb.Counts()
 			cbMutex.RUnlock()
 
 			cbStatus["state"] = state.String()
+			cbStatus["counts"] = map[string]interface{}{
+				"requests":              counts.Requests,
+				"total_successes":       counts.TotalSuccesses,
+				"total_failures":        counts.TotalFailures,
+				"consecutive_successes": counts.ConsecutiveSuccesses,
+				"consecutive_failures":  counts.ConsecutiveFailures,
+			}
 			cbStatus["config"] = map[string]interface{}{
 				"max_failures":           cfg.CircuitBreaker.MaxFailures,
 				"failure_ratio":          cfg.CircuitBreaker.FailureRatio,

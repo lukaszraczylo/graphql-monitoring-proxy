@@ -564,6 +564,26 @@
                 <span class="metric-value" id="cb-enabled">--</span>
             </div>
             <div class="metric-row">
+                <span class="metric-label">Total Requests</span>
+                <span class="metric-value" id="cb-total-requests">--</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Total Successes</span>
+                <span class="metric-value" id="cb-total-successes">--</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Total Failures</span>
+                <span class="metric-value" id="cb-total-failures">--</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Consecutive Successes</span>
+                <span class="metric-value" id="cb-consecutive-successes">--</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Consecutive Failures</span>
+                <span class="metric-value" id="cb-consecutive-failures">--</span>
+            </div>
+            <div class="metric-row">
                 <span class="metric-label">Max Failures</span>
                 <span class="metric-value" id="cb-max-failures">--</span>
             </div>
@@ -1207,6 +1227,19 @@
             stateEl.innerHTML = `<span class="badge ${badgeClass}">${data.state || 'Unknown'}</span>`;
 
             document.getElementById('cb-enabled').textContent = data.enabled ? 'Yes' : 'No';
+
+            if (data.counts) {
+                document.getElementById('cb-total-requests').textContent =
+                    (data.counts.requests || 0).toLocaleString();
+                document.getElementById('cb-total-successes').textContent =
+                    (data.counts.total_successes || 0).toLocaleString();
+                document.getElementById('cb-total-failures').textContent =
+                    (data.counts.total_failures || 0).toLocaleString();
+                document.getElementById('cb-consecutive-successes').textContent =
+                    (data.counts.consecutive_successes || 0).toLocaleString();
+                document.getElementById('cb-consecutive-failures').textContent =
+                    (data.counts.consecutive_failures || 0).toLocaleString();
+            }
 
             if (data.config) {
                 document.getElementById('cb-max-failures').textContent = data.config.max_failures || '--';
