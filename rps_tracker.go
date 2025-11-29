@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,11 +13,17 @@ type RPSTracker struct {
 	lastSampleTime atomic.Int64 // Unix nano
 	currentRPS     uint64       // stored as uint64, accessed with atomic operations
 	mu             sync.RWMutex // for currentRPS updates
+	ctx            context.Context
+	cancel         context.CancelFunc
 }
 
-// NewRPSTracker creates a new RPS tracker
-func NewRPSTracker() *RPSTracker {
-	tracker := &RPSTracker{}
+// NewRPSTracker creates a new RPS tracker with context for graceful shutdown
+func NewRPSTracker(ctx context.Context) *RPSTracker {
+	trackerCtx, cancel := context.WithCancel(ctx)
+	tracker := &RPSTracker{
+		ctx:    trackerCtx,
+		cancel: cancel,
+	}
 	tracker.lastSampleTime.Store(time.Now().UnixNano())
 	go tracker.updateLoop()
 	return tracker
@@ -33,8 +40,20 @@ func (r *RPSTracker) updateLoop() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		r.sample()
+	for {
+		select {
+		case <-r.ctx.Done():
+			return
+		case <-ticker.C:
+			r.sample()
+		}
+	}
+}
+
+// Shutdown stops the RPS tracker
+func (r *RPSTracker) Shutdown() {
+	if r.cancel != nil {
+		r.cancel()
 	}
 }
 
@@ -75,10 +94,10 @@ func (r *RPSTracker) GetCurrentRPS() float64 {
 
 var globalRPSTracker *RPSTracker
 
-// InitializeRPSTracker initializes the global RPS tracker
-func InitializeRPSTracker() *RPSTracker {
+// InitializeRPSTracker initializes the global RPS tracker with context for graceful shutdown
+func InitializeRPSTracker(ctx context.Context) *RPSTracker {
 	if globalRPSTracker == nil {
-		globalRPSTracker = NewRPSTracker()
+		globalRPSTracker = NewRPSTracker(ctx)
 	}
 	return globalRPSTracker
 }

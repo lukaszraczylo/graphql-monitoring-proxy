@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,6 +19,8 @@ type RetryBudget struct {
 	mu              sync.RWMutex
 	enabled         bool
 	logger          *libpack_logger.Logger
+	ctx             context.Context
+	cancel          context.CancelFunc
 
 	// Statistics
 	totalAttempts  atomic.Int64
@@ -32,13 +35,21 @@ type RetryBudgetConfig struct {
 	Enabled         bool    // Whether retry budget is enabled
 }
 
-// NewRetryBudget creates a new retry budget
+// NewRetryBudget creates a new retry budget (deprecated, use NewRetryBudgetWithContext)
 func NewRetryBudget(config RetryBudgetConfig, logger *libpack_logger.Logger) *RetryBudget {
+	return NewRetryBudgetWithContext(context.Background(), config, logger)
+}
+
+// NewRetryBudgetWithContext creates a new retry budget with context for graceful shutdown
+func NewRetryBudgetWithContext(ctx context.Context, config RetryBudgetConfig, logger *libpack_logger.Logger) *RetryBudget {
+	budgetCtx, cancel := context.WithCancel(ctx)
 	rb := &RetryBudget{
 		tokensPerSecond: config.TokensPerSecond,
 		maxTokens:       int64(config.MaxTokens),
 		enabled:         config.Enabled,
 		logger:          logger,
+		ctx:             budgetCtx,
+		cancel:          cancel,
 	}
 
 	// Initialize with full bucket
@@ -91,8 +102,20 @@ func (rb *RetryBudget) refillLoop() {
 	ticker := time.NewTicker(100 * time.Millisecond) // Refill every 100ms
 	defer ticker.Stop()
 
-	for range ticker.C {
-		rb.refill()
+	for {
+		select {
+		case <-rb.ctx.Done():
+			return
+		case <-ticker.C:
+			rb.refill()
+		}
+	}
+}
+
+// Shutdown stops the retry budget goroutine
+func (rb *RetryBudget) Shutdown() {
+	if rb.cancel != nil {
+		rb.cancel()
 	}
 }
 
@@ -187,10 +210,15 @@ var (
 	retryBudgetOnce sync.Once
 )
 
-// InitializeRetryBudget initializes the global retry budget
+// InitializeRetryBudget initializes the global retry budget (deprecated, use InitializeRetryBudgetWithContext)
 func InitializeRetryBudget(config RetryBudgetConfig, logger *libpack_logger.Logger) *RetryBudget {
+	return InitializeRetryBudgetWithContext(context.Background(), config, logger)
+}
+
+// InitializeRetryBudgetWithContext initializes the global retry budget with context for graceful shutdown
+func InitializeRetryBudgetWithContext(ctx context.Context, config RetryBudgetConfig, logger *libpack_logger.Logger) *RetryBudget {
 	retryBudgetOnce.Do(func() {
-		retryBudget = NewRetryBudget(config, logger)
+		retryBudget = NewRetryBudgetWithContext(ctx, config, logger)
 		if logger != nil && config.Enabled {
 			logger.Info(&libpack_logger.LogMessage{
 				Message: "Retry budget initialized",

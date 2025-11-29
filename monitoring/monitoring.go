@@ -1,6 +1,7 @@
 package libpack_monitoring
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"time"
@@ -17,6 +18,8 @@ type MetricsSetup struct {
 	metrics_set_custom *metrics.Set
 	ic                 *InitConfig
 	metrics_prefix     string
+	ctx                context.Context
+	cancel             context.CancelFunc
 }
 
 var log = libpack_logger.New().SetMinLogLevel(libpack_logger.LEVEL_INFO)
@@ -27,10 +30,18 @@ type InitConfig struct {
 }
 
 func NewMonitoring(ic *InitConfig) *MetricsSetup {
+	return NewMonitoringWithContext(context.Background(), ic)
+}
+
+// NewMonitoringWithContext creates a new monitoring instance with context for graceful shutdown
+func NewMonitoringWithContext(ctx context.Context, ic *InitConfig) *MetricsSetup {
+	monCtx, cancel := context.WithCancel(ctx)
 	ms := &MetricsSetup{
 		ic:                 ic,
 		metrics_set:        metrics.NewSet(),
 		metrics_set_custom: metrics.NewSet(),
+		ctx:                monCtx,
+		cancel:             cancel,
 	}
 
 	if flag.Lookup("test.v") == nil {
@@ -39,14 +50,27 @@ func NewMonitoring(ic *InitConfig) *MetricsSetup {
 		if ic.PurgeEvery > 0 {
 			ticker := time.NewTicker(time.Duration(ic.PurgeEvery) * time.Second)
 			go func() {
-				for range ticker.C {
-					ms.PurgeMetrics()
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ms.ctx.Done():
+						return
+					case <-ticker.C:
+						ms.PurgeMetrics()
+					}
 				}
 			}()
 		}
 	}
 
 	return ms
+}
+
+// Shutdown stops the monitoring goroutines
+func (ms *MetricsSetup) Shutdown() {
+	if ms.cancel != nil {
+		ms.cancel()
+	}
 }
 
 func (ms *MetricsSetup) startPrometheusEndpoint() {
