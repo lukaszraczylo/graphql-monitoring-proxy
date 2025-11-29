@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -494,4 +496,290 @@ func getMetricValue(metricName string) int {
 		return 0
 	}
 	return int(counter.Get())
+}
+
+// TestRequestCoalescingIntegration tests that request coalescing works end-to-end
+// through the proxy layer, ensuring concurrent identical requests result in only
+// one backend call while all clients receive the correct response.
+func (suite *Tests) TestRequestCoalescingIntegration() {
+	// Save original config
+	originalCoalescing := cfg.RequestCoalescing
+	originalClient := cfg.Client.FastProxyClient
+	originalHostGraphQL := cfg.Server.HostGraphQL
+
+	// Restore after test
+	defer func() {
+		cfg.RequestCoalescing = originalCoalescing
+		cfg.Client.FastProxyClient = originalClient
+		cfg.Server.HostGraphQL = originalHostGraphQL
+	}()
+
+	// Track backend calls
+	var backendCallCount atomic.Int32
+	var requestDelay = 100 * time.Millisecond
+
+	// Create test server that counts requests and introduces delay
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backendCallCount.Add(1)
+		time.Sleep(requestDelay) // Delay to allow concurrent requests to coalesce
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"users":[{"id":"1","name":"Test User"}]}}`))
+	}))
+	defer server.Close()
+
+	// Configure for test
+	cfg.Server.HostGraphQL = server.URL
+	cfg.Client.ClientTimeout = 5
+	cfg.Client.FastProxyClient = createFasthttpClient(cfg)
+	cfg.RequestCoalescing.Enable = true
+
+	// Initialize request coalescer for this test
+	// Reset the global coalescer by creating a new one
+	testCoalescer := NewRequestCoalescer(true, cfg.Logger, cfg.Monitoring)
+
+	// Temporarily replace global coalescer
+	originalCoalescer := requestCoalescer
+	requestCoalescer = testCoalescer
+	defer func() {
+		requestCoalescer = originalCoalescer
+	}()
+
+	// Test Case 1: Concurrent identical requests should coalesce
+	suite.Run("concurrent_identical_requests_coalesce", func() {
+		backendCallCount.Store(0)
+		testCoalescer.Reset()
+
+		concurrentRequests := 10
+		var wg sync.WaitGroup
+		wg.Add(concurrentRequests)
+
+		responses := make([]string, concurrentRequests)
+		errors := make([]error, concurrentRequests)
+
+		// Launch concurrent requests with identical query
+		for i := 0; i < concurrentRequests; i++ {
+			go func(index int) {
+				defer wg.Done()
+
+				reqCtx := &fasthttp.RequestCtx{}
+				reqCtx.Request.SetRequestURI("/graphql")
+				reqCtx.Request.Header.SetMethod("POST")
+				reqCtx.Request.Header.Set("Content-Type", "application/json")
+				reqCtx.Request.SetBody([]byte(`{"query": "query { users { id name } }"}`))
+
+				ctx := suite.app.AcquireCtx(reqCtx)
+				err := proxyTheRequest(ctx, cfg.Server.HostGraphQL)
+				errors[index] = err
+				responses[index] = string(ctx.Response().Body())
+				suite.app.ReleaseCtx(ctx)
+			}(i)
+		}
+
+		wg.Wait()
+
+		// Verify only 1 backend call was made
+		suite.Equal(int32(1), backendCallCount.Load(),
+			"Should make only 1 backend call for %d concurrent identical requests", concurrentRequests)
+
+		// Verify all requests succeeded with same response
+		expectedResponse := `{"data":{"users":[{"id":"1","name":"Test User"}]}}`
+		for i := 0; i < concurrentRequests; i++ {
+			suite.Nil(errors[i], "Request %d should succeed", i)
+			suite.Equal(expectedResponse, responses[i],
+				"Request %d should have correct response", i)
+		}
+
+		// Verify coalescing stats
+		stats := testCoalescer.GetStats()
+		suite.Equal(int64(concurrentRequests), stats["total_requests"],
+			"Total requests should match")
+		suite.Equal(int64(1), stats["primary_requests"],
+			"Should have 1 primary request")
+		suite.Equal(int64(concurrentRequests-1), stats["coalesced_requests"],
+			"Should have %d coalesced requests", concurrentRequests-1)
+	})
+
+	// Test Case 2: Different queries should NOT coalesce
+	suite.Run("different_queries_not_coalesced", func() {
+		backendCallCount.Store(0)
+		testCoalescer.Reset()
+
+		// Create server that returns query-specific responses
+		server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			backendCallCount.Add(1)
+			time.Sleep(50 * time.Millisecond)
+
+			body := make([]byte, r.ContentLength)
+			_, _ = r.Body.Read(body)
+
+			var response string
+			if strings.Contains(string(body), "query1") {
+				response = `{"data":{"result":"query1"}}`
+			} else if strings.Contains(string(body), "query2") {
+				response = `{"data":{"result":"query2"}}`
+			} else {
+				response = `{"data":{"result":"unknown"}}`
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(response))
+		}))
+		defer server2.Close()
+
+		cfg.Server.HostGraphQL = server2.URL
+		cfg.Client.FastProxyClient = createFasthttpClient(cfg)
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		var response1, response2 string
+		var err1, err2 error
+
+		// Launch two requests with different queries concurrently
+		go func() {
+			defer wg.Done()
+			reqCtx := &fasthttp.RequestCtx{}
+			reqCtx.Request.SetRequestURI("/graphql")
+			reqCtx.Request.Header.SetMethod("POST")
+			reqCtx.Request.Header.Set("Content-Type", "application/json")
+			reqCtx.Request.SetBody([]byte(`{"query": "query { query1 }"}`))
+
+			ctx := suite.app.AcquireCtx(reqCtx)
+			err1 = proxyTheRequest(ctx, cfg.Server.HostGraphQL)
+			response1 = string(ctx.Response().Body())
+			suite.app.ReleaseCtx(ctx)
+		}()
+
+		go func() {
+			defer wg.Done()
+			reqCtx := &fasthttp.RequestCtx{}
+			reqCtx.Request.SetRequestURI("/graphql")
+			reqCtx.Request.Header.SetMethod("POST")
+			reqCtx.Request.Header.Set("Content-Type", "application/json")
+			reqCtx.Request.SetBody([]byte(`{"query": "query { query2 }"}`))
+
+			ctx := suite.app.AcquireCtx(reqCtx)
+			err2 = proxyTheRequest(ctx, cfg.Server.HostGraphQL)
+			response2 = string(ctx.Response().Body())
+			suite.app.ReleaseCtx(ctx)
+		}()
+
+		wg.Wait()
+
+		// Both requests should succeed
+		suite.Nil(err1, "Query1 should succeed")
+		suite.Nil(err2, "Query2 should succeed")
+
+		// Should have made 2 backend calls (no coalescing for different queries)
+		suite.Equal(int32(2), backendCallCount.Load(),
+			"Should make 2 backend calls for 2 different queries")
+
+		// Responses should be different
+		suite.Contains(response1, "query1", "Response1 should be for query1")
+		suite.Contains(response2, "query2", "Response2 should be for query2")
+	})
+
+	// Test Case 3: Coalescing disabled should make separate calls
+	suite.Run("coalescing_disabled", func() {
+		// Create a fresh server for this test
+		var disabledCallCount atomic.Int32
+		serverDisabled := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			disabledCallCount.Add(1)
+			time.Sleep(50 * time.Millisecond)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"data":{"users":[{"id":"1"}]}}`))
+		}))
+		defer serverDisabled.Close()
+
+		cfg.Server.HostGraphQL = serverDisabled.URL
+		cfg.Client.FastProxyClient = createFasthttpClient(cfg)
+
+		// Disable coalescing
+		cfg.RequestCoalescing.Enable = false
+
+		concurrentRequests := 5
+		var wg sync.WaitGroup
+		wg.Add(concurrentRequests)
+
+		// Launch concurrent identical requests
+		for i := 0; i < concurrentRequests; i++ {
+			go func() {
+				defer wg.Done()
+
+				reqCtx := &fasthttp.RequestCtx{}
+				reqCtx.Request.SetRequestURI("/graphql")
+				reqCtx.Request.Header.SetMethod("POST")
+				reqCtx.Request.Header.Set("Content-Type", "application/json")
+				reqCtx.Request.SetBody([]byte(`{"query": "query { users { id } }"}`))
+
+				ctx := suite.app.AcquireCtx(reqCtx)
+				_ = proxyTheRequest(ctx, cfg.Server.HostGraphQL)
+				suite.app.ReleaseCtx(ctx)
+			}()
+		}
+
+		wg.Wait()
+
+		// Should make separate backend calls when coalescing is disabled
+		suite.Equal(int32(concurrentRequests), disabledCallCount.Load(),
+			"Should make %d backend calls when coalescing is disabled", concurrentRequests)
+
+		// Re-enable for subsequent tests
+		cfg.RequestCoalescing.Enable = true
+	})
+
+	// Test Case 4: Error responses should be shared correctly
+	suite.Run("error_responses_coalesced", func() {
+		backendCallCount.Store(0)
+		testCoalescer.Reset()
+
+		// Create server that returns errors
+		serverError := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			backendCallCount.Add(1)
+			time.Sleep(50 * time.Millisecond)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"errors":[{"message":"Internal server error"}]}`))
+		}))
+		defer serverError.Close()
+
+		cfg.Server.HostGraphQL = serverError.URL
+		cfg.Client.FastProxyClient = createFasthttpClient(cfg)
+
+		concurrentRequests := 5
+		var wg sync.WaitGroup
+		wg.Add(concurrentRequests)
+
+		errors := make([]error, concurrentRequests)
+
+		for i := 0; i < concurrentRequests; i++ {
+			go func(index int) {
+				defer wg.Done()
+
+				reqCtx := &fasthttp.RequestCtx{}
+				reqCtx.Request.SetRequestURI("/graphql")
+				reqCtx.Request.Header.SetMethod("POST")
+				reqCtx.Request.Header.Set("Content-Type", "application/json")
+				reqCtx.Request.SetBody([]byte(`{"query": "query { fail }"}`))
+
+				ctx := suite.app.AcquireCtx(reqCtx)
+				errors[index] = proxyTheRequest(ctx, cfg.Server.HostGraphQL)
+				suite.app.ReleaseCtx(ctx)
+			}(i)
+		}
+
+		wg.Wait()
+
+		// Should still only make 1 backend call
+		suite.Equal(int32(1), backendCallCount.Load(),
+			"Should make only 1 backend call even for error responses")
+
+		// All requests should receive the same error
+		for i := 0; i < concurrentRequests; i++ {
+			suite.NotNil(errors[i], "Request %d should have error", i)
+		}
+	})
 }

@@ -23,18 +23,14 @@ func NewCircuitBreakerMetrics(monitoring *libpack_monitoring.MetricsSetup) *Circ
 	// Initialize state value
 	cbm.stateValue.Store(float64(0))
 
-	// Create gauge with callback that reads the atomic value
-	cbm.stateGauge = monitoring.RegisterMetricsGauge(
+	// Create gauge with callback that reads the atomic value on every scrape
+	// This ensures the metric always reflects the current circuit breaker state
+	cbm.stateGauge = monitoring.RegisterMetricsGaugeFunc(
 		libpack_monitoring.MetricsCircuitState,
 		nil,
-		0, // Initial value doesn't matter as callback will be used
-	)
-
-	// Override the gauge callback to read from atomic value
-	cbm.stateGauge = monitoring.RegisterMetricsGauge(
-		libpack_monitoring.MetricsCircuitState,
-		nil,
-		cbm.GetState(),
+		func() float64 {
+			return cbm.GetState()
+		},
 	)
 
 	return cbm

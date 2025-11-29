@@ -325,18 +325,71 @@ func setupTracing(c *fiber.Ctx) context.Context {
 	return ctx
 }
 
-// performProxyRequest executes the proxy request with retries and circuit breaker
+// performProxyRequest executes the proxy request with retries, circuit breaker, and request coalescing
 func performProxyRequest(c *fiber.Ctx, proxyURL string) error {
+	// Extract user context for cache key (needed for coalescing and circuit breaker fallback)
+	userID, userRole := extractUserInfo(c)
+
+	// Calculate cache key - includes user context for security
+	// This key is used for both request coalescing and cache fallback
+	cacheKey := libpack_cache.CalculateHash(c, userID, userRole)
+
+	// Check if request coalescing is enabled
+	rc := GetRequestCoalescer()
+	if rc != nil && cfg.RequestCoalescing.Enable {
+		// Use request coalescing to deduplicate identical concurrent requests
+		response, err := rc.Do(cacheKey, func() (*CoalescedResponse, error) {
+			// Execute the actual proxy request
+			proxyErr := performProxyRequestCore(c, proxyURL, cacheKey)
+
+			// Capture the response for coalescing
+			if proxyErr != nil {
+				return &CoalescedResponse{
+					Err:        proxyErr,
+					StatusCode: c.Response().StatusCode(),
+				}, proxyErr
+			}
+
+			return &CoalescedResponse{
+				Body:       c.Response().Body(),
+				StatusCode: c.Response().StatusCode(),
+				Headers:    make(map[string]string),
+			}, nil
+		})
+
+		// Check for error from rc.Do (though it typically returns nil)
+		if err != nil {
+			return err
+		}
+
+		// Check for error stored in the response (for coalesced requests)
+		if response != nil && response.Err != nil {
+			return response.Err
+		}
+
+		// For coalesced requests (not the primary), we need to copy the response
+		if response != nil && response.Body != nil && len(response.Body) > 0 {
+			// Only set response if this is a coalesced request (body would be empty otherwise)
+			if len(c.Response().Body()) == 0 {
+				c.Response().SetStatusCode(response.StatusCode)
+				c.Response().SetBody(response.Body)
+			}
+		}
+
+		return nil
+	}
+
+	// No coalescing - execute directly
+	return performProxyRequestCore(c, proxyURL, cacheKey)
+}
+
+// performProxyRequestCore executes the proxy request with retries and circuit breaker
+// This is the core implementation used by both direct calls and coalesced requests
+func performProxyRequestCore(c *fiber.Ctx, proxyURL string, cacheKey string) error {
 	// If circuit breaker is not enabled, use the original method
 	if !cfg.CircuitBreaker.Enable || cb == nil {
 		return performProxyRequestWithRetries(c, proxyURL)
 	}
-
-	// Extract user context for cache key (needed for circuit breaker fallback)
-	userID, userRole := extractUserInfo(c)
-
-	// Calculate cache key for potential fallback - includes user context for security
-	cacheKey := libpack_cache.CalculateHash(c, userID, userRole)
 
 	// Execute request through circuit breaker
 	_, err := cb.Execute(func() (interface{}, error) {

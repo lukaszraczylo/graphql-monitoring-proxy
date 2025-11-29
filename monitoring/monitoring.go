@@ -119,6 +119,20 @@ func (ms *MetricsSetup) RegisterMetricsGauge(metric_name string, labels map[stri
 	})
 }
 
+// RegisterMetricsGaugeFunc registers a gauge with a callback function that is called on every scrape
+// This is useful for metrics that need to return a dynamic value
+func (ms *MetricsSetup) RegisterMetricsGaugeFunc(metric_name string, labels map[string]string, fn func() float64) *metrics.Gauge {
+	if err := validate_metrics_name(metric_name); err != nil {
+		log.Error(&libpack_logger.LogMessage{
+			Message: "RegisterMetricsGaugeFunc() error - invalid metric name",
+			Pairs:   map[string]interface{}{"error": err.Error(), "metric_name": metric_name},
+		})
+		// Return a dummy gauge instead of nil to prevent panics
+		return &metrics.Gauge{}
+	}
+	return ms.metrics_set_custom.GetOrCreateGauge(ms.get_metrics_name(metric_name, labels), fn)
+}
+
 func (ms *MetricsSetup) RegisterMetricsCounter(metric_name string, labels map[string]string) *metrics.Counter {
 	if err := validate_metrics_name(metric_name); err != nil {
 		log.Error(&libpack_logger.LogMessage{
