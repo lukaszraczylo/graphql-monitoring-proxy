@@ -506,6 +506,7 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 		totalCacheMisses       int64
 		totalCachedQueries     int64
 		totalMemoryUsageMB     float64
+		hasValidMemoryStats    bool // Track if any instance has valid memory stats
 		totalCurrentRPS        float64
 		totalAvgRPS            float64
 		totalActiveConnections int64
@@ -598,9 +599,11 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 		}
 
 		// Aggregate memory usage from full cache details
+		// Skip -1 values which indicate Redis cache (memory tracking not available)
 		if len(instance.Cache) > 0 {
-			if memMB, ok := instance.Cache["memory_usage_mb"].(float64); ok {
+			if memMB, ok := instance.Cache["memory_usage_mb"].(float64); ok && memMB >= 0 {
 				totalMemoryUsageMB += memMB
+				hasValidMemoryStats = true
 			}
 		}
 
@@ -718,7 +721,13 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 			"total_cached": totalCachedQueries,
 		},
 		"memory": map[string]interface{}{
-			"total_usage_mb": totalMemoryUsageMB,
+			"total_usage_mb": func() float64 {
+				if hasValidMemoryStats {
+					return totalMemoryUsageMB
+				}
+				return -1
+			}(),
+			"available": hasValidMemoryStats,
 		},
 		"connections": map[string]interface{}{
 			"total_active": totalActiveConnections,

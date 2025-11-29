@@ -1075,6 +1075,63 @@
 
         // Update all statistics
         function updateAllStats(data) {
+            // Check if this is cluster mode data
+            if (data.cluster_mode && data.stats) {
+                // Cluster mode: data is structured differently
+                // Stats contains aggregated data with nested objects
+                const stats = data.stats;
+
+                // Update cluster status section
+                document.getElementById('cluster-status-section').style.display = 'block';
+                document.getElementById('cluster-total-instances').textContent = data.total_instances || 0;
+                document.getElementById('cluster-healthy-instances').textContent = data.healthy_instances || 0;
+                document.getElementById('overview-title').textContent = 'Cluster Overview';
+
+                // Update cluster info in toggle
+                const totalInstances = data.total_instances || 0;
+                document.getElementById('cluster-info').textContent =
+                    `(${totalInstances} instance${totalInstances !== 1 ? 's' : ''} available)`;
+
+                // Build stats object with uptime from cluster_uptime
+                const statsWithUptime = {
+                    ...stats,
+                    uptime_seconds: stats.cluster_uptime || 0,
+                    uptime_human: formatUptime(stats.cluster_uptime || 0)
+                };
+                updateStats(statsWithUptime);
+
+                // Extract nested objects from stats for cluster mode
+                if (stats.circuit_breaker) updateCircuitBreaker(stats.circuit_breaker);
+                if (stats.coalescing) updateCoalescing(stats.coalescing);
+                if (stats.retry_budget) updateRetryBudget(stats.retry_budget);
+                if (stats.websocket) updateWebSocket(stats.websocket);
+                if (stats.connections) updateConnections(stats.connections);
+
+                // Handle memory for cluster mode (Redis doesn't track memory per instance)
+                if (stats.memory) {
+                    const totalMemMB = stats.memory.total_usage_mb;
+                    if (totalMemMB < 0) {
+                        // All instances are using Redis cache
+                        document.getElementById('cache-memory').textContent = 'N/A';
+                        document.getElementById('cache-memory').title = 'Memory tracking not available for Redis cache';
+                        document.getElementById('cache-memory-pct').textContent = 'Redis cache';
+                        document.getElementById('memory-progress').style.width = '0%';
+                    } else {
+                        document.getElementById('cache-memory').textContent = totalMemMB.toFixed(2) + ' MB';
+                        document.getElementById('cache-memory-pct').textContent = 'Cluster total';
+                    }
+                }
+
+                // Update instance list if available
+                if (data.instances && data.instances.length > 0) {
+                    document.getElementById('instance-details-section').style.display = 'block';
+                    updateInstanceList(data.instances, null);
+                }
+
+                return;
+            }
+
+            // Non-cluster mode: original behavior
             if (data.stats) updateStats(data.stats);
             if (data.health) updateHealth(data.health);
             if (data.circuit_breaker) updateCircuitBreaker(data.circuit_breaker);
