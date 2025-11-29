@@ -1277,15 +1277,34 @@
             stateEl.classList.remove('loading');
 
             let badgeClass = 'badge-info';
-            if (data.state === 'closed') badgeClass = 'badge-success';
-            else if (data.state === 'open') badgeClass = 'badge-danger';
-            else if (data.state === 'half-open') badgeClass = 'badge-warning';
+            let stateText = data.state || 'unknown';
 
-            stateEl.innerHTML = `<span class="badge ${badgeClass}">${data.state || 'Unknown'}</span>`;
+            // For cluster mode, determine state from instance counts
+            if (data.instances_open !== undefined) {
+                // Cluster mode data
+                if (data.instances_open > 0) {
+                    stateText = `${data.instances_open} open`;
+                    badgeClass = 'badge-danger';
+                } else if (data.instances_halfopen > 0) {
+                    stateText = `${data.instances_halfopen} half-open`;
+                    badgeClass = 'badge-warning';
+                } else if (data.instances_closed > 0) {
+                    stateText = `${data.instances_closed} closed`;
+                    badgeClass = 'badge-success';
+                }
+            } else {
+                // Single instance mode
+                if (data.state === 'closed') badgeClass = 'badge-success';
+                else if (data.state === 'open') badgeClass = 'badge-danger';
+                else if (data.state === 'half-open') badgeClass = 'badge-warning';
+            }
+
+            stateEl.innerHTML = `<span class="badge ${badgeClass}">${stateText}</span>`;
 
             document.getElementById('cb-enabled').textContent = data.enabled ? 'Yes' : 'No';
 
             if (data.counts) {
+                // Single instance mode with detailed counts
                 document.getElementById('cb-total-requests').textContent =
                     (data.counts.requests || 0).toLocaleString();
                 document.getElementById('cb-total-successes').textContent =
@@ -1296,6 +1315,14 @@
                     (data.counts.consecutive_successes || 0).toLocaleString();
                 document.getElementById('cb-consecutive-failures').textContent =
                     (data.counts.consecutive_failures || 0).toLocaleString();
+            } else if (data.instances_open !== undefined) {
+                // Cluster mode - show instance distribution instead
+                const total = (data.instances_open || 0) + (data.instances_closed || 0) + (data.instances_halfopen || 0);
+                document.getElementById('cb-total-requests').textContent = total + ' instances';
+                document.getElementById('cb-total-successes').textContent = (data.instances_closed || 0).toLocaleString();
+                document.getElementById('cb-total-failures').textContent = (data.instances_open || 0).toLocaleString();
+                document.getElementById('cb-consecutive-successes').textContent = '--';
+                document.getElementById('cb-consecutive-failures').textContent = '--';
             }
 
             if (data.config) {
@@ -1307,23 +1334,31 @@
         function updateCoalescing(data) {
             document.getElementById('coalescing-rate').textContent =
                 (data.backend_savings_pct || 0).toFixed(1) + '%';
-            document.getElementById('coalescing-total').textContent =
-                (data.total_requests || 0).toLocaleString();
-            document.getElementById('coalescing-primary').textContent =
-                (data.primary_requests || 0).toLocaleString();
-            document.getElementById('coalescing-coalesced').textContent =
-                (data.coalesced_requests || 0).toLocaleString();
+
+            // Handle both single instance (total_requests) and cluster mode (total_coalesced + total_primary)
+            const totalRequests = data.total_requests ||
+                ((data.total_coalesced_requests || 0) + (data.total_primary_requests || 0));
+            document.getElementById('coalescing-total').textContent = totalRequests.toLocaleString();
+
+            // Handle both single instance and cluster mode field names
+            const primaryRequests = data.primary_requests || data.total_primary_requests || 0;
+            document.getElementById('coalescing-primary').textContent = primaryRequests.toLocaleString();
+
+            const coalescedRequests = data.coalesced_requests || data.total_coalesced_requests || 0;
+            document.getElementById('coalescing-coalesced').textContent = coalescedRequests.toLocaleString();
+
             document.getElementById('coalescing-savings').textContent =
                 (data.backend_savings_pct || 0).toFixed(1) + '%';
         }
 
         function updateRetryBudget(data) {
-            document.getElementById('retry-tokens').textContent =
-                data.current_tokens || '--';
-            document.getElementById('retry-current-tokens').textContent =
-                data.current_tokens || '--';
-            document.getElementById('retry-max-tokens').textContent =
-                data.max_tokens || '--';
+            // Use explicit undefined check to handle 0 values correctly
+            const currentTokens = data.current_tokens !== undefined ? data.current_tokens : '--';
+            const maxTokens = data.max_tokens !== undefined ? data.max_tokens : '--';
+
+            document.getElementById('retry-tokens').textContent = currentTokens;
+            document.getElementById('retry-current-tokens').textContent = currentTokens;
+            document.getElementById('retry-max-tokens').textContent = maxTokens;
             document.getElementById('retry-total').textContent =
                 (data.total_attempts || 0).toLocaleString();
             document.getElementById('retry-denied').textContent =
@@ -1333,13 +1368,17 @@
         }
 
         function updateWebSocket(data) {
-            document.getElementById('ws-connections').textContent =
-                data.active_connections || 0;
+            // Handle both single instance (active_connections) and cluster mode (total_connections)
+            const connections = data.active_connections !== undefined ? data.active_connections :
+                               (data.total_connections !== undefined ? data.total_connections : 0);
+            document.getElementById('ws-connections').textContent = connections;
         }
 
         function updateConnections(data) {
-            document.getElementById('pool-connections').textContent =
-                data.active_connections || 0;
+            // Handle both single instance (active_connections) and cluster mode (total_active)
+            const connections = data.active_connections !== undefined ? data.active_connections :
+                               (data.total_active !== undefined ? data.total_active : 0);
+            document.getElementById('pool-connections').textContent = connections;
         }
 
         async function resetCoalescing() {

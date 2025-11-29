@@ -519,7 +519,10 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 		totalRetryAllowed  int64
 		totalRetryDenied   int64
 		totalRetryAttempts int64
+		totalCurrentTokens int64
+		totalMaxTokens     int64
 		retryBudgetEnabled = false
+		retryTokensPerSec  float64 // Use max tokens_per_sec from any instance
 
 		// Circuit breaker stats
 		cbOpenCount           int
@@ -645,6 +648,17 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 			if attempts, ok := instance.RetryBudget["total_attempts"].(float64); ok {
 				totalRetryAttempts += int64(attempts)
 			}
+			if currentTokens, ok := instance.RetryBudget["current_tokens"].(float64); ok {
+				totalCurrentTokens += int64(currentTokens)
+			}
+			if maxTokens, ok := instance.RetryBudget["max_tokens"].(float64); ok {
+				totalMaxTokens += int64(maxTokens)
+			}
+			if tokensPerSec, ok := instance.RetryBudget["tokens_per_sec"].(float64); ok {
+				if tokensPerSec > retryTokensPerSec {
+					retryTokensPerSec = tokensPerSec
+				}
+			}
 		}
 
 		// Aggregate circuit breaker stats
@@ -748,6 +762,9 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 			"denied_retries":  totalRetryDenied,
 			"total_attempts":  totalRetryAttempts,
 			"denial_rate_pct": retryDenialRate,
+			"current_tokens":  totalCurrentTokens,
+			"max_tokens":      totalMaxTokens,
+			"tokens_per_sec":  retryTokensPerSec,
 		},
 		"circuit_breaker": map[string]interface{}{
 			"enabled":            circuitBreakerEnabled,
