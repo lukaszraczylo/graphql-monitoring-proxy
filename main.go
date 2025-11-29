@@ -267,7 +267,7 @@ func parseConfig() {
 		c.Api.BannedUsersFile = validatedPath
 	}
 	c.Server.PurgeOnCrawl = getDetailsFromEnv("PURGE_METRICS_ON_CRAWL", false)
-	c.Server.PurgeEvery = getDetailsFromEnv("PURGE_METRICS_ON_TIMER", 0)
+	c.Server.PurgeEvery = getDetailsFromEnv("PURGE_METRICS_ON_TIMER", 1800) // Default: purge metrics every 30 minutes
 	// Hasura event cleaner
 	c.HasuraEventCleaner.Enable = getDetailsFromEnv("HASURA_EVENT_CLEANER", false)
 	c.HasuraEventCleaner.ClearOlderThan = getDetailsFromEnv("HASURA_EVENT_CLEANER_OLDER_THAN", 1)
@@ -409,15 +409,7 @@ func parseConfig() {
 		initCircuitBreaker(cfg)
 	}
 
-	// Initialize retry budget
-	if cfg.RetryBudget.Enable {
-		retryBudgetConfig := RetryBudgetConfig{
-			TokensPerSecond: cfg.RetryBudget.TokensPerSecond,
-			MaxTokens:       cfg.RetryBudget.MaxTokens,
-			Enabled:         cfg.RetryBudget.Enable,
-		}
-		InitializeRetryBudget(retryBudgetConfig, cfg.Logger)
-	}
+	// Note: Retry budget is initialized in main() with context for graceful shutdown
 
 	// Initialize request coalescer
 	if cfg.RequestCoalescing.Enable {
@@ -442,11 +434,7 @@ func parseConfig() {
 		healthMgr.StartHealthChecking()
 	}
 
-	// Initialize RPS tracker for real-time requests per second monitoring
-	InitializeRPSTracker()
-	cfg.Logger.Info(&libpack_logging.LogMessage{
-		Message: "RPS tracker initialized",
-	})
+	// Note: RPS tracker is initialized in main() with context for graceful shutdown
 
 	// Load rate limit configuration with improved error handling
 	if err := loadRatelimitConfig(); err != nil {
@@ -483,6 +471,22 @@ func main() {
 
 	// Initialize shutdown manager
 	shutdownManager = NewShutdownManager(ctx)
+
+	// Initialize RPS tracker with context for graceful shutdown
+	InitializeRPSTracker(ctx)
+	cfg.Logger.Info(&libpack_logging.LogMessage{
+		Message: "RPS tracker initialized",
+	})
+
+	// Initialize retry budget with context for graceful shutdown
+	if cfg.RetryBudget.Enable {
+		retryBudgetConfig := RetryBudgetConfig{
+			TokensPerSecond: cfg.RetryBudget.TokensPerSecond,
+			MaxTokens:       cfg.RetryBudget.MaxTokens,
+			Enabled:         cfg.RetryBudget.Enable,
+		}
+		InitializeRetryBudgetWithContext(ctx, retryBudgetConfig, cfg.Logger)
+	}
 
 	// Create a wait group to manage goroutines
 	var wg sync.WaitGroup

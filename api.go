@@ -170,9 +170,11 @@ func apiCircuitBreakerHealth(c *fiber.Ctx) error {
 		})
 	}
 
-	// Get circuit breaker state
+	// Get circuit breaker state with proper mutex protection
+	cbMutex.RLock()
 	state := cb.State()
 	counts := cb.Counts()
+	cbMutex.RUnlock()
 
 	// Determine health status
 	var status string

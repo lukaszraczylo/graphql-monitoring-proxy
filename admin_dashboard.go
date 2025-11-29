@@ -79,9 +79,44 @@ func (ad *AdminDashboard) serveDashboard(c *fiber.Ctx) error {
 }
 
 // getStats returns overall proxy statistics
+// In cluster mode (when metrics aggregator is available), returns aggregated stats from all instances
 func (ad *AdminDashboard) getStats(c *fiber.Ctx) error {
+	// Check if cluster mode is enabled - if so, return aggregated stats
+	if aggregator := GetMetricsAggregator(); aggregator != nil {
+		metrics, err := aggregator.GetAggregatedMetrics()
+		if err != nil {
+			if ad.logger != nil {
+				ad.logger.Error(&libpack_logger.LogMessage{
+					Message: "Failed to get aggregated metrics, falling back to local stats",
+					Pairs:   map[string]interface{}{"error": err.Error()},
+				})
+			}
+			// Fall through to local stats on error
+		} else {
+			// Return aggregated cluster stats
+			response := map[string]interface{}{
+				"cluster_mode":      true,
+				"total_instances":   metrics.TotalInstances,
+				"healthy_instances": metrics.HealthyInstances,
+				"timestamp":         metrics.LastUpdate.Format(time.RFC3339),
+				"version":           "0.27.0",
+			}
+
+			// Add combined stats from aggregation
+			if metrics.CombinedStats != nil {
+				for k, v := range metrics.CombinedStats {
+					response[k] = v
+				}
+			}
+
+			return c.JSON(response)
+		}
+	}
+
+	// Local instance stats (fallback or non-cluster mode)
 	uptimeSeconds := time.Since(startTime).Seconds()
 	stats := map[string]interface{}{
+		"cluster_mode":   false,
 		"timestamp":      time.Now().Format(time.RFC3339),
 		"uptime_seconds": uptimeSeconds,
 		"uptime_human":   formatDuration(time.Since(startTime)),
@@ -233,9 +268,62 @@ func (ad *AdminDashboard) getCircuitBreakerStatus(c *fiber.Ctx) error {
 }
 
 // getCacheStats returns cache statistics
+// In cluster mode, returns aggregated cache stats from all instances
 func (ad *AdminDashboard) getCacheStats(c *fiber.Ctx) error {
+	// Check if cluster mode is enabled - if so, return aggregated cache stats
+	if aggregator := GetMetricsAggregator(); aggregator != nil {
+		metrics, err := aggregator.GetAggregatedMetrics()
+		if err != nil {
+			if ad.logger != nil {
+				ad.logger.Error(&libpack_logger.LogMessage{
+					Message: "Failed to get aggregated cache metrics, falling back to local stats",
+					Pairs:   map[string]interface{}{"error": err.Error()},
+				})
+			}
+			// Fall through to local stats on error
+		} else {
+			// Build aggregated cache stats from combined stats
+			response := map[string]interface{}{
+				"cluster_mode":    true,
+				"total_instances": metrics.TotalInstances,
+			}
+
+			// Add cache config from local config
+			if cfg != nil {
+				response["enabled"] = cfg.Cache.CacheEnable
+				response["redis_enabled"] = cfg.Cache.CacheRedisEnable
+				response["ttl_seconds"] = cfg.Cache.CacheTTL
+				response["max_memory_mb"] = cfg.Cache.CacheMaxMemorySize
+				response["max_entries"] = cfg.Cache.CacheMaxEntries
+			}
+
+			// Extract aggregated cache stats from combined stats
+			if metrics.CombinedStats != nil {
+				if cacheHits, ok := metrics.CombinedStats["cache_hits"]; ok {
+					response["cache_hits"] = cacheHits
+				}
+				if cacheMisses, ok := metrics.CombinedStats["cache_misses"]; ok {
+					response["cache_misses"] = cacheMisses
+				}
+				if cachedQueries, ok := metrics.CombinedStats["cached_queries"]; ok {
+					response["cached_queries"] = cachedQueries
+				}
+				if hitRate, ok := metrics.CombinedStats["cache_hit_rate_pct"]; ok {
+					response["hit_rate_pct"] = hitRate
+				}
+				if memoryMB, ok := metrics.CombinedStats["memory_usage_mb"]; ok {
+					response["memory_usage_mb"] = memoryMB
+				}
+			}
+
+			return c.JSON(response)
+		}
+	}
+
+	// Local instance stats (fallback or non-cluster mode)
 	stats := map[string]interface{}{
-		"enabled": false,
+		"cluster_mode": false,
+		"enabled":      false,
 	}
 
 	if cfg != nil {
@@ -590,8 +678,8 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
-	// Send initial stats immediately
-	if stats := ad.gatherAllStats(); stats != nil {
+	// Send initial stats immediately (cluster-aware for dashboard)
+	if stats := ad.gatherAllStatsClusterAware(); stats != nil {
 		if data, err := json.Marshal(stats); err == nil {
 			c.WriteMessage(websocket.TextMessage, data)
 		}
@@ -601,8 +689,8 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 	for {
 		select {
 		case <-ticker.C:
-			// Gather all stats
-			stats := ad.gatherAllStats()
+			// Gather all stats (cluster-aware for dashboard)
+			stats := ad.gatherAllStatsClusterAware()
 
 			// Marshal to JSON
 			data, err := json.Marshal(stats)
@@ -635,8 +723,56 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 }
 
 // gatherAllStats collects all statistics into a single structure
+// This always returns LOCAL stats for this instance (used by metrics aggregator)
 func (ad *AdminDashboard) gatherAllStats() map[string]interface{} {
+	return ad.gatherAllStatsWithMode(false)
+}
+
+// gatherAllStatsClusterAware collects statistics with cluster awareness
+// If cluster mode is available, returns aggregated stats from all instances
+func (ad *AdminDashboard) gatherAllStatsClusterAware() map[string]interface{} {
+	return ad.gatherAllStatsWithMode(true)
+}
+
+// gatherAllStatsWithMode collects statistics with optional cluster mode
+func (ad *AdminDashboard) gatherAllStatsWithMode(useClusterMode bool) map[string]interface{} {
+	// Check if cluster mode is requested and available
+	if useClusterMode {
+		if aggregator := GetMetricsAggregator(); aggregator != nil {
+			metrics, err := aggregator.GetAggregatedMetrics()
+			if err == nil && metrics != nil {
+				// Return aggregated cluster stats
+				result := map[string]interface{}{
+					"cluster_mode":      true,
+					"total_instances":   metrics.TotalInstances,
+					"healthy_instances": metrics.HealthyInstances,
+				}
+
+				// Build stats section from combined stats
+				stats := map[string]interface{}{
+					"timestamp": metrics.LastUpdate.Format(time.RFC3339),
+					"version":   "0.27.0",
+				}
+
+				// Copy all combined stats
+				if metrics.CombinedStats != nil {
+					for k, v := range metrics.CombinedStats {
+						stats[k] = v
+					}
+				}
+				result["stats"] = stats
+
+				// Add per-instance details
+				result["instances"] = metrics.Instances
+
+				return result
+			}
+		}
+	}
+
+	// Fall back to local stats
 	result := make(map[string]interface{})
+	result["cluster_mode"] = false
 
 	// Main stats
 	uptimeSeconds := time.Since(startTime).Seconds()
@@ -787,16 +923,24 @@ func (ad *AdminDashboard) gatherAllStats() map[string]interface{} {
 			}
 			cacheStats["hit_rate_pct"] = hitRate
 
-			memoryUsage := libpack_cache.GetCacheMemoryUsage()
-			maxMemory := libpack_cache.GetCacheMaxMemorySize()
-			cacheStats["memory_usage_bytes"] = memoryUsage
-			cacheStats["memory_usage_mb"] = float64(memoryUsage) / (1024 * 1024)
+			// Only get memory usage for in-memory cache (not Redis)
+			if cfg.Cache.CacheEnable && !cfg.Cache.CacheRedisEnable {
+				memoryUsage := libpack_cache.GetCacheMemoryUsage()
+				maxMemory := libpack_cache.GetCacheMaxMemorySize()
+				cacheStats["memory_usage_bytes"] = memoryUsage
+				cacheStats["memory_usage_mb"] = float64(memoryUsage) / (1024 * 1024)
 
-			memoryUsagePct := 0.0
-			if maxMemory > 0 {
-				memoryUsagePct = float64(memoryUsage) / float64(maxMemory) * 100
+				memoryUsagePct := 0.0
+				if maxMemory > 0 {
+					memoryUsagePct = float64(memoryUsage) / float64(maxMemory) * 100
+				}
+				cacheStats["memory_usage_pct"] = memoryUsagePct
+			} else {
+				// For Redis cache, memory tracking is not available per instance
+				cacheStats["memory_usage_bytes"] = int64(-1)
+				cacheStats["memory_usage_mb"] = float64(-1)
+				cacheStats["memory_usage_pct"] = float64(-1)
 			}
-			cacheStats["memory_usage_pct"] = memoryUsagePct
 		}
 	}
 	result["cache"] = cacheStats
