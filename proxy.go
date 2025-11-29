@@ -454,19 +454,36 @@ func executeProxyAttempt(c *fiber.Ctx, proxyURL string) error {
 		return retry.Unrecoverable(fmt.Errorf("fiber context became nil during retry"))
 	}
 
+	// Get connection pool manager for stats tracking
+	poolMgr := GetConnectionPoolManager()
+
 	// Execute the proxy request
-	if err := doProxyRequestWithTimeout(c, proxyURL, cfg.Client.FastProxyClient); err != nil {
+	proxyErr := doProxyRequestWithTimeout(c, proxyURL, cfg.Client.FastProxyClient)
+	if proxyErr != nil {
 		// Check if this is a connection error
-		if isConnectionError(err) {
+		if isConnectionError(proxyErr) {
 			notifyHealthManager(false)
-			return err // Connection errors are retryable
+			// Track connection failure
+			if poolMgr != nil {
+				poolMgr.RecordConnectionFailure()
+			}
+			return proxyErr // Connection errors are retryable
 		}
 
 		// Check if this is a timeout error - don't retry timeouts
-		if isTimeoutError(err) {
-			return retry.Unrecoverable(err)
+		if isTimeoutError(proxyErr) {
+			return retry.Unrecoverable(proxyErr)
 		}
-		return err
+
+		// Check if this is a retryable HTTP error (e.g., 503)
+		// These indicate the server responded but with an error status
+		if strings.Contains(proxyErr.Error(), "non-200 response") {
+			// Track as a failure for retryable HTTP errors
+			if poolMgr != nil {
+				poolMgr.RecordConnectionFailure()
+			}
+		}
+		return proxyErr
 	}
 
 	// Safety check before accessing response
@@ -481,10 +498,18 @@ func executeProxyAttempt(c *fiber.Ctx, proxyURL string) error {
 	if err == nil {
 		// Success case
 		notifyHealthManager(true)
+		// Track successful connection
+		if poolMgr != nil {
+			poolMgr.RecordConnectionSuccess()
+		}
 		return nil
 	}
 
 	if shouldRetry {
+		// Track connection failure for retryable errors (5xx, etc)
+		if poolMgr != nil {
+			poolMgr.RecordConnectionFailure()
+		}
 		return err // Retryable error
 	}
 
@@ -541,31 +566,51 @@ func performProxyRequestWithEnhancedRetries(c *fiber.Ctx, proxyURL string, backe
 		retry.LastErrorOnly(true),
 		retry.RetryIf(func(err error) bool {
 			// Don't retry if context is cancelled or context is nil
-			defer func() {
-				// Recover from any panic when accessing context
-				if r := recover(); r != nil {
-					// If we panic, don't retry
-					return
-				}
-			}()
-
 			if c == nil {
 				return false
 			}
 
-			// Try to safely access the context
-			ctx := c.Context()
-			if ctx == nil {
+			// Safely check if context is done/cancelled
+			// Note: fasthttp.RequestCtx.Done() can panic if not properly initialized
+			// If we panic, don't retry (maintains backward compatibility with test behavior)
+			shouldRetry := true
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						// If we panic accessing context, don't retry
+						// This typically happens in test scenarios with mock contexts
+						shouldRetry = false
+					}
+				}()
+				ctx := c.Context()
+				if ctx == nil {
+					return
+				}
+				select {
+				case <-ctx.Done():
+					shouldRetry = false
+				default:
+				}
+			}()
+
+			if !shouldRetry {
 				return false
 			}
 
-			// Check if context is done/cancelled
-			select {
-			case <-ctx.Done():
-				return false
-			default:
-				return true
+			// Check retry budget before allowing retry
+			if rb := GetRetryBudget(); rb != nil {
+				if !rb.AllowRetry() {
+					cfg.Logger.Warning(&libpack_logger.LogMessage{
+						Message: "Retry denied by budget",
+						Pairs: map[string]interface{}{
+							"path":  c.Path(),
+							"error": err.Error(),
+						},
+					})
+					return false
+				}
 			}
+			return true
 		}),
 	)
 }
