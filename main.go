@@ -131,6 +131,7 @@ func parseConfig() {
 	c.Cache.CacheTTL = getDetailsFromEnv("CACHE_TTL", 60)
 	c.Cache.CacheMaxMemorySize = getDetailsFromEnv("CACHE_MAX_MEMORY_SIZE", 100) // Default 100MB
 	c.Cache.CacheMaxEntries = getDetailsFromEnv("CACHE_MAX_ENTRIES", 10000)      // Default 10000 entries
+	c.Cache.CacheUseLRU = getDetailsFromEnv("CACHE_USE_LRU", false)              // Use LRU eviction algorithm
 	// GraphQL query parsing cache - auto-calculate based on CPU cores if not set
 	c.Cache.GraphQLQueryCacheSize = getDetailsFromEnv("GRAPHQL_QUERY_CACHE_SIZE", runtime.GOMAXPROCS(0)*250)
 
@@ -390,9 +391,16 @@ func parseConfig() {
 			// Memory cache configurations
 			cacheConfig.Memory.MaxMemorySize = int64(cfg.Cache.CacheMaxMemorySize) * 1024 * 1024 // Convert MB to bytes
 			cacheConfig.Memory.MaxEntries = int64(cfg.Cache.CacheMaxEntries)
+			cacheConfig.Memory.UseLRU = cfg.Cache.CacheUseLRU
+
+			cacheType := "standard"
+			if cfg.Cache.CacheUseLRU {
+				cacheType = "LRU"
+			}
 			cfg.Logger.Info(&libpack_logging.LogMessage{
 				Message: "Configuring memory cache with limits",
 				Pairs: map[string]interface{}{
+					"type":          cacheType,
 					"max_memory_mb": cfg.Cache.CacheMaxMemorySize,
 					"max_entries":   cfg.Cache.CacheMaxEntries,
 				},

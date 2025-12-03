@@ -9,7 +9,3 @@ func (ms *MetricsSetup) RegisterDefaultMetrics() {
 	ms.RegisterMetricsCounter(MetricsCacheMiss, nil)
 	ms.RegisterMetricsCounter(MetricsQueriesCached, nil)
 }
-
-func (ms *MetricsSetup) RegisterGoMetrics() {
-	// TODO: metrics.WriteProcessMetrics(ms.metrics_set)
-}

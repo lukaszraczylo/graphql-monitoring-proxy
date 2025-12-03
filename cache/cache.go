@@ -27,6 +27,7 @@ type CacheConfig struct {
 	Memory struct {
 		MaxMemorySize int64 `json:"max_memory_size"` // Maximum memory size in bytes
 		MaxEntries    int64 `json:"max_entries"`     // Maximum number of entries
+		UseLRU        bool  `json:"use_lru"`         // Use LRU eviction algorithm instead of random eviction
 	}
 	TTL                  int  `json:"ttl"`
 	IncludeUserContext   bool `json:"include_user_context"`    // Include user ID and role in cache key
@@ -96,16 +97,6 @@ func CalculateHash(c *fiber.Ctx, userID string, userRole string) string {
 	return strutil.Md5(cacheKeyData)
 }
 
-// CalculateHashLegacy generates a cache hash using only the request body (DEPRECATED).
-// This function exists for backward compatibility only and should NOT be used
-// in production multi-user applications as it creates a security vulnerability
-// where users can see each other's cached data.
-//
-// Deprecated: Use CalculateHash with user context instead.
-func CalculateHashLegacy(c *fiber.Ctx) string {
-	return strutil.Md5(c.Body())
-}
-
 func EnableCache(cfg *CacheConfig) {
 	if cfg.Logger == nil {
 		cfg.Logger = libpack_logger.New()
@@ -134,34 +125,41 @@ func EnableCache(cfg *CacheConfig) {
 			cfg.Client = libpack_cache_redis.NewCacheWrapper(redisClient, cfg.Logger)
 		}
 	} else {
+		// Calculate memory and entry limits
+		maxMemory := cfg.Memory.MaxMemorySize
+		if maxMemory <= 0 {
+			maxMemory = libpack_cache_memory.DefaultMaxMemorySize
+		}
+
+		maxEntries := cfg.Memory.MaxEntries
+		if maxEntries <= 0 {
+			maxEntries = libpack_cache_memory.DefaultMaxCacheSize
+		}
+
+		cacheType := "standard"
+		if cfg.Memory.UseLRU {
+			cacheType = "LRU"
+		}
+
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Using in-memory cache",
 			Pairs: map[string]interface{}{
-				"max_memory_size_bytes": cfg.Memory.MaxMemorySize,
-				"max_entries":           cfg.Memory.MaxEntries,
+				"type":                  cacheType,
+				"max_memory_size_bytes": maxMemory,
+				"max_entries":           maxEntries,
 			},
 		})
 
-		// Use memory size and entry limits if configured, otherwise use defaults
-		if cfg.Memory.MaxMemorySize > 0 || cfg.Memory.MaxEntries > 0 {
-			maxMemory := cfg.Memory.MaxMemorySize
-			if maxMemory <= 0 {
-				maxMemory = libpack_cache_memory.DefaultMaxMemorySize
-			}
-
-			maxEntries := cfg.Memory.MaxEntries
-			if maxEntries <= 0 {
-				maxEntries = libpack_cache_memory.DefaultMaxCacheSize
-			}
-
+		if cfg.Memory.UseLRU {
+			// Use LRU cache with proper eviction algorithm
+			cfg.Client = libpack_cache_memory.NewLRUMemoryCache(maxMemory, maxEntries)
+		} else {
+			// Use standard sync.Map-based cache
 			cfg.Client = libpack_cache_memory.NewWithSize(
 				time.Duration(cfg.TTL)*time.Second,
 				maxMemory,
 				maxEntries,
 			)
-		} else {
-			// Backward compatibility
-			cfg.Client = libpack_cache_memory.New(time.Duration(cfg.TTL) * time.Second)
 		}
 	}
 	config = cfg
@@ -271,6 +269,9 @@ func CacheGetQueries() int64 {
 }
 
 func CacheClear() {
+	if !IsCacheInitialized() {
+		return
+	}
 	config.Client.Clear()
 	cacheStats = &CacheStats{}
 }

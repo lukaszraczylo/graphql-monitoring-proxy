@@ -429,7 +429,7 @@ func (ad *AdminDashboard) getWebSocketStats(c *fiber.Ctx) error {
 
 // clearCache clears the cache
 func (ad *AdminDashboard) clearCache(c *fiber.Ctx) error {
-	// TODO: Implement cache clearing
+	libpack_cache.CacheClear()
 	return c.JSON(map[string]interface{}{
 		"success": true,
 		"message": "Cache cleared successfully",

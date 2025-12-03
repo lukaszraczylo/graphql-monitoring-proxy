@@ -155,6 +155,7 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `CACHE_TTL`               | The cache TTL                           | `60`                       |
 | `CACHE_MAX_MEMORY_SIZE`   | Maximum memory size for cache in MB     | `100`                      |
 | `CACHE_MAX_ENTRIES`       | Maximum number of entries in cache      | `10000`                    |
+| `CACHE_USE_LRU`           | Use LRU eviction algorithm (see [Cache Eviction](#cache-eviction-algorithms)) | `false`    |
 | `CACHE_PER_USER_DISABLED` | **⚠️ SECURITY**: Disable per-user cache isolation | `false` (**DO NOT** set to `true` in multi-user apps) |
 | `ENABLE_REDIS_CACHE`      | Enable distributed Redis cache          | `false`                    |
 | `CACHE_REDIS_URL`         | URL to redis server / cluster endpoint  | `localhost:6379`           |
@@ -438,6 +439,32 @@ These features ensure the cache runs efficiently even under high load and with l
 
 Since version `0.5.30` the cache is gzipped in the memory, which should optimise the memory usage quite significantly.
 Since version `0.15.48` the you can also use the distributed Redis cache.
+
+#### Cache Eviction Algorithms
+
+The proxy supports two cache eviction strategies:
+
+**Standard (default):** Uses Go's `sync.Map` with approximate eviction. When memory limits are reached, entries are evicted based on iteration order (pseudo-random). This is memory-efficient and has excellent concurrent read performance.
+
+**LRU (Least Recently Used):** Uses a proper LRU algorithm with a linked list to track access order. When limits are reached, the least recently accessed entries are evicted first. Enable with `CACHE_USE_LRU=true`.
+
+| Feature | Standard | LRU |
+|---------|----------|-----|
+| Eviction order | Pseudo-random | Least recently used |
+| Read performance | Excellent | Good |
+| Memory tracking | Approximate | Precise |
+| Best for | High read throughput | Cache hit optimization |
+
+*LRU cache configuration:*
+```bash
+GMP_ENABLE_GLOBAL_CACHE=true
+GMP_CACHE_TTL=300
+GMP_CACHE_USE_LRU=true
+GMP_CACHE_MAX_MEMORY_SIZE=200
+GMP_CACHE_MAX_ENTRIES=5000
+```
+
+Use LRU when cache hit rate is critical and you want to ensure frequently accessed data stays cached. Use Standard (default) for maximum read throughput with less memory overhead.
 
 #### Read-only endpoint
 

@@ -279,3 +279,8 @@ func (c *LRUMemoryCache) GetMemoryUsage() int64 {
 func (c *LRUMemoryCache) GetMaxMemorySize() int64 {
 	return c.maxMemorySize
 }
+
+// CountQueries returns the number of entries in the cache
+func (c *LRUMemoryCache) CountQueries() int64 {
+	return atomic.LoadInt64(&c.currentCount)
+}

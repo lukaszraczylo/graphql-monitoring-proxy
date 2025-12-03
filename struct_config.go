@@ -44,6 +44,7 @@ type config struct {
 		CacheRedisEnable      bool
 		CacheMaxMemorySize    int
 		CacheMaxEntries       int
+		CacheUseLRU           bool // Use LRU eviction algorithm instead of random eviction
 		GraphQLQueryCacheSize int  // Max number of parsed GraphQL queries to cache
 		PerUserCacheDisabled  bool // Disable per-user cache isolation (SECURITY RISK - not recommended)
 	}
