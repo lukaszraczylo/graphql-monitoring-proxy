@@ -105,5 +105,5 @@ jobs:
           summary-always: true
           # auto-push only if it's on main branch
           auto-push: false
-          gh-pages-branch: "gh-pages"
-          benchmark-data-dir-path: "docs"
+          gh-pages-branch: "main"
+          benchmark-data-dir-path: "docs/bench"
