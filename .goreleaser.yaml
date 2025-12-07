@@ -1,0 +1,67 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: graphql-proxy
+    main: .
+    binary: graphql-proxy
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: graphql-proxy
+    formats: [tar.gz]
+    name_template: "graphql-proxy-{{ .Os }}-{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "graphql-proxy-checksums.txt"
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^Merge'
+      - '^WIP'
+      - '^Update go.mod'
+
+release:
+  github:
+    owner: lukaszraczylo
+    name: graphql-monitoring-proxy
+  name_template: "version {{.Version}}"
+  draft: false
+  prerelease: auto
+
+dockers_v2:
+  - images:
+      - "ghcr.io/lukaszraczylo/graphql-monitoring-proxy"
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    dockerfile: Dockerfile.goreleaser
+    extra_files:
+      - static/app

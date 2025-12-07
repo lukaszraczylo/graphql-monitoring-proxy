@@ -1,0 +1,6 @@
+FROM gcr.io/distroless/base-debian12:nonroot
+ARG TARGETPLATFORM
+WORKDIR /go/src/app
+COPY --chmod=777 --chown=nonroot:nonroot static/app /go/src/app
+COPY ${TARGETPLATFORM}/graphql-proxy /go/src/app/graphql-proxy
+ENTRYPOINT ["/go/src/app/graphql-proxy"]
