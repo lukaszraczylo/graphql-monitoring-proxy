@@ -6,7 +6,7 @@
         <title>GraphQL Monitoring Proxy - High-Performance GraphQL Gateway</title>
         <meta
             name="description"
-            content="High-performance GraphQL proxy with monitoring, caching, circuit breaker, rate limiting, and security features. Zero cost monitoring at 30k req/s."
+            content="High-performance GraphQL proxy with monitoring, caching, circuit breaker, rate limiting, and security features. Zero cost monitoring at 100k+ req/s."
         />
         <script src="https://cdn.tailwindcss.com"></script>
         <script>
@@ -85,9 +85,11 @@
                     </a>
                     <div class="hidden md:flex space-x-6">
                         <a href="#features" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 font-medium">Features</a>
-                        <a href="#installation" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 font-medium">Installation</a>
-                        <a href="#configuration" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 font-medium">Configuration</a>
-                        <a href="#endpoints" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 font-medium">Endpoints</a>
+                        <a href="#monitoring" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 font-medium">Monitoring</a>
+                        <a href="#speed" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 font-medium">Speed</a>
+                        <a href="#security" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 font-medium">Security</a>
+                        <a href="#resilience" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 font-medium">Resilience</a>
+                        <a href="#installation" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 font-medium">Install</a>
                     </div>
                     <div class="flex items-center space-x-4">
                         <button id="theme-toggle" class="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center" aria-label="Toggle theme">
@@ -107,9 +109,11 @@
             <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200 dark:border-gray-700">
                 <div class="px-4 py-3 space-y-1 bg-white dark:bg-gray-800">
                     <a href="#features" class="block px-3 py-3 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 rounded font-medium">Features</a>
-                    <a href="#installation" class="block px-3 py-3 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 rounded font-medium">Installation</a>
-                    <a href="#configuration" class="block px-3 py-3 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 rounded font-medium">Configuration</a>
-                    <a href="#endpoints" class="block px-3 py-3 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 rounded font-medium">Endpoints</a>
+                    <a href="#monitoring" class="block px-3 py-3 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 rounded font-medium">Monitoring</a>
+                    <a href="#speed" class="block px-3 py-3 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 rounded font-medium">Speed</a>
+                    <a href="#security" class="block px-3 py-3 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 rounded font-medium">Security</a>
+                    <a href="#resilience" class="block px-3 py-3 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 rounded font-medium">Resilience</a>
+                    <a href="#installation" class="block px-3 py-3 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 rounded font-medium">Install</a>
                 </div>
             </div>
         </nav>
@@ -131,8 +135,8 @@
                     <h1 class="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 dark:text-gray-100 mb-4 sm:mb-6 leading-tight animate-fade-in-up" style="animation-delay: 0.1s;">
                         GraphQL Monitoring<br /><span class="gradient-text">Proxy</span>
                     </h1>
-                    <p class="text-base sm:text-lg md:text-xl text-gray-600 dark:text-gray-300 mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed px-4 animate-fade-in-up" style="animation-delay: 0.2s;">
-                        High-performance GraphQL gateway with monitoring, caching, circuit breaker, rate limiting, and security. Tested at 30k req/s using 10MB RAM.
+                    <p class="text-base sm:text-lg md:text-xl text-gray-600 dark:text-gray-300 mb-8 sm:mb-10 max-w-3xl mx-auto leading-relaxed px-4 animate-fade-in-up" style="animation-delay: 0.2s;">
+                        Enterprise-grade GraphQL gateway with Prometheus metrics, smart caching, circuit breaker, rate limiting, request coalescing, WebSocket subscriptions, and comprehensive security - all at zero cost.
                     </p>
                     <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center mb-8 sm:mb-12 px-4 animate-fade-in-up" style="animation-delay: 0.3s;">
                         <a href="#installation" class="group relative bg-gradient-to-r from-fuchsia-500 to-indigo-600 hover:from-fuchsia-600 hover:to-indigo-700 text-white px-8 py-3 rounded-lg font-medium transition-all duration-300 min-h-[48px] flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-105">
@@ -158,11 +162,10 @@
                                     <span class="ml-2 text-gray-400 text-sm">terminal</span>
                                 </div>
                                 <pre class="text-gray-100 text-sm sm:text-base overflow-x-auto"><code><span class="text-gray-400"># Run with Docker</span>
-<span class="text-fuchsia-400">$</span> docker pull ghcr.io/lukaszraczylo/graphql-monitoring-proxy:latest
-
-<span class="text-gray-400"># Configure and run</span>
 <span class="text-fuchsia-400">$</span> docker run -p 8080:8080 -p 9393:9393 \
     -e GMP_HOST_GRAPHQL=http://your-graphql:4000/ \
+    -e GMP_ENABLE_GLOBAL_CACHE=true \
+    -e GMP_ENABLE_CIRCUIT_BREAKER=true \
     ghcr.io/lukaszraczylo/graphql-monitoring-proxy:latest</code></pre>
                             </div>
                         </div>
@@ -171,110 +174,396 @@
             </div>
         </section>
 
-        <!-- Features Section -->
-        <section id="features" class="py-12 sm:py-16 md:py-20 bg-white dark:bg-gray-900 theme-transition">
+        <!-- Performance Stats -->
+        <section class="py-12 sm:py-16 bg-white dark:bg-gray-900 theme-transition">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6">
+                <div class="grid sm:grid-cols-4 gap-4 text-center">
+                    <div class="glass p-6 rounded-xl">
+                        <div class="text-4xl font-bold gradient-text mb-2">100k+</div>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Requests/second</p>
+                    </div>
+                    <div class="glass p-6 rounded-xl">
+                        <div class="text-4xl font-bold gradient-text mb-2">10MB</div>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">RAM usage</p>
+                    </div>
+                    <div class="glass p-6 rounded-xl">
+                        <div class="text-4xl font-bold gradient-text mb-2">0.1%</div>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">CPU usage</p>
+                    </div>
+                    <div class="glass p-6 rounded-xl">
+                        <div class="text-4xl font-bold gradient-text mb-2">$0</div>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Cost</p>
+                    </div>
+                </div>
+                <div class="mt-6 text-center">
+                    <a href="bench/" class="inline-flex items-center text-fuchsia-600 dark:text-fuchsia-400 hover:underline font-medium">
+                        View benchmarks
+                        <i class="fas fa-arrow-right ml-2"></i>
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features Overview -->
+        <section id="features" class="py-12 sm:py-16 md:py-20 bg-gray-50 dark:bg-gray-800 theme-transition">
             <div class="max-w-6xl mx-auto px-4 sm:px-6">
                 <div class="text-center mb-8 sm:mb-12">
-                    <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">Features</h2>
-                    <p class="text-base sm:text-lg text-gray-600 dark:text-gray-300 px-4">Enterprise-grade GraphQL gateway at zero cost</p>
+                    <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">Feature Overview</h2>
+                    <p class="text-base sm:text-lg text-gray-600 dark:text-gray-300 px-4">Everything you need for production GraphQL</p>
                 </div>
-                <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div class="glass p-5 rounded-xl group hover:shadow-lg transition-all duration-300">
-                        <div class="flex items-start gap-4">
-                            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-fuchsia-500 to-fuchsia-600 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                                <i class="fas fa-chart-line text-white"></i>
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-fuchsia-500 to-fuchsia-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+                            <i class="fas fa-chart-line text-white"></i>
+                        </div>
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-2">Monitoring</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Prometheus metrics, OpenTelemetry tracing, admin dashboard</p>
+                    </div>
+                    <div class="glass p-5 rounded-xl group hover:shadow-lg transition-all duration-300">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+                            <i class="fas fa-bolt text-white"></i>
+                        </div>
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-2">Speed</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Smart caching, request coalescing, read-only replicas</p>
+                    </div>
+                    <div class="glass p-5 rounded-xl group hover:shadow-lg transition-all duration-300">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+                            <i class="fas fa-shield-halved text-white"></i>
+                        </div>
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-2">Security</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Rate limiting, introspection blocking, user banning</p>
+                    </div>
+                    <div class="glass p-5 rounded-xl group hover:shadow-lg transition-all duration-300">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500 to-rose-600 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+                            <i class="fas fa-heart-pulse text-white"></i>
+                        </div>
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-2">Resilience</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Circuit breaker, retry budget, connection recovery</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Monitoring Section -->
+        <section id="monitoring" class="py-12 sm:py-16 md:py-20 bg-white dark:bg-gray-900 theme-transition">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6">
+                <div class="text-center mb-8 sm:mb-12">
+                    <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">
+                        <i class="fas fa-chart-line gradient-text mr-3"></i>Monitoring
+                    </h2>
+                    <p class="text-base sm:text-lg text-gray-600 dark:text-gray-300 px-4">Complete observability for your GraphQL API</p>
+                </div>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="glass p-6 rounded-xl">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-fire mr-2 text-orange-500"></i>
+                            Prometheus Metrics
+                        </h3>
+                        <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Query execution timing with histograms</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>User ID extraction from JWT tokens</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Operation name and type tracking</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Cache hit/miss ratios</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Success/failure/skipped counters</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Configurable metrics purging</li>
+                        </ul>
+                    </div>
+                    <div class="glass p-6 rounded-xl">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-satellite-dish mr-2 text-blue-500"></i>
+                            OpenTelemetry Tracing
+                        </h3>
+                        <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Distributed tracing support</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Configurable OTLP collector endpoint</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Trace context propagation via headers</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Child span creation for each request</li>
+                        </ul>
+                        <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg mt-4 text-xs overflow-x-auto"><code>GMP_ENABLE_TRACE=true
+GMP_TRACE_ENDPOINT=localhost:4317</code></pre>
+                    </div>
+                    <div class="glass p-6 rounded-xl md:col-span-2">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-desktop mr-2 text-pink-500"></i>
+                            Real-Time Admin Dashboard
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Web-based UI at <code class="text-fuchsia-600 dark:text-fuchsia-400">/admin</code> with auto-refresh every 5 seconds:</p>
+                        <div class="grid sm:grid-cols-3 gap-4 text-sm">
+                            <div>
+                                <h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2">System Health</h4>
+                                <ul class="space-y-1 text-gray-600 dark:text-gray-400">
+                                    <li>Backend GraphQL status</li>
+                                    <li>Redis connectivity</li>
+                                    <li>Response times</li>
+                                </ul>
                             </div>
                             <div>
-                                <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-1">Prometheus Metrics</h3>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">Full observability with query timing, user tracking, and operation metrics</p>
+                                <h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2">Live Statistics</h4>
+                                <ul class="space-y-1 text-gray-600 dark:text-gray-400">
+                                    <li>Request coalescing rate</li>
+                                    <li>Retry budget tokens</li>
+                                    <li>Active WebSocket connections</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2">Controls</h4>
+                                <ul class="space-y-1 text-gray-600 dark:text-gray-400">
+                                    <li>Circuit breaker state</li>
+                                    <li>Cache statistics</li>
+                                    <li>Reset/clear actions</li>
+                                </ul>
                             </div>
                         </div>
                     </div>
-                    <div class="glass p-5 rounded-xl group hover:shadow-lg transition-all duration-300">
-                        <div class="flex items-start gap-4">
-                            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                                <i class="fas fa-bolt text-white"></i>
-                            </div>
-                            <div>
-                                <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-1">Smart Caching</h3>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">Memory-aware caching with LRU eviction, compression, and Redis support</p>
-                            </div>
-                        </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Speed Section -->
+        <section id="speed" class="py-12 sm:py-16 md:py-20 bg-gray-50 dark:bg-gray-800 theme-transition">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6">
+                <div class="text-center mb-8 sm:mb-12">
+                    <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">
+                        <i class="fas fa-bolt gradient-text mr-3"></i>Speed
+                    </h2>
+                    <p class="text-base sm:text-lg text-gray-600 dark:text-gray-300 px-4">Maximize throughput, minimize latency</p>
+                </div>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="glass p-6 rounded-xl">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-layer-group mr-2 text-amber-500"></i>
+                            Request Coalescing
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Deduplicate concurrent identical queries - only one request hits the backend, response is shared with all waiting clients.</p>
+                        <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Reduces backend load 50-80%</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Prevents thundering herd on cache expiry</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Zero latency for primary request</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Enabled by default</li>
+                        </ul>
                     </div>
-                    <div class="glass p-5 rounded-xl group hover:shadow-lg transition-all duration-300">
-                        <div class="flex items-start gap-4">
-                            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                                <i class="fas fa-shield-halved text-white"></i>
-                            </div>
-                            <div>
-                                <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-1">Circuit Breaker</h3>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">Automatic failure detection with graceful degradation and cached fallbacks</p>
-                            </div>
-                        </div>
+                    <div class="glass p-6 rounded-xl">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-database mr-2 text-violet-500"></i>
+                            Smart Caching
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Memory-aware caching with per-user isolation, compression, and flexible TTL control.</p>
+                        <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>In-memory with LRU eviction</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Distributed Redis cache support</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Per-query TTL via <code>@cached(ttl: 90)</code></li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Force refresh via <code>@cached(refresh: true)</code></li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Automatic gzip compression</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Per-user cache isolation (security)</li>
+                        </ul>
                     </div>
-                    <div class="glass p-5 rounded-xl group hover:shadow-lg transition-all duration-300">
-                        <div class="flex items-start gap-4">
-                            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500 to-rose-600 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                                <i class="fas fa-gauge-high text-white"></i>
-                            </div>
-                            <div>
-                                <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-1">Rate Limiting</h3>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">Role-based rate limiting with JWT extraction and burst control</p>
-                            </div>
-                        </div>
+                    <div class="glass p-6 rounded-xl">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-plug mr-2 text-emerald-500"></i>
+                            WebSocket Subscriptions
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Native GraphQL subscription support with bidirectional proxying.</p>
+                        <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Automatic ping/pong keep-alive</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Configurable message size limits</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Connection statistics in dashboard</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Graceful connection handling</li>
+                        </ul>
+                        <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg mt-4 text-xs overflow-x-auto"><code>GMP_WEBSOCKET_ENABLE=true
+GMP_WEBSOCKET_PING_INTERVAL=30</code></pre>
                     </div>
-                    <div class="glass p-5 rounded-xl group hover:shadow-lg transition-all duration-300">
-                        <div class="flex items-start gap-4">
-                            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                                <i class="fas fa-layer-group text-white"></i>
-                            </div>
-                            <div>
-                                <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-1">Request Coalescing</h3>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">Deduplicate concurrent identical queries, reducing backend load 50-80%</p>
-                            </div>
-                        </div>
+                    <div class="glass p-6 rounded-xl">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-code-branch mr-2 text-cyan-500"></i>
+                            Read-Only Replica Support
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Route queries to read replicas, mutations to primary for maximum throughput.</p>
+                        <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Automatic query/mutation routing</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Scales read capacity horizontally</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Works with Hasura read replicas</li>
+                        </ul>
+                        <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg mt-4 text-xs overflow-x-auto"><code>GMP_HOST_GRAPHQL=http://primary:8080/
+GMP_HOST_GRAPHQL_READONLY=http://replica:8080/</code></pre>
                     </div>
-                    <div class="glass p-5 rounded-xl group hover:shadow-lg transition-all duration-300">
-                        <div class="flex items-start gap-4">
-                            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                                <i class="fas fa-plug text-white"></i>
-                            </div>
-                            <div>
-                                <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-1">WebSocket Support</h3>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">Native GraphQL subscriptions with bidirectional proxying</p>
-                            </div>
-                        </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Security Section -->
+        <section id="security" class="py-12 sm:py-16 md:py-20 bg-white dark:bg-gray-900 theme-transition">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6">
+                <div class="text-center mb-8 sm:mb-12">
+                    <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">
+                        <i class="fas fa-shield-halved gradient-text mr-3"></i>Security
+                    </h2>
+                    <p class="text-base sm:text-lg text-gray-600 dark:text-gray-300 px-4">Protect your GraphQL API from abuse</p>
+                </div>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="glass p-6 rounded-xl">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-gauge-high mr-2 text-rose-500"></i>
+                            Role-Based Rate Limiting
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Different rate limits per user role with burst control and dynamic config reload.</p>
+                        <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs overflow-x-auto"><code>{
+  "ratelimit": {
+    "admin": { "req": 1000, "interval": "second", "burst": 2000 },
+    "premium": { "req": 500, "interval": "second" },
+    "guest": { "req": 10, "interval": "second" },
+    "-": { "req": 5, "interval": "second" }
+  }
+}</code></pre>
                     </div>
-                    <div class="glass p-5 rounded-xl group hover:shadow-lg transition-all duration-300">
-                        <div class="flex items-start gap-4">
-                            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-cyan-600 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                                <i class="fas fa-eye-slash text-white"></i>
-                            </div>
-                            <div>
-                                <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-1">Introspection Blocking</h3>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">Block schema introspection with configurable allowlists</p>
-                            </div>
-                        </div>
+                    <div class="glass p-6 rounded-xl">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-eye-slash mr-2 text-indigo-500"></i>
+                            Introspection Blocking
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Block schema introspection to prevent API discovery attacks, with configurable allowlists.</p>
+                        <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Blocks __schema, __type, etc.</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Deep nested query inspection</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Allowlist specific introspections</li>
+                        </ul>
+                        <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg mt-4 text-xs overflow-x-auto"><code>GMP_BLOCK_SCHEMA_INTROSPECTION=true
+GMP_ALLOWED_INTROSPECTION="__typename"</code></pre>
                     </div>
-                    <div class="glass p-5 rounded-xl group hover:shadow-lg transition-all duration-300">
-                        <div class="flex items-start gap-4">
-                            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                                <i class="fas fa-satellite-dish text-white"></i>
-                            </div>
-                            <div>
-                                <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-1">OpenTelemetry Tracing</h3>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">Distributed tracing with configurable OTLP collector endpoint</p>
-                            </div>
-                        </div>
+                    <div class="glass p-6 rounded-xl">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-ban mr-2 text-red-500"></i>
+                            User Ban/Unban API
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Block misbehaving users detected by your monitoring system.</p>
+                        <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs overflow-x-auto"><code>curl -X POST http://localhost:9090/api/user-ban \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id": "1337", "reason": "Scraping"}'</code></pre>
                     </div>
-                    <div class="glass p-5 rounded-xl group hover:shadow-lg transition-all duration-300">
-                        <div class="flex items-start gap-4">
-                            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-500 to-pink-600 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
-                                <i class="fas fa-desktop text-white"></i>
+                    <div class="glass p-6 rounded-xl">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-lock mr-2 text-amber-500"></i>
+                            Additional Security
+                        </h3>
+                        <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i><strong>Read-only mode:</strong> Block all mutations</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i><strong>URL allowlist:</strong> Restrict accessible endpoints</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i><strong>JWT claim extraction:</strong> User ID and role from tokens</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i><strong>API authentication:</strong> Optional X-API-Key for admin endpoints</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i><strong>Log sanitization:</strong> Automatic redaction of sensitive data</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i><strong>SQL injection prevention:</strong> Parameterized queries</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Resilience Section -->
+        <section id="resilience" class="py-12 sm:py-16 md:py-20 bg-gray-50 dark:bg-gray-800 theme-transition">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6">
+                <div class="text-center mb-8 sm:mb-12">
+                    <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">
+                        <i class="fas fa-heart-pulse gradient-text mr-3"></i>Resilience
+                    </h2>
+                    <p class="text-base sm:text-lg text-gray-600 dark:text-gray-300 px-4">Handle failures gracefully</p>
+                </div>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="glass p-6 rounded-xl">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-toggle-off mr-2 text-rose-500"></i>
+                            Circuit Breaker
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Prevent cascading failures with automatic detection and recovery.</p>
+                        <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Trip on consecutive failures or ratio</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Automatic recovery after timeout</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Serve cached responses when open</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Configurable for timeouts, 5XX, 4XX</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Exponential backoff support</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Health endpoint: <code>/api/circuit-breaker/health</code></li>
+                        </ul>
+                    </div>
+                    <div class="glass p-6 rounded-xl">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-coins mr-2 text-amber-500"></i>
+                            Retry Budget
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Prevent retry storms with token bucket rate limiting.</p>
+                        <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Token bucket algorithm</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Configurable refill rate</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Prevents overwhelming recovering backends</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Enabled by default</li>
+                        </ul>
+                        <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg mt-4 text-xs overflow-x-auto"><code>GMP_RETRY_BUDGET_ENABLE=true
+GMP_RETRY_BUDGET_TOKENS_PER_SEC=10
+GMP_RETRY_BUDGET_MAX_TOKENS=100</code></pre>
+                    </div>
+                    <div class="glass p-6 rounded-xl">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-rotate mr-2 text-cyan-500"></i>
+                            Connection Recovery
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Automatic connection pool management and backend health monitoring.</p>
+                        <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Backend startup readiness probe</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Keep-alive with health checks</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Automatic pool reset on failures</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i>Intelligent retry with backoff</li>
+                        </ul>
+                    </div>
+                    <div class="glass p-6 rounded-xl">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-triangle-exclamation mr-2 text-orange-500"></i>
+                            Graceful Degradation
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Informative error responses with retry recommendations.</p>
+                        <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs overflow-x-auto"><code>{
+  "errors": [{
+    "message": "Backend temporarily unavailable",
+    "extensions": {
+      "code": "SERVICE_UNAVAILABLE",
+      "retryable": true,
+      "retry_after": 60
+    }
+  }]
+}</code></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Maintenance Section -->
+        <section class="py-12 sm:py-16 md:py-20 bg-white dark:bg-gray-900 theme-transition">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6">
+                <div class="text-center mb-8 sm:mb-12">
+                    <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">
+                        <i class="fas fa-wrench gradient-text mr-3"></i>Maintenance
+                    </h2>
+                    <p class="text-base sm:text-lg text-gray-600 dark:text-gray-300 px-4">Built-in tools for Hasura users</p>
+                </div>
+                <div class="max-w-3xl mx-auto">
+                    <div class="glass p-6 rounded-xl">
+                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+                            <i class="fas fa-broom mr-2 text-emerald-500"></i>
+                            Hasura Event Cleaner
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Automatically clean up old event logs to prevent database bloat. Runs hourly.</p>
+                        <div class="grid sm:grid-cols-2 gap-4">
+                            <div>
+                                <h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2 text-sm">Tables Cleaned</h4>
+                                <ul class="space-y-1 text-xs text-gray-600 dark:text-gray-400">
+                                    <li><code>hdb_catalog.event_invocation_logs</code></li>
+                                    <li><code>hdb_catalog.event_log</code></li>
+                                    <li><code>hdb_catalog.hdb_action_log</code></li>
+                                    <li><code>hdb_catalog.hdb_cron_event_invocation_logs</code></li>
+                                    <li><code>hdb_catalog.hdb_scheduled_event_invocation_logs</code></li>
+                                </ul>
                             </div>
                             <div>
-                                <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-1">Admin Dashboard</h3>
-                                <p class="text-sm text-gray-600 dark:text-gray-400">Real-time web UI for monitoring health, metrics, and controls</p>
+                                <h4 class="font-medium text-gray-900 dark:text-gray-100 mb-2 text-sm">Configuration</h4>
+                                <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs overflow-x-auto"><code>GMP_HASURA_EVENT_CLEANER=true
+GMP_HASURA_EVENT_CLEANER_OLDER_THAN=14
+GMP_HASURA_EVENT_METADATA_DB=postgres://...</code></pre>
                             </div>
                         </div>
                     </div>
@@ -310,10 +599,10 @@
                             <i class="fas fa-dharmachakra mr-2 text-indigo-500"></i>
                             Kubernetes
                         </h3>
-                        <p class="text-gray-600 dark:text-gray-400 mb-3">Example manifests available in the repository:</p>
+                        <p class="text-gray-600 dark:text-gray-400 mb-3">Example manifests available:</p>
                         <ul class="text-sm text-gray-500 dark:text-gray-400 space-y-1">
                             <li><a href="https://github.com/lukaszraczylo/graphql-monitoring-proxy/blob/main/static/kubernetes-deployment.yaml" class="text-fuchsia-600 dark:text-fuchsia-400 hover:underline">Standalone deployment</a></li>
-                            <li><a href="https://github.com/lukaszraczylo/graphql-monitoring-proxy/blob/main/static/kubernetes-single-deployment.yaml" class="text-fuchsia-600 dark:text-fuchsia-400 hover:underline">Combined deployment</a></li>
+                            <li><a href="https://github.com/lukaszraczylo/graphql-monitoring-proxy/blob/main/static/kubernetes-single-deployment.yaml" class="text-fuchsia-600 dark:text-fuchsia-400 hover:underline">Combined deployment (proxy + Hasura)</a></li>
                             <li><a href="https://github.com/lukaszraczylo/graphql-monitoring-proxy/blob/main/static/kubernetes-single-deployment-with-ro.yaml" class="text-fuchsia-600 dark:text-fuchsia-400 hover:underline">Combined with read-only replica</a></li>
                         </ul>
                     </div>
@@ -322,7 +611,7 @@
         </section>
 
         <!-- Endpoints Section -->
-        <section id="endpoints" class="py-12 sm:py-16 md:py-20 bg-white dark:bg-gray-900 theme-transition">
+        <section class="py-12 sm:py-16 md:py-20 bg-white dark:bg-gray-900 theme-transition">
             <div class="max-w-6xl mx-auto px-4 sm:px-6">
                 <div class="text-center mb-8 sm:mb-12">
                     <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">Endpoints</h2>
@@ -330,7 +619,7 @@
                 </div>
                 <div class="max-w-3xl mx-auto">
                     <div class="glass p-6 rounded-xl">
-                        <div class="space-y-4">
+                        <div class="space-y-3">
                             <div class="flex items-start gap-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                                 <code class="text-fuchsia-600 dark:text-fuchsia-400 font-medium whitespace-nowrap">:8080/*</code>
                                 <span class="text-gray-600 dark:text-gray-400">GraphQL passthrough endpoint</span>
@@ -341,186 +630,21 @@
                             </div>
                             <div class="flex items-start gap-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                                 <code class="text-fuchsia-600 dark:text-fuchsia-400 font-medium whitespace-nowrap">:9393/metrics</code>
-                                <span class="text-gray-600 dark:text-gray-400">Prometheus metrics endpoint</span>
+                                <span class="text-gray-600 dark:text-gray-400">Prometheus metrics</span>
                             </div>
                             <div class="flex items-start gap-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                                 <code class="text-fuchsia-600 dark:text-fuchsia-400 font-medium whitespace-nowrap">:8080/healthz</code>
-                                <span class="text-gray-600 dark:text-gray-400">Health check endpoint</span>
+                                <span class="text-gray-600 dark:text-gray-400">Health check (with optional backend verification)</span>
                             </div>
                             <div class="flex items-start gap-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                                 <code class="text-fuchsia-600 dark:text-fuchsia-400 font-medium whitespace-nowrap">:8080/livez</code>
-                                <span class="text-gray-600 dark:text-gray-400">Liveness probe endpoint</span>
+                                <span class="text-gray-600 dark:text-gray-400">Liveness probe</span>
                             </div>
                             <div class="flex items-start gap-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                                 <code class="text-fuchsia-600 dark:text-fuchsia-400 font-medium whitespace-nowrap">:9090/api/*</code>
-                                <span class="text-gray-600 dark:text-gray-400">Management API (ban/unban, cache, circuit breaker)</span>
+                                <span class="text-gray-600 dark:text-gray-400">Management API (user-ban, cache-clear, circuit-breaker)</span>
                             </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Configuration Section -->
-        <section id="configuration" class="py-12 sm:py-16 md:py-20 bg-gray-50 dark:bg-gray-800 theme-transition">
-            <div class="max-w-6xl mx-auto px-4 sm:px-6">
-                <div class="text-center mb-8 sm:mb-12">
-                    <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">Configuration</h2>
-                    <p class="text-base sm:text-lg text-gray-600 dark:text-gray-300 px-4">Environment variables (prefix with GMP_ recommended)</p>
-                </div>
-                <div class="max-w-4xl mx-auto space-y-6">
-                    <div class="glass p-6 rounded-xl">
-                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
-                            <i class="fas fa-server mr-2 text-fuchsia-500"></i>
-                            Core Settings
-                        </h3>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-sm">
-                                <thead>
-                                    <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                                        <th class="pb-2 pr-4">Variable</th>
-                                        <th class="pb-2 pr-4">Description</th>
-                                        <th class="pb-2">Default</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="text-gray-600 dark:text-gray-300">
-                                    <tr class="border-b border-gray-100 dark:border-gray-700">
-                                        <td class="py-2 pr-4"><code class="text-fuchsia-600 dark:text-fuchsia-400">HOST_GRAPHQL</code></td>
-                                        <td class="py-2 pr-4">GraphQL backend URL</td>
-                                        <td class="py-2">http://localhost/</td>
-                                    </tr>
-                                    <tr class="border-b border-gray-100 dark:border-gray-700">
-                                        <td class="py-2 pr-4"><code class="text-fuchsia-600 dark:text-fuchsia-400">PORT_GRAPHQL</code></td>
-                                        <td class="py-2 pr-4">Proxy listen port</td>
-                                        <td class="py-2">8080</td>
-                                    </tr>
-                                    <tr class="border-b border-gray-100 dark:border-gray-700">
-                                        <td class="py-2 pr-4"><code class="text-fuchsia-600 dark:text-fuchsia-400">MONITORING_PORT</code></td>
-                                        <td class="py-2 pr-4">Metrics endpoint port</td>
-                                        <td class="py-2">9393</td>
-                                    </tr>
-                                    <tr>
-                                        <td class="py-2 pr-4"><code class="text-fuchsia-600 dark:text-fuchsia-400">LOG_LEVEL</code></td>
-                                        <td class="py-2 pr-4">Logging level</td>
-                                        <td class="py-2">info</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div class="glass p-6 rounded-xl">
-                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
-                            <i class="fas fa-bolt mr-2 text-violet-500"></i>
-                            Caching
-                        </h3>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-sm">
-                                <thead>
-                                    <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                                        <th class="pb-2 pr-4">Variable</th>
-                                        <th class="pb-2 pr-4">Description</th>
-                                        <th class="pb-2">Default</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="text-gray-600 dark:text-gray-300">
-                                    <tr class="border-b border-gray-100 dark:border-gray-700">
-                                        <td class="py-2 pr-4"><code class="text-fuchsia-600 dark:text-fuchsia-400">ENABLE_GLOBAL_CACHE</code></td>
-                                        <td class="py-2 pr-4">Enable memory cache</td>
-                                        <td class="py-2">false</td>
-                                    </tr>
-                                    <tr class="border-b border-gray-100 dark:border-gray-700">
-                                        <td class="py-2 pr-4"><code class="text-fuchsia-600 dark:text-fuchsia-400">CACHE_TTL</code></td>
-                                        <td class="py-2 pr-4">Cache TTL in seconds</td>
-                                        <td class="py-2">60</td>
-                                    </tr>
-                                    <tr class="border-b border-gray-100 dark:border-gray-700">
-                                        <td class="py-2 pr-4"><code class="text-fuchsia-600 dark:text-fuchsia-400">CACHE_MAX_MEMORY_SIZE</code></td>
-                                        <td class="py-2 pr-4">Max memory in MB</td>
-                                        <td class="py-2">100</td>
-                                    </tr>
-                                    <tr>
-                                        <td class="py-2 pr-4"><code class="text-fuchsia-600 dark:text-fuchsia-400">ENABLE_REDIS_CACHE</code></td>
-                                        <td class="py-2 pr-4">Enable Redis cache</td>
-                                        <td class="py-2">false</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div class="glass p-6 rounded-xl">
-                        <h3 class="font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
-                            <i class="fas fa-shield-halved mr-2 text-indigo-500"></i>
-                            Circuit Breaker
-                        </h3>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-sm">
-                                <thead>
-                                    <tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                                        <th class="pb-2 pr-4">Variable</th>
-                                        <th class="pb-2 pr-4">Description</th>
-                                        <th class="pb-2">Default</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="text-gray-600 dark:text-gray-300">
-                                    <tr class="border-b border-gray-100 dark:border-gray-700">
-                                        <td class="py-2 pr-4"><code class="text-fuchsia-600 dark:text-fuchsia-400">ENABLE_CIRCUIT_BREAKER</code></td>
-                                        <td class="py-2 pr-4">Enable circuit breaker</td>
-                                        <td class="py-2">false</td>
-                                    </tr>
-                                    <tr class="border-b border-gray-100 dark:border-gray-700">
-                                        <td class="py-2 pr-4"><code class="text-fuchsia-600 dark:text-fuchsia-400">CIRCUIT_MAX_FAILURES</code></td>
-                                        <td class="py-2 pr-4">Failures before trip</td>
-                                        <td class="py-2">10</td>
-                                    </tr>
-                                    <tr>
-                                        <td class="py-2 pr-4"><code class="text-fuchsia-600 dark:text-fuchsia-400">CIRCUIT_TIMEOUT_SECONDS</code></td>
-                                        <td class="py-2 pr-4">Recovery timeout</td>
-                                        <td class="py-2">60</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div class="text-center mt-8">
-                        <a href="https://github.com/lukaszraczylo/graphql-monitoring-proxy#configuration" class="inline-flex items-center text-fuchsia-600 dark:text-fuchsia-400 hover:underline font-medium">
-                            View all configuration options
-                            <i class="fas fa-arrow-right ml-2"></i>
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Performance Section -->
-        <section class="py-12 sm:py-16 md:py-20 bg-white dark:bg-gray-900 theme-transition">
-            <div class="max-w-6xl mx-auto px-4 sm:px-6">
-                <div class="text-center mb-8 sm:mb-12">
-                    <h2 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">Performance</h2>
-                    <p class="text-base sm:text-lg text-gray-600 dark:text-gray-300 px-4">Battle-tested at scale</p>
-                </div>
-                <div class="max-w-3xl mx-auto">
-                    <div class="grid sm:grid-cols-3 gap-4 text-center">
-                        <div class="glass p-6 rounded-xl">
-                            <div class="text-4xl font-bold gradient-text mb-2">100k+</div>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">Requests/second</p>
-                        </div>
-                        <div class="glass p-6 rounded-xl">
-                            <div class="text-4xl font-bold gradient-text mb-2">10MB</div>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">RAM usage</p>
-                        </div>
-                        <div class="glass p-6 rounded-xl">
-                            <div class="text-4xl font-bold gradient-text mb-2">0.1%</div>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">CPU usage</p>
-                        </div>
-                    </div>
-                    <div class="mt-8 text-center">
-                        <a href="bench/" class="inline-flex items-center text-fuchsia-600 dark:text-fuchsia-400 hover:underline font-medium">
-                            View benchmarks
-                            <i class="fas fa-arrow-right ml-2"></i>
-                        </a>
                     </div>
                 </div>
             </div>
@@ -543,6 +667,9 @@
                         </a>
                         <a href="https://github.com/lukaszraczylo/graphql-monitoring-proxy/releases" class="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 text-sm">
                             Releases
+                        </a>
+                        <a href="https://github.com/lukaszraczylo/graphql-monitoring-proxy#configuration" class="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 text-sm">
+                            Full Docs
                         </a>
                     </div>
                     <p class="text-gray-500 dark:text-gray-400 text-sm">MIT License</p>

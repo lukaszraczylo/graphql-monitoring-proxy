@@ -26,6 +26,7 @@ jobs:
 
   benchmark:
     name: Publish Benchmarks
+    needs: release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
