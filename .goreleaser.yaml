@@ -65,3 +65,34 @@ dockers_v2:
     dockerfile: Dockerfile.goreleaser
     extra_files:
       - static/app
+
+signs:
+  - cmd: cosign
+    env:
+      - COSIGN_PASSWORD={{ .Env.COSIGN_PASSWORD }}
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--key"
+      - "env://COSIGN_KEY"
+      - "--output-signature"
+      - "${signature}"
+      - "--output-certificate"
+      - "${certificate}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+docker_signs:
+  - cmd: cosign
+    env:
+      - COSIGN_PASSWORD={{ .Env.COSIGN_PASSWORD }}
+    artifacts: manifests
+    output: true
+    args:
+      - sign
+      - "--key"
+      - "env://COSIGN_KEY"
+      - "${artifact}@${digest}"
+      - "--yes"

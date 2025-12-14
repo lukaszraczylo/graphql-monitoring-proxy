@@ -57,6 +57,23 @@ You should always try to stick to the latest and greatest version of the graphql
 
 You can find the example of the Kubernetes manifest in the [example standalone deployment](static/kubernetes-deployment.yaml) or [example combined deployment](static/kubernetes-single-deployment.yaml) files. Observed advantage of multideployment is that it allows the network requests to travel via localhost, without leaving the deployment which brings quite significant network performance boost.
 
+#### Verifying Release Signatures
+
+All release checksums and Docker images are signed with [cosign](https://github.com/sigstore/cosign). To verify:
+
+```bash
+# Verify checksum signature
+cosign verify-blob \
+  --key https://raw.githubusercontent.com/lukaszraczylo/lukaszraczylo/main/cosign.pub \
+  --signature graphql-proxy-checksums.txt.sig \
+  graphql-proxy-checksums.txt
+
+# Verify Docker image
+cosign verify \
+  --key https://raw.githubusercontent.com/lukaszraczylo/lukaszraczylo/main/cosign.pub \
+  ghcr.io/lukaszraczylo/graphql-monitoring-proxy:latest
+```
+
 #### Note on websocket support
 
 **Native WebSocket Support Available!** Starting with version 0.27.0, the proxy includes native WebSocket support for GraphQL subscriptions. Enable it by setting `WEBSOCKET_ENABLE=true`.
