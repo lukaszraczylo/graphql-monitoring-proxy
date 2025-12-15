@@ -59,18 +59,20 @@ You can find the example of the Kubernetes manifest in the [example standalone d
 
 #### Verifying Release Signatures
 
-All release checksums and Docker images are signed with [cosign](https://github.com/sigstore/cosign). To verify:
+All release checksums and Docker images are signed with [cosign](https://github.com/sigstore/cosign) using keyless signing. To verify:
 
 ```bash
 # Verify checksum signature
 cosign verify-blob \
-  --key https://raw.githubusercontent.com/lukaszraczylo/lukaszraczylo/main/cosign.pub \
-  --signature graphql-proxy-checksums.txt.sig \
-  graphql-proxy-checksums.txt
+  --certificate-identity-regexp "https://github.com/lukaszraczylo/graphql-monitoring-proxy/.*" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  --bundle "<checksums-file>.sigstore.json" \
+  <checksums-file>
 
 # Verify Docker image
 cosign verify \
-  --key https://raw.githubusercontent.com/lukaszraczylo/lukaszraczylo/main/cosign.pub \
+  --certificate-identity-regexp "https://github.com/lukaszraczylo/graphql-monitoring-proxy/.*" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   ghcr.io/lukaszraczylo/graphql-monitoring-proxy:latest
 ```
 

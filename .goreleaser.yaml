@@ -68,17 +68,10 @@ dockers_v2:
 
 signs:
   - cmd: cosign
-    env:
-      - COSIGN_PASSWORD={{ .Env.COSIGN_PASSWORD }}
-    certificate: "${artifact}.pem"
+    signature: "${artifact}.sigstore.json"
     args:
       - sign-blob
-      - "--key"
-      - "env://COSIGN_KEY"
-      - "--output-signature"
-      - "${signature}"
-      - "--output-certificate"
-      - "${certificate}"
+      - "--bundle=${signature}"
       - "${artifact}"
       - "--yes"
     artifacts: checksum
@@ -86,13 +79,9 @@ signs:
 
 docker_signs:
   - cmd: cosign
-    env:
-      - COSIGN_PASSWORD={{ .Env.COSIGN_PASSWORD }}
     artifacts: manifests
     output: true
     args:
       - sign
-      - "--key"
-      - "env://COSIGN_KEY"
       - "${artifact}@${digest}"
       - "--yes"
