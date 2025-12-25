@@ -13,7 +13,7 @@ require (
 	github.com/gofiber/websocket/v2 v2.2.1
 	github.com/gofrs/flock v0.13.0
 	github.com/google/uuid v1.6.0
-	github.com/gookit/goutil v0.7.2
+	github.com/gookit/goutil v0.7.3
 	github.com/gorilla/websocket v1.5.3
 	github.com/graphql-go/graphql v0.8.1
 	github.com/jackc/pgx/v5 v5.7.6
