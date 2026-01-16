@@ -156,7 +156,7 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 				},
 			})
 		}
-		clientConn.Close()
+		_ = clientConn.Close() // Best-effort cleanup
 		return
 	}
 
@@ -176,10 +176,10 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 				},
 			})
 		}
-		clientConn.Close()
+		_ = clientConn.Close() // Best-effort cleanup
 		return
 	}
-	defer backendConn.Close()
+	defer func() { _ = backendConn.Close() }() // Best-effort cleanup
 
 	// Forward the first message (connection_init) to backend
 	if err := backendConn.WriteMessage(messageType, message); err != nil {

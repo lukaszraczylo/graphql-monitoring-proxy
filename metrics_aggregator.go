@@ -391,7 +391,7 @@ func (ma *MetricsAggregator) GetAggregatedMetrics() (*AggregatedMetrics, error) 
 		key := fmt.Sprintf("%s:%s", ma.publishKey, instanceID)
 		cmds[i] = pipe.Get(ctx, key)
 	}
-	pipe.Exec(ctx)
+	_, _ = pipe.Exec(ctx) // Errors handled per-command below
 
 	// Parse metrics
 	instances := make([]InstanceMetrics, 0, len(instanceIDs))
@@ -788,7 +788,7 @@ func (ma *MetricsAggregator) Shutdown() {
 	}
 
 	if ma.redisClient != nil {
-		ma.redisClient.Close()
+		_ = ma.redisClient.Close() // Best-effort cleanup
 	}
 
 	if ma.logger != nil {

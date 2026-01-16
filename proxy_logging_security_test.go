@@ -173,13 +173,13 @@ func (suite *ProxyLoggingSecurityTestSuite) TestSensitiveDataSanitization() {
 				"pwd":      "secret1",
 				"passwd":   "secret2",
 				"password": "secret3",
-				"pass":     "not-redacted", // Should NOT be redacted (not in list)
+				"pass":     "secret4", // Now redacted for better security coverage
 			},
 			expected: map[string]interface{}{
 				"pwd":      "[REDACTED]",
 				"passwd":   "[REDACTED]",
 				"password": "[REDACTED]",
-				"pass":     "not-redacted",
+				"pass":     "[REDACTED]",
 			},
 			contentType: "application/json",
 			description: "Should handle various password field patterns",

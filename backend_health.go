@@ -230,10 +230,7 @@ func (bhm *BackendHealthManager) updateHealthStatus(isHealthy bool) {
 					"consecutive_failures": bhm.consecutiveFails.Load(),
 				},
 			})
-			// Trigger circuit breaker reset if needed
-			if cfg != nil && cfg.CircuitBreaker.Enable && cb != nil {
-				// The circuit breaker will automatically reset based on its timeout
-			}
+			// Note: Circuit breaker resets automatically based on its configured timeout
 		}
 		bhm.consecutiveFails.Store(0)
 	} else {

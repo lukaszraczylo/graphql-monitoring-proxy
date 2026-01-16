@@ -296,7 +296,7 @@ func InitializeConnectionPool(client *fasthttp.Client) {
 	connectionPoolMutex.Lock()
 	defer connectionPoolMutex.Unlock()
 	if connectionPoolManager != nil {
-		connectionPoolManager.Shutdown()
+		_ = connectionPoolManager.Shutdown() // Best-effort cleanup
 	}
 	connectionPoolManager = NewConnectionPoolManager(client)
 }
@@ -306,7 +306,7 @@ func ShutdownConnectionPool() {
 	connectionPoolMutex.Lock()
 	defer connectionPoolMutex.Unlock()
 	if connectionPoolManager != nil {
-		connectionPoolManager.Shutdown()
+		_ = connectionPoolManager.Shutdown() // Best-effort cleanup
 		connectionPoolManager = nil
 	}
 }

@@ -61,6 +61,23 @@ func enableApi(ctx context.Context) error {
 		return nil
 	}
 
+	// SECURITY WARNING: Check if API authentication is configured
+	adminAPIKey := os.Getenv("GMP_ADMIN_API_KEY")
+	if adminAPIKey == "" {
+		adminAPIKey = os.Getenv("ADMIN_API_KEY")
+	}
+	if adminAPIKey == "" {
+		cfg.Logger.Warning(&libpack_logger.LogMessage{
+			Message: "⚠️  Admin API enabled WITHOUT authentication - all endpoints are publicly accessible!",
+			Pairs: map[string]interface{}{
+				"security_risk":  "HIGH - Admin API endpoints can be accessed without credentials",
+				"affected_ops":   "user-ban, user-unban, cache-clear, circuit-breaker controls",
+				"recommendation": "Set GMP_ADMIN_API_KEY environment variable or use network segmentation",
+				"api_port":       cfg.Server.ApiPort,
+			},
+		})
+	}
+
 	apiserver := fiber.New(fiber.Config{
 		DisableStartupMessage: true,
 		AppName:               fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
