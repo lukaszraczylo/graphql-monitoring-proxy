@@ -146,7 +146,7 @@ func parseConfig() {
 			if c.Logger != nil {
 				c.Logger.Warning(&libpack_logging.LogMessage{
 					Message: "⚠️  Per-user cache isolation is DISABLED - Users may see each other's cached data!",
-					Pairs: map[string]interface{}{
+					Pairs: map[string]any{
 						"security_risk":  "CRITICAL - Do not use in multi-user applications",
 						"recommendation": "Remove CACHE_PER_USER_DISABLED or set it to false",
 					},
@@ -193,7 +193,7 @@ func parseConfig() {
 	if clientTimeout < 1 || clientTimeout > 3600 { // 1 second to 1 hour max
 		c.Logger.Warning(&libpack_logging.LogMessage{
 			Message: "Invalid client timeout, using default",
-			Pairs:   map[string]interface{}{"requested": clientTimeout, "default": 120},
+			Pairs:   map[string]any{"requested": clientTimeout, "default": 120},
 		})
 		clientTimeout = 120
 	}
@@ -205,7 +205,7 @@ func parseConfig() {
 	if maxConns < 1 || maxConns > 10000 { // Reasonable bounds
 		c.Logger.Warning(&libpack_logging.LogMessage{
 			Message: "Invalid max connections per host, using default",
-			Pairs:   map[string]interface{}{"requested": maxConns, "default": 1024},
+			Pairs:   map[string]any{"requested": maxConns, "default": 1024},
 		})
 		maxConns = 1024
 	}
@@ -241,7 +241,7 @@ func parseConfig() {
 			if c.Logger != nil {
 				c.Logger.Warning(&libpack_logging.LogMessage{
 					Message: "⚠️  TLS certificate verification is DISABLED - This is a security risk in production!",
-					Pairs: map[string]interface{}{
+					Pairs: map[string]any{
 						"recommendation": "Enable TLS verification by removing CLIENT_DISABLE_TLS_VERIFY or setting it to false",
 					},
 				})
@@ -261,7 +261,7 @@ func parseConfig() {
 	if validatedPath, err := validateFilePath(bannedUsersFile); err != nil {
 		c.Logger.Error(&libpack_logging.LogMessage{
 			Message: "Invalid banned users file path, using default",
-			Pairs:   map[string]interface{}{"requested": bannedUsersFile, "error": err.Error()},
+			Pairs:   map[string]any{"requested": bannedUsersFile, "error": err.Error()},
 		})
 		c.Api.BannedUsersFile = "/go/src/app/banned_users.json"
 	} else {
@@ -331,12 +331,12 @@ func parseConfig() {
 		if err != nil {
 			cfg.Logger.Error(&libpack_logging.LogMessage{
 				Message: "Failed to initialize tracing",
-				Pairs:   map[string]interface{}{"error": err.Error()},
+				Pairs:   map[string]any{"error": err.Error()},
 			})
 		} else {
 			cfg.Logger.Info(&libpack_logging.LogMessage{
 				Message: "Tracing initialized",
-				Pairs:   map[string]interface{}{"endpoint": cfg.Tracing.Endpoint},
+				Pairs:   map[string]any{"endpoint": cfg.Tracing.Endpoint},
 			})
 		}
 	}
@@ -346,7 +346,7 @@ func parseConfig() {
 	if cfg.Cache.CacheRedisEnable {
 		cfg.Logger.Info(&libpack_logging.LogMessage{
 			Message: "Initializing metrics aggregator for cluster mode",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"redis_url": cfg.Cache.CacheRedisURL,
 				"redis_db":  cfg.Cache.CacheRedisDB,
 			},
@@ -360,14 +360,14 @@ func parseConfig() {
 		); err != nil {
 			cfg.Logger.Error(&libpack_logging.LogMessage{
 				Message: "FAILED to initialize metrics aggregator - cluster mode will not work",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"error": err.Error(),
 				},
 			})
 		} else {
 			cfg.Logger.Info(&libpack_logging.LogMessage{
 				Message: "✓ Metrics aggregator successfully initialized",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"instance_id": GetMetricsAggregator().GetInstanceID(),
 				},
 			})
@@ -399,7 +399,7 @@ func parseConfig() {
 			}
 			cfg.Logger.Info(&libpack_logging.LogMessage{
 				Message: "Configuring memory cache with limits",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"type":          cacheType,
 					"max_memory_mb": cfg.Cache.CacheMaxMemorySize,
 					"max_entries":   cfg.Cache.CacheMaxEntries,
@@ -450,7 +450,7 @@ func parseConfig() {
 		detailedError := err.Error()
 		cfg.Logger.Error(&libpack_logging.LogMessage{
 			Message: "Failed to start service due to rate limit configuration error",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"error": detailedError,
 			},
 		})
@@ -517,7 +517,7 @@ func main() {
 			if err := enableApi(ctx); err != nil {
 				cfg.Logger.Error(&libpack_logging.LogMessage{
 					Message: "API server error",
-					Pairs:   map[string]interface{}{"error": err.Error()},
+					Pairs:   map[string]any{"error": err.Error()},
 				})
 			}
 		})
@@ -527,7 +527,7 @@ func main() {
 			if err := enableHasuraEventCleaner(ctx); err != nil {
 				cfg.Logger.Error(&libpack_logging.LogMessage{
 					Message: "Event cleaner error",
-					Pairs:   map[string]interface{}{"error": err.Error()},
+					Pairs:   map[string]any{"error": err.Error()},
 				})
 			}
 		})
@@ -567,7 +567,7 @@ func main() {
 	// Start monitoring server
 	cfg.Logger.Info(&libpack_logging.LogMessage{
 		Message: "Starting monitoring server...",
-		Pairs:   map[string]interface{}{"port": cfg.Server.PortMonitoring},
+		Pairs:   map[string]any{"port": cfg.Server.PortMonitoring},
 	})
 
 	// Start monitoring server in a goroutine
@@ -585,7 +585,7 @@ func main() {
 	case err := <-monitoringErrCh:
 		cfg.Logger.Critical(&libpack_logging.LogMessage{
 			Message: "Failed to start monitoring server",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"error": err.Error(),
 				"port":  cfg.Server.PortMonitoring,
 			},
@@ -600,7 +600,7 @@ func main() {
 		startupTimeout := time.Duration(getDetailsFromEnv("BACKEND_STARTUP_TIMEOUT", 300)) * time.Second
 		cfg.Logger.Info(&libpack_logging.LogMessage{
 			Message: "Waiting for GraphQL backend to be ready",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"timeout_seconds": int(startupTimeout.Seconds()),
 			},
 		})
@@ -608,7 +608,7 @@ func main() {
 		if err := healthMgr.WaitForBackendReady(startupTimeout); err != nil {
 			cfg.Logger.Critical(&libpack_logging.LogMessage{
 				Message: "GraphQL backend did not become ready in time",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"error":   err.Error(),
 					"timeout": startupTimeout.String(),
 				},
@@ -623,7 +623,7 @@ func main() {
 	// Start HTTP proxy
 	cfg.Logger.Info(&libpack_logging.LogMessage{
 		Message: "Starting HTTP proxy server...",
-		Pairs:   map[string]interface{}{"port": cfg.Server.PortGraphQL},
+		Pairs:   map[string]any{"port": cfg.Server.PortGraphQL},
 	})
 
 	// Start HTTP proxy in a goroutine
@@ -641,7 +641,7 @@ func main() {
 	case err := <-proxyErrCh:
 		cfg.Logger.Critical(&libpack_logging.LogMessage{
 			Message: "Failed to start HTTP proxy server",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"error": err.Error(),
 				"port":  cfg.Server.PortGraphQL,
 			},
@@ -670,7 +670,7 @@ func main() {
 	if err := shutdownManager.Shutdown(30 * time.Second); err != nil {
 		cfg.Logger.Error(&libpack_logging.LogMessage{
 			Message: "Error during shutdown",
-			Pairs:   map[string]interface{}{"error": err.Error()},
+			Pairs:   map[string]any{"error": err.Error()},
 		})
 	}
 
@@ -751,7 +751,7 @@ func startCacheMemoryMonitoring(ctx context.Context) {
 			if percentUsed > 80.0 {
 				cfg.Logger.Warning(&libpack_logging.LogMessage{
 					Message: "Memory cache usage is high",
-					Pairs: map[string]interface{}{
+					Pairs: map[string]any{
 						"memory_usage_bytes": memoryUsage,
 						"memory_limit_bytes": memoryLimit,
 						"percent_used":       percentUsed,

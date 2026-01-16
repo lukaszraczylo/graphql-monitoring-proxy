@@ -27,7 +27,7 @@ func debugParseGraphQLQuery(c *fiber.Ctx, query string) {
 
 	cfg.Logger.Info(&libpack_logger.LogMessage{
 		Message: "=== DEBUG: Parsing GraphQL Query ===",
-		Pairs: map[string]interface{}{
+		Pairs: map[string]any{
 			"query_length":  len(query),
 			"query_preview": truncateString(query, 100),
 		},
@@ -43,14 +43,14 @@ func debugParseGraphQLQuery(c *fiber.Ctx, query string) {
 	if err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "DEBUG: Failed to parse query",
-			Pairs:   map[string]interface{}{"error": err.Error()},
+			Pairs:   map[string]any{"error": err.Error()},
 		})
 		return
 	}
 
 	cfg.Logger.Info(&libpack_logger.LogMessage{
 		Message: "DEBUG: Query parsed successfully",
-		Pairs: map[string]interface{}{
+		Pairs: map[string]any{
 			"definitions_count": len(p.Definitions),
 		},
 	})
@@ -72,7 +72,7 @@ func debugParseGraphQLQuery(c *fiber.Ctx, query string) {
 
 			cfg.Logger.Info(&libpack_logger.LogMessage{
 				Message: fmt.Sprintf("DEBUG: Definition #%d (OperationDefinition)", i),
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"operation_type":  operationType,
 					"operation_name":  operationName,
 					"selection_count": selectionCount,
@@ -87,7 +87,7 @@ func debugParseGraphQLQuery(c *fiber.Ctx, query string) {
 					if field, ok := sel.(*ast.Field); ok {
 						cfg.Logger.Info(&libpack_logger.LogMessage{
 							Message: fmt.Sprintf("DEBUG: Mutation field #%d", j),
-							Pairs: map[string]interface{}{
+							Pairs: map[string]any{
 								"field_name": field.Name.Value,
 							},
 						})
@@ -97,7 +97,7 @@ func debugParseGraphQLQuery(c *fiber.Ctx, query string) {
 		} else if frag, ok := d.(*ast.FragmentDefinition); ok {
 			cfg.Logger.Info(&libpack_logger.LogMessage{
 				Message: fmt.Sprintf("DEBUG: Definition #%d (FragmentDefinition)", i),
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"fragment_name": frag.Name.Value,
 				},
 			})
@@ -109,7 +109,7 @@ func debugParseGraphQLQuery(c *fiber.Ctx, query string) {
 
 	cfg.Logger.Info(&libpack_logger.LogMessage{
 		Message: "DEBUG: Final routing decision",
-		Pairs: map[string]interface{}{
+		Pairs: map[string]any{
 			"operation_type":  result.operationType,
 			"operation_name":  result.operationName,
 			"active_endpoint": result.activeEndpoint,
@@ -125,7 +125,7 @@ func debugParseGraphQLQuery(c *fiber.Ctx, query string) {
 	if result.operationType == "mutation" && result.activeEndpoint != cfg.Server.HostGraphQL {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "DEBUG: ⚠️  BUG DETECTED: Mutation routed to wrong endpoint!",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"expected_endpoint": cfg.Server.HostGraphQL,
 				"actual_endpoint":   result.activeEndpoint,
 			},
@@ -135,7 +135,7 @@ func debugParseGraphQLQuery(c *fiber.Ctx, query string) {
 	if result.operationType == "mutation" && strings.Contains(strings.ToLower(result.activeEndpoint), "read") {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "DEBUG: ⚠️  CRITICAL: Mutation endpoint contains 'read' in URL!",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"endpoint": result.activeEndpoint,
 			},
 		})

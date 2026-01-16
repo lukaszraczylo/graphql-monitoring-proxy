@@ -1,3 +1,6 @@
+// Package tracing provides OpenTelemetry distributed tracing integration
+// for the GraphQL proxy. Supports OTLP export to collectors like Jaeger,
+// Zipkin, or any OTLP-compatible backend.
 package tracing
 
 import (

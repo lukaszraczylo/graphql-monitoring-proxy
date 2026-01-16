@@ -1,3 +1,6 @@
+// Package libpack_cache provides a unified caching interface that supports
+// both in-memory and Redis backends. It handles response caching for GraphQL
+// queries with automatic compression and TTL management.
 package libpack_cache
 
 import (
@@ -117,7 +120,7 @@ func EnableCache(cfg *CacheConfig) {
 		if err != nil {
 			cfg.Logger.Error(&libpack_logger.LogMessage{
 				Message: "Failed to create Redis client",
-				Pairs:   map[string]interface{}{"error": err.Error()},
+				Pairs:   map[string]any{"error": err.Error()},
 			})
 			// Fall back to memory cache
 			cfg.Client = libpack_cache_memory.New(time.Duration(cfg.TTL) * time.Second)
@@ -143,7 +146,7 @@ func EnableCache(cfg *CacheConfig) {
 
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Using in-memory cache",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"type":                  cacheType,
 				"max_memory_size_bytes": maxMemory,
 				"max_entries":           maxEntries,
@@ -179,7 +182,7 @@ func CacheLookup(hash string) []byte {
 			if err != nil {
 				config.Logger.Error(&libpack_logger.LogMessage{
 					Message: "Failed to create gzip reader for cached data",
-					Pairs:   map[string]interface{}{"error": err.Error(), "hash": hash},
+					Pairs:   map[string]any{"error": err.Error(), "hash": hash},
 				})
 				return nil
 			}
@@ -188,7 +191,7 @@ func CacheLookup(hash string) []byte {
 				if closeErr := reader.Close(); closeErr != nil {
 					config.Logger.Error(&libpack_logger.LogMessage{
 						Message: "Failed to close gzip reader",
-						Pairs:   map[string]interface{}{"error": closeErr.Error(), "hash": hash},
+						Pairs:   map[string]any{"error": closeErr.Error(), "hash": hash},
 					})
 				}
 			}()
@@ -197,7 +200,7 @@ func CacheLookup(hash string) []byte {
 			if err != nil {
 				config.Logger.Error(&libpack_logger.LogMessage{
 					Message: "Failed to decompress cached data",
-					Pairs:   map[string]interface{}{"error": err.Error(), "hash": hash},
+					Pairs:   map[string]any{"error": err.Error(), "hash": hash},
 				})
 				return nil
 			}
@@ -215,7 +218,7 @@ func CacheDelete(hash string) {
 	}
 	config.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Deleting data from cache",
-		Pairs:   map[string]interface{}{"hash": hash},
+		Pairs:   map[string]any{"hash": hash},
 	})
 	// Use atomic operations with validation to prevent inconsistent statistics
 	for {
@@ -240,7 +243,7 @@ func CacheStore(hash string, data []byte) {
 	}
 	config.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Storing data in cache",
-		Pairs:   map[string]interface{}{"hash": hash},
+		Pairs:   map[string]any{"hash": hash},
 	})
 	atomic.AddInt64(&cacheStats.CachedQueries, 1)
 	config.Client.Set(hash, data, time.Duration(config.TTL)*time.Second)
@@ -252,7 +255,7 @@ func CacheStoreWithTTL(hash string, data []byte, ttl time.Duration) {
 	}
 	config.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Storing data in cache with TTL",
-		Pairs:   map[string]interface{}{"hash": hash, "ttl": ttl},
+		Pairs:   map[string]any{"hash": hash, "ttl": ttl},
 	})
 	atomic.AddInt64(&cacheStats.CachedQueries, 1)
 	config.Client.Set(hash, data, ttl)

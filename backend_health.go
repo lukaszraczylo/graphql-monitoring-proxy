@@ -56,7 +56,7 @@ func (bhm *BackendHealthManager) WaitForBackendReady(timeout time.Duration) erro
 
 	bhm.logger.Info(&libpack_logger.LogMessage{
 		Message: "Waiting for GraphQL backend to become ready",
-		Pairs: map[string]interface{}{
+		Pairs: map[string]any{
 			"backend_url": bhm.backendURL,
 			"timeout":     timeout.String(),
 		},
@@ -70,7 +70,7 @@ func (bhm *BackendHealthManager) WaitForBackendReady(timeout time.Duration) erro
 			bhm.mu.Unlock()
 			bhm.logger.Info(&libpack_logger.LogMessage{
 				Message: "GraphQL backend is ready",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"retry_count": retryCount,
 					"time_taken":  time.Since(deadline.Add(-timeout)).String(),
 				},
@@ -83,7 +83,7 @@ func (bhm *BackendHealthManager) WaitForBackendReady(timeout time.Duration) erro
 		if retryCount%5 == 0 {
 			bhm.logger.Warning(&libpack_logger.LogMessage{
 				Message: "Still waiting for GraphQL backend",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"retry_count":    retryCount,
 					"time_remaining": time.Until(deadline).String(),
 				},
@@ -185,7 +185,7 @@ func (bhm *BackendHealthManager) checkBackendHealth() bool {
 	if err != nil {
 		bhm.logger.Debug(&libpack_logger.LogMessage{
 			Message: "Backend health check failed",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"error":     err.Error(),
 				"check_url": healthCheckURL,
 			},
@@ -199,7 +199,7 @@ func (bhm *BackendHealthManager) checkBackendHealth() bool {
 	if !isHealthy {
 		bhm.logger.Debug(&libpack_logger.LogMessage{
 			Message: "Backend returned unhealthy status",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"status_code": statusCode,
 				"check_url":   healthCheckURL,
 			},
@@ -226,7 +226,7 @@ func (bhm *BackendHealthManager) updateHealthStatus(isHealthy bool) {
 		if !previouslyHealthy {
 			bhm.logger.Info(&libpack_logger.LogMessage{
 				Message: "GraphQL backend recovered",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"consecutive_failures": bhm.consecutiveFails.Load(),
 				},
 			})
@@ -238,7 +238,7 @@ func (bhm *BackendHealthManager) updateHealthStatus(isHealthy bool) {
 		if previouslyHealthy {
 			bhm.logger.Warning(&libpack_logger.LogMessage{
 				Message: "GraphQL backend became unhealthy",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"consecutive_failures": fails,
 				},
 			})

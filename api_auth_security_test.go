@@ -87,7 +87,7 @@ func (suite *APIAuthSecurityTestSuite) TestOptionalAuthentication() {
 	os.Unsetenv("ADMIN_API_KEY")
 
 	tests := []struct {
-		body           map[string]interface{}
+		body           map[string]any
 		name           string
 		endpoint       string
 		method         string
@@ -131,7 +131,7 @@ func (suite *APIAuthSecurityTestSuite) TestAPIAuthentication() {
 	os.Setenv("GMP_ADMIN_API_KEY", suite.validAPIKey)
 	defer os.Unsetenv("GMP_ADMIN_API_KEY")
 	tests := []struct {
-		body           map[string]interface{}
+		body           map[string]any
 		name           string
 		apiKey         string
 		endpoint       string
@@ -144,7 +144,7 @@ func (suite *APIAuthSecurityTestSuite) TestAPIAuthentication() {
 			apiKey:         "",
 			endpoint:       "/api/user-ban",
 			method:         "POST",
-			body:           map[string]interface{}{"user_id": "test-user", "reason": "test reason"},
+			body:           map[string]any{"user_id": "test-user", "reason": "test reason"},
 			expectedStatus: 401,
 			description:    "Should reject requests without API key",
 		},
@@ -153,7 +153,7 @@ func (suite *APIAuthSecurityTestSuite) TestAPIAuthentication() {
 			apiKey:         "wrong-key",
 			endpoint:       "/api/user-ban",
 			method:         "POST",
-			body:           map[string]interface{}{"user_id": "test-user", "reason": "test reason"},
+			body:           map[string]any{"user_id": "test-user", "reason": "test reason"},
 			expectedStatus: 401,
 			description:    "Should reject requests with invalid API key",
 		},
@@ -162,7 +162,7 @@ func (suite *APIAuthSecurityTestSuite) TestAPIAuthentication() {
 			apiKey:         "' OR '1'='1",
 			endpoint:       "/api/user-ban",
 			method:         "POST",
-			body:           map[string]interface{}{"user_id": "test-user", "reason": "test reason"},
+			body:           map[string]any{"user_id": "test-user", "reason": "test reason"},
 			expectedStatus: 401,
 			description:    "Should reject SQL injection attempts in API key",
 		},
@@ -171,7 +171,7 @@ func (suite *APIAuthSecurityTestSuite) TestAPIAuthentication() {
 			apiKey:         "<script>alert('xss')</script>",
 			endpoint:       "/api/user-ban",
 			method:         "POST",
-			body:           map[string]interface{}{"user_id": "test-user", "reason": "test reason"},
+			body:           map[string]any{"user_id": "test-user", "reason": "test reason"},
 			expectedStatus: 401,
 			description:    "Should reject XSS attempts in API key",
 		},
@@ -180,7 +180,7 @@ func (suite *APIAuthSecurityTestSuite) TestAPIAuthentication() {
 			apiKey:         "key; rm -rf /",
 			endpoint:       "/api/user-ban",
 			method:         "POST",
-			body:           map[string]interface{}{"user_id": "test-user", "reason": "test reason"},
+			body:           map[string]any{"user_id": "test-user", "reason": "test reason"},
 			expectedStatus: 401,
 			description:    "Should reject command injection attempts in API key",
 		},
@@ -189,7 +189,7 @@ func (suite *APIAuthSecurityTestSuite) TestAPIAuthentication() {
 			apiKey:         suite.validAPIKey,
 			endpoint:       "/api/user-ban",
 			method:         "POST",
-			body:           map[string]interface{}{"user_id": "test-user", "reason": "test reason"},
+			body:           map[string]any{"user_id": "test-user", "reason": "test reason"},
 			expectedStatus: 200,
 			description:    "Should accept valid API key for user-ban endpoint",
 		},
@@ -198,7 +198,7 @@ func (suite *APIAuthSecurityTestSuite) TestAPIAuthentication() {
 			apiKey:         suite.validAPIKey,
 			endpoint:       "/api/user-unban",
 			method:         "POST",
-			body:           map[string]interface{}{"user_id": "test-user", "reason": "test unban"},
+			body:           map[string]any{"user_id": "test-user", "reason": "test unban"},
 			expectedStatus: 200,
 			description:    "Should accept valid API key for user-unban endpoint",
 		},
@@ -225,7 +225,7 @@ func (suite *APIAuthSecurityTestSuite) TestAPIAuthentication() {
 			apiKey:         strings.ToUpper(suite.validAPIKey),
 			endpoint:       "/api/user-ban",
 			method:         "POST",
-			body:           map[string]interface{}{"user_id": "test-user", "reason": "test reason"},
+			body:           map[string]any{"user_id": "test-user", "reason": "test reason"},
 			expectedStatus: 401,
 			description:    "Should reject case-modified API key (case sensitive)",
 		},
@@ -234,7 +234,7 @@ func (suite *APIAuthSecurityTestSuite) TestAPIAuthentication() {
 			apiKey:         suite.validAPIKey + "extra",
 			endpoint:       "/api/user-ban",
 			method:         "POST",
-			body:           map[string]interface{}{"user_id": "test-user", "reason": "test reason"},
+			body:           map[string]any{"user_id": "test-user", "reason": "test reason"},
 			expectedStatus: 401,
 			description:    "Should reject API key with extra characters",
 		},
@@ -243,7 +243,7 @@ func (suite *APIAuthSecurityTestSuite) TestAPIAuthentication() {
 			apiKey:         suite.validAPIKey[5:],
 			endpoint:       "/api/user-ban",
 			method:         "POST",
-			body:           map[string]interface{}{"user_id": "test-user", "reason": "test reason"},
+			body:           map[string]any{"user_id": "test-user", "reason": "test reason"},
 			expectedStatus: 401,
 			description:    "Should reject partial API key",
 		},
@@ -262,7 +262,7 @@ func (suite *APIAuthSecurityTestSuite) TestAPIAuthentication() {
 			apiKey:         suite.validAPIKey + "тест",
 			endpoint:       "/api/user-ban",
 			method:         "POST",
-			body:           map[string]interface{}{"user_id": "test-user", "reason": "test reason"},
+			body:           map[string]any{"user_id": "test-user", "reason": "test reason"},
 			expectedStatus: 401,
 			description:    "Should reject API key with unicode characters",
 		},
@@ -298,7 +298,7 @@ func (suite *APIAuthSecurityTestSuite) TestAPIAuthentication() {
 				body, err := io.ReadAll(resp.Body)
 				suite.NoError(err)
 
-				var response map[string]interface{}
+				var response map[string]any
 				err = json.Unmarshal(body, &response)
 				suite.NoError(err)
 
@@ -559,7 +559,7 @@ func (suite *APIAuthSecurityTestSuite) TestAPIAuthenticationErrorMessages() {
 			body, err := io.ReadAll(resp.Body)
 			suite.NoError(err)
 
-			var response map[string]interface{}
+			var response map[string]any
 			err = json.Unmarshal(body, &response)
 			suite.NoError(err)
 

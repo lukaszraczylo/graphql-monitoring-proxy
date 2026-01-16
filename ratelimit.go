@@ -25,8 +25,8 @@ type RateLimitConfig struct {
 func (r *RateLimitConfig) UnmarshalJSON(data []byte) error {
 	// Use a temporary struct to unmarshal the JSON data
 	type RateLimitConfigTemp struct {
-		Interval interface{} `json:"interval"`
-		Req      int         `json:"req"`
+		Interval any `json:"interval"`
+		Req      int `json:"req"`
 	}
 
 	var temp RateLimitConfigTemp
@@ -96,7 +96,7 @@ func loadRatelimitConfig() error {
 	// Log detailed error information
 	cfg.Logger.Error(&libpack_logger.LogMessage{
 		Message: "Failed to load rate limit configuration",
-		Pairs: map[string]interface{}{
+		Pairs: map[string]any{
 			"paths":       paths,
 			"path_errors": configError.PathErrors,
 		},
@@ -120,7 +120,7 @@ func loadConfigFromPath(path string) error {
 
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Failed to load rate limit config",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"path":          path,
 				"error":         errMsg,
 				"error_details": err.Error(),
@@ -137,7 +137,7 @@ func loadConfigFromPath(path string) error {
 		errMsg := fmt.Sprintf("Invalid JSON format: %s", err.Error())
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Failed to parse rate limit config",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"path":  path,
 				"error": errMsg,
 			},
@@ -150,7 +150,7 @@ func loadConfigFromPath(path string) error {
 		errMsg := "Empty rate limit configuration"
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Invalid rate limit config",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"path":  path,
 				"error": errMsg,
 			},
@@ -167,7 +167,7 @@ func loadConfigFromPath(path string) error {
 		if cfg.LogLevel == "DEBUG" {
 			cfg.Logger.Debug(&libpack_logger.LogMessage{
 				Message: "Setting ratelimit config for role",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"role":          key,
 					"interval_used": value.Interval,
 					"ratelimit":     value.Req,
@@ -186,7 +186,7 @@ func loadConfigFromPath(path string) error {
 
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Rate limit config loaded",
-		Pairs:   map[string]interface{}{"ratelimit": rateLimits},
+		Pairs:   map[string]any{"ratelimit": rateLimits},
 	})
 	return nil
 }
@@ -210,7 +210,7 @@ func rateLimitedRequest(userID, userRole string) bool {
 	if !ok || roleConfig.RateCounterTicker == nil {
 		cfg.Logger.Warning(&libpack_logger.LogMessage{
 			Message: "Rate limit role not found or ticker not initialized - defaulting to deny",
-			Pairs:   map[string]interface{}{"user_role": userRole},
+			Pairs:   map[string]any{"user_role": userRole},
 		})
 		// Default to deny when config not found (security fix)
 		return false
@@ -224,7 +224,7 @@ func checkRateLimit(userID, userRole string, roleConfig RateLimitConfig, endpoin
 	roleConfig.RateCounterTicker.Incr(1)
 	tickerRate := roleConfig.RateCounterTicker.GetRate()
 
-	logDetails := map[string]interface{}{
+	logDetails := map[string]any{
 		"user_role":   userRole,
 		"user_id":     userID,
 		"rate":        tickerRate,
@@ -235,14 +235,14 @@ func checkRateLimit(userID, userRole string, roleConfig RateLimitConfig, endpoin
 
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Rate limit ticker",
-		Pairs:   map[string]interface{}{"log_details": logDetails},
+		Pairs:   map[string]any{"log_details": logDetails},
 	})
 
 	// Check burst limit if configured
 	if roleConfig.Burst > 0 && tickerRate > float64(roleConfig.Burst) {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Burst limit exceeded",
-			Pairs:   map[string]interface{}{"log_details": logDetails},
+			Pairs:   map[string]any{"log_details": logDetails},
 		})
 		return false
 	}
@@ -250,7 +250,7 @@ func checkRateLimit(userID, userRole string, roleConfig RateLimitConfig, endpoin
 	if tickerRate > float64(roleConfig.Req) {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Rate limit exceeded",
-			Pairs:   map[string]interface{}{"log_details": logDetails},
+			Pairs:   map[string]any{"log_details": logDetails},
 		})
 		return false
 	}

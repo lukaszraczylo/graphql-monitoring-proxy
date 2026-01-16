@@ -54,7 +54,7 @@ func (sm *ShutdownManager) RunGoroutine(name string, fn func(context.Context)) {
 		if logger != nil {
 			logger.Debug(&libpack_logging.LogMessage{
 				Message: "Starting managed goroutine",
-				Pairs:   map[string]interface{}{"name": name},
+				Pairs:   map[string]any{"name": name},
 			})
 		}
 		fn(sm.ctx)
@@ -64,7 +64,7 @@ func (sm *ShutdownManager) RunGoroutine(name string, fn func(context.Context)) {
 		if logger != nil {
 			logger.Debug(&libpack_logging.LogMessage{
 				Message: "Managed goroutine finished",
-				Pairs:   map[string]interface{}{"name": name},
+				Pairs:   map[string]any{"name": name},
 			})
 		}
 	}()
@@ -114,7 +114,7 @@ func (sm *ShutdownManager) doShutdown(timeout time.Duration) error {
 			if logger != nil {
 				logger.Info(&libpack_logging.LogMessage{
 					Message: "Shutting down component",
-					Pairs:   map[string]interface{}{"component": c.Name},
+					Pairs:   map[string]any{"component": c.Name},
 				})
 			}
 			if err := c.Shutdown(shutdownCtx); err != nil {
@@ -124,7 +124,7 @@ func (sm *ShutdownManager) doShutdown(timeout time.Duration) error {
 				if logger != nil {
 					logger.Error(&libpack_logging.LogMessage{
 						Message: "Error shutting down component",
-						Pairs: map[string]interface{}{
+						Pairs: map[string]any{
 							"component": c.Name,
 							"error":     err.Error(),
 						},

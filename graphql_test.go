@@ -486,7 +486,7 @@ func (suite *Tests) Test_DeepIntrospectionQueries() {
 			for _, q := range tt.allowed {
 				introspectionAllowedQueries[strings.ToLower(q)] = struct{}{}
 			}
-			body := map[string]interface{}{
+			body := map[string]any{
 				"query": tt.query,
 			}
 			bodyBytes, _ := json.Marshal(body)

@@ -27,7 +27,7 @@ func TestEventsSecurityTestSuite(t *testing.T) {
 // TestEventCleanerSQLInjection tests various SQL injection attempts in the event cleaner
 func (suite *EventsSecurityTestSuite) TestEventCleanerSQLInjection() {
 	tests := []struct {
-		clearDays   interface{}
+		clearDays   any
 		name        string
 		description string
 		expectError bool
@@ -175,7 +175,7 @@ func (suite *EventsSecurityTestSuite) TestEventCleanerParameterizedQueries() {
 
 // TestEventCleanerConcurrentSQLInjection tests SQL injection under concurrent conditions
 func (suite *EventsSecurityTestSuite) TestEventCleanerConcurrentSQLInjection() {
-	maliciousInputs := []interface{}{
+	maliciousInputs := []any{
 		"1'; DROP TABLE events; --",
 		"1 OR 1=1",
 		"'; TRUNCATE events; --",
@@ -185,7 +185,7 @@ func (suite *EventsSecurityTestSuite) TestEventCleanerConcurrentSQLInjection() {
 		done := make(chan error, len(maliciousInputs))
 
 		for _, input := range maliciousInputs {
-			go func(val interface{}) {
+			go func(val any) {
 				err := validateClearDaysInput(val)
 				done <- err
 			}(input)
@@ -202,7 +202,7 @@ func (suite *EventsSecurityTestSuite) TestEventCleanerConcurrentSQLInjection() {
 // TestEventCleanerInputSanitization tests input sanitization effectiveness
 func (suite *EventsSecurityTestSuite) TestEventCleanerInputSanitization() {
 	tests := []struct {
-		input    interface{}
+		input    any
 		name     string
 		expected int
 		hasError bool
@@ -279,7 +279,7 @@ func (suite *EventsSecurityTestSuite) TestEventCleanerDatabaseInteraction() {
 // Helper functions that should be implemented in the main codebase
 
 // validateClearDaysInput validates and sanitizes the clearDays input
-func validateClearDaysInput(input interface{}) error {
+func validateClearDaysInput(input any) error {
 	// This function should be implemented in the main codebase
 	// to validate clearDays input before using it in SQL queries
 
@@ -319,7 +319,7 @@ func validateClearDaysInput(input interface{}) error {
 }
 
 // sanitizeAndValidateClearDays sanitizes and validates the input, returning the clean integer
-func sanitizeAndValidateClearDays(input interface{}) (int, error) {
+func sanitizeAndValidateClearDays(input any) (int, error) {
 	err := validateClearDaysInput(input)
 	if err != nil {
 		return 0, err

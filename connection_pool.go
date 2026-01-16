@@ -118,7 +118,7 @@ func (cpm *ConnectionPoolManager) cleanIdleConnections() {
 		if cpm.logger != nil {
 			cpm.logger.Debug(&libpack_logging.LogMessage{
 				Message: "Cleaned idle HTTP connections",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"active_connections": cpm.activeConnections.Load(),
 					"total_connections":  cpm.totalConnections.Load(),
 				},
@@ -172,7 +172,7 @@ func (cpm *ConnectionPoolManager) performKeepAlive() {
 		if cpm.logger != nil {
 			cpm.logger.Debug(&libpack_logging.LogMessage{
 				Message: "Keep-alive request failed",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"error": err.Error(),
 				},
 			})
@@ -202,7 +202,7 @@ func (cpm *ConnectionPoolManager) checkAndRecover() {
 		if cpm.logger != nil {
 			cpm.logger.Warning(&libpack_logging.LogMessage{
 				Message: "Connection pool health degraded, attempting recovery",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"consecutive_failures": failures,
 				},
 			})
@@ -246,8 +246,8 @@ func (cpm *ConnectionPoolManager) RecordConnectionFailure() {
 }
 
 // GetConnectionStats returns current connection statistics
-func (cpm *ConnectionPoolManager) GetConnectionStats() map[string]interface{} {
-	return map[string]interface{}{
+func (cpm *ConnectionPoolManager) GetConnectionStats() map[string]any {
+	return map[string]any{
 		"active_connections":    cpm.activeConnections.Load(),
 		"total_connections":     cpm.totalConnections.Load(),
 		"connection_failures":   cpm.connectionFailures.Load(),

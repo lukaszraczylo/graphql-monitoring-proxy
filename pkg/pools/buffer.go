@@ -1,3 +1,6 @@
+// Package pools provides memory-efficient buffer and gzip reader pools
+// for reducing allocations in high-throughput request processing.
+// Buffers are automatically sized and recycled to minimize GC pressure.
 package pools
 
 import (
@@ -16,21 +19,21 @@ const (
 
 // bufferPool is the global pool for reusable buffers
 var bufferPool = &sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return bytes.NewBuffer(make([]byte, 0, InitialBufferSize))
 	},
 }
 
 // gzipWriterPool is the global pool for reusable gzip writers
 var gzipWriterPool = &sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return gzip.NewWriter(nil)
 	},
 }
 
 // gzipReaderPool is the global pool for reusable gzip readers
 var gzipReaderPool = &sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return new(gzip.Reader)
 	},
 }

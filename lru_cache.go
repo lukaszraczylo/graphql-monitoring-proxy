@@ -9,7 +9,7 @@ import (
 // LRUCacheEntry represents a cache entry with metadata
 type LRUCacheEntry struct {
 	timestamp time.Time
-	value     interface{}
+	value     any
 	element   *list.Element
 	key       string
 	size      int64
@@ -44,7 +44,7 @@ func NewLRUCache(maxEntries int, maxSize int64) *LRUCache {
 }
 
 // Get retrieves a value from the cache
-func (c *LRUCache) Get(key string) (interface{}, bool) {
+func (c *LRUCache) Get(key string) (any, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -61,7 +61,7 @@ func (c *LRUCache) Get(key string) (interface{}, bool) {
 }
 
 // Set adds or updates a value in the cache
-func (c *LRUCache) Set(key string, value interface{}, size int64) {
+func (c *LRUCache) Set(key string, value any, size int64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -211,11 +211,11 @@ func (c *LRUCache) CleanupExpired(maxAge time.Duration) int {
 }
 
 // GetStats returns cache statistics
-func (c *LRUCache) GetStats() map[string]interface{} {
+func (c *LRUCache) GetStats() map[string]any {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"entries":      c.evictList.Len(),
 		"size_bytes":   c.currentSize,
 		"max_entries":  c.maxEntries,

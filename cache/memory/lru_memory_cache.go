@@ -38,12 +38,12 @@ func NewLRUMemoryCache(maxMemorySize, maxEntries int64) *LRUMemoryCache {
 		entries:       make(map[string]*lruEntry),
 		evictList:     list.New(),
 		gzipWriterPool: &sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return gzip.NewWriter(nil)
 			},
 		},
 		gzipReaderPool: &sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return &gzip.Reader{}
 			},
 		},
@@ -257,11 +257,11 @@ func (c *LRUMemoryCache) decompress(data []byte) ([]byte, error) {
 }
 
 // GetStats returns cache statistics
-func (c *LRUMemoryCache) GetStats() map[string]interface{} {
+func (c *LRUMemoryCache) GetStats() map[string]any {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	return map[string]interface{}{
+	return map[string]any{
 		"entries":      atomic.LoadInt64(&c.currentCount),
 		"memory_bytes": atomic.LoadInt64(&c.currentMemory),
 		"max_entries":  c.maxEntries,

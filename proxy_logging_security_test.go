@@ -21,19 +21,19 @@ func TestProxyLoggingSecurityTestSuite(t *testing.T) {
 func (suite *ProxyLoggingSecurityTestSuite) TestSensitiveDataSanitization() {
 	tests := []struct {
 		name        string
-		input       map[string]interface{}
-		expected    map[string]interface{}
+		input       map[string]any
+		expected    map[string]any
 		contentType string
 		description string
 	}{
 		{
 			name: "Password field redaction",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"username": "user123",
 				"password": "secret123",
 				"email":    "user@example.com",
 			},
-			expected: map[string]interface{}{
+			expected: map[string]any{
 				"username": "user123",
 				"password": "[REDACTED]",
 				"email":    "[REDACTED]",
@@ -43,13 +43,13 @@ func (suite *ProxyLoggingSecurityTestSuite) TestSensitiveDataSanitization() {
 		},
 		{
 			name: "API key and token redaction",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"data":    "normal data",
 				"api_key": "sk-123456789",
 				"token":   "bearer-token-123",
 				"auth":    "auth-value",
 			},
-			expected: map[string]interface{}{
+			expected: map[string]any{
 				"data":    "normal data",
 				"api_key": "[REDACTED]",
 				"token":   "[REDACTED]",
@@ -60,22 +60,22 @@ func (suite *ProxyLoggingSecurityTestSuite) TestSensitiveDataSanitization() {
 		},
 		{
 			name: "Nested sensitive fields",
-			input: map[string]interface{}{
-				"user": map[string]interface{}{
+			input: map[string]any{
+				"user": map[string]any{
 					"name":     "John Doe",
 					"password": "secret123",
-					"profile": map[string]interface{}{
+					"profile": map[string]any{
 						"api_key": "sk-nested-key",
 						"bio":     "User bio",
 					},
 				},
 				"public_data": "visible",
 			},
-			expected: map[string]interface{}{
-				"user": map[string]interface{}{
+			expected: map[string]any{
+				"user": map[string]any{
 					"name":     "John Doe",
 					"password": "[REDACTED]",
-					"profile": map[string]interface{}{
+					"profile": map[string]any{
 						"api_key": "[REDACTED]",
 						"bio":     "User bio",
 					},
@@ -87,25 +87,25 @@ func (suite *ProxyLoggingSecurityTestSuite) TestSensitiveDataSanitization() {
 		},
 		{
 			name: "Array with sensitive data",
-			input: map[string]interface{}{
-				"users": []interface{}{
-					map[string]interface{}{
+			input: map[string]any{
+				"users": []any{
+					map[string]any{
 						"name":     "User1",
 						"password": "pass1",
 					},
-					map[string]interface{}{
+					map[string]any{
 						"name":  "User2",
 						"token": "token2",
 					},
 				},
 			},
-			expected: map[string]interface{}{
-				"users": []interface{}{
-					map[string]interface{}{
+			expected: map[string]any{
+				"users": []any{
+					map[string]any{
 						"name":     "User1",
 						"password": "[REDACTED]",
 					},
-					map[string]interface{}{
+					map[string]any{
 						"name":  "User2",
 						"token": "[REDACTED]",
 					},
@@ -116,13 +116,13 @@ func (suite *ProxyLoggingSecurityTestSuite) TestSensitiveDataSanitization() {
 		},
 		{
 			name: "Credit card and financial data",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"order_id":    "12345",
 				"credit_card": "4111111111111111",
 				"cvv":         "123",
 				"amount":      100.50,
 			},
-			expected: map[string]interface{}{
+			expected: map[string]any{
 				"order_id":    "12345",
 				"credit_card": "[REDACTED]",
 				"cvv":         "[REDACTED]",
@@ -133,14 +133,14 @@ func (suite *ProxyLoggingSecurityTestSuite) TestSensitiveDataSanitization() {
 		},
 		{
 			name: "Personal identifiable information",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"name":    "John Doe",
 				"ssn":     "123-45-6789",
 				"phone":   "+1-555-123-4567",
 				"address": "123 Main St",
 				"age":     30,
 			},
-			expected: map[string]interface{}{
+			expected: map[string]any{
 				"name":    "John Doe",
 				"ssn":     "[REDACTED]",
 				"phone":   "[REDACTED]",
@@ -152,13 +152,13 @@ func (suite *ProxyLoggingSecurityTestSuite) TestSensitiveDataSanitization() {
 		},
 		{
 			name: "Mixed case field names",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"UserName": "john",
 				"PASSWORD": "secret",
 				"Api_Key":  "key123",
 				"Bearer":   "token",
 			},
-			expected: map[string]interface{}{
+			expected: map[string]any{
 				"UserName": "john",
 				"PASSWORD": "[REDACTED]",
 				"Api_Key":  "[REDACTED]",
@@ -169,13 +169,13 @@ func (suite *ProxyLoggingSecurityTestSuite) TestSensitiveDataSanitization() {
 		},
 		{
 			name: "Various password patterns",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"pwd":      "secret1",
 				"passwd":   "secret2",
 				"password": "secret3",
 				"pass":     "secret4", // Now redacted for better security coverage
 			},
-			expected: map[string]interface{}{
+			expected: map[string]any{
 				"pwd":      "[REDACTED]",
 				"passwd":   "[REDACTED]",
 				"password": "[REDACTED]",
@@ -186,7 +186,7 @@ func (suite *ProxyLoggingSecurityTestSuite) TestSensitiveDataSanitization() {
 		},
 		{
 			name: "Various auth patterns",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"authorization": "Bearer token123",
 				"auth":          "basic auth",
 				"bearer":        "token456",
@@ -195,7 +195,7 @@ func (suite *ProxyLoggingSecurityTestSuite) TestSensitiveDataSanitization() {
 				"session_id":    "session789",
 				"cookie":        "cookie_value",
 			},
-			expected: map[string]interface{}{
+			expected: map[string]any{
 				"authorization": "[REDACTED]",
 				"auth":          "[REDACTED]",
 				"bearer":        "[REDACTED]",
@@ -219,7 +219,7 @@ func (suite *ProxyLoggingSecurityTestSuite) TestSensitiveDataSanitization() {
 			result := sanitizeForLogging(inputBytes, tt.contentType)
 
 			// Parse the result back to compare
-			var sanitized map[string]interface{}
+			var sanitized map[string]any
 			decoder := json.NewDecoder(strings.NewReader(result))
 			decoder.UseNumber() // Preserve number precision and type
 			err = decoder.Decode(&sanitized)
@@ -398,10 +398,10 @@ func (suite *ProxyLoggingSecurityTestSuite) TestRedactSensitiveFields() {
 	sensitiveFields := []string{"password", "token", "secret"}
 
 	suite.Run("Deep nested structure", func() {
-		data := map[string]interface{}{
-			"level1": map[string]interface{}{
-				"level2": map[string]interface{}{
-					"level3": map[string]interface{}{
+		data := map[string]any{
+			"level1": map[string]any{
+				"level2": map[string]any{
+					"level3": map[string]any{
 						"password": "testdeepsecret",
 						"public":   "data",
 					},
@@ -415,28 +415,28 @@ func (suite *ProxyLoggingSecurityTestSuite) TestRedactSensitiveFields() {
 		redactSensitiveFields(data, sensitiveFields)
 
 		// Verify deep nesting is handled
-		level3 := data["level1"].(map[string]interface{})["level2"].(map[string]interface{})["level3"].(map[string]interface{})
+		level3 := data["level1"].(map[string]any)["level2"].(map[string]any)["level3"].(map[string]any)
 		suite.Equal("[REDACTED]", level3["password"])
 		suite.Equal("data", level3["public"])
 
 		// Verify intermediate levels
-		level2 := data["level1"].(map[string]interface{})["level2"].(map[string]interface{})
+		level2 := data["level1"].(map[string]any)["level2"].(map[string]any)
 		suite.Equal("[REDACTED]", level2["token"])
 
 		// Verify top level
 		suite.Equal("[REDACTED]", data["secret"])
-		level1 := data["level1"].(map[string]interface{})
+		level1 := data["level1"].(map[string]any)
 		suite.Equal("value", level1["normal"])
 	})
 
 	suite.Run("Array of objects", func() {
-		data := map[string]interface{}{
-			"users": []interface{}{
-				map[string]interface{}{
+		data := map[string]any{
+			"users": []any{
+				map[string]any{
 					"name":     "User1",
 					"password": "testpass1",
 				},
-				map[string]interface{}{
+				map[string]any{
 					"name":  "User2",
 					"token": "testtoken2",
 				},
@@ -446,9 +446,9 @@ func (suite *ProxyLoggingSecurityTestSuite) TestRedactSensitiveFields() {
 
 		redactSensitiveFields(data, sensitiveFields)
 
-		users := data["users"].([]interface{})
-		user1 := users[0].(map[string]interface{})
-		user2 := users[1].(map[string]interface{})
+		users := data["users"].([]any)
+		user1 := users[0].(map[string]any)
+		user2 := users[1].(map[string]any)
 
 		suite.Equal("[REDACTED]", user1["password"])
 		suite.Equal("User1", user1["name"])
@@ -509,9 +509,9 @@ func (suite *ProxyLoggingSecurityTestSuite) TestRedactPatternInString() {
 // TestSanitizationPerformance tests performance of sanitization functions
 func (suite *ProxyLoggingSecurityTestSuite) TestSanitizationPerformance() {
 	// Create a large JSON structure with sensitive data
-	largeData := make(map[string]interface{})
+	largeData := make(map[string]any)
 	for i := 0; i < 1000; i++ {
-		largeData[fmt.Sprintf("user_%d", i)] = map[string]interface{}{
+		largeData[fmt.Sprintf("user_%d", i)] = map[string]any{
 			"name":     fmt.Sprintf("User%d", i),
 			"password": fmt.Sprintf("secret%d", i),
 			"email":    fmt.Sprintf("user%d@example.com", i),
@@ -526,12 +526,12 @@ func (suite *ProxyLoggingSecurityTestSuite) TestSanitizationPerformance() {
 	result := sanitizeForLogging(largeJSON, "application/json")
 
 	// Verify the result is valid JSON
-	var sanitized map[string]interface{}
+	var sanitized map[string]any
 	err = json.Unmarshal([]byte(result), &sanitized)
 	suite.NoError(err)
 
 	// Verify sensitive data was redacted (spot check)
-	user0 := sanitized["user_0"].(map[string]interface{})
+	user0 := sanitized["user_0"].(map[string]any)
 	suite.Equal("[REDACTED]", user0["password"])
 	suite.Equal("[REDACTED]", user0["email"])
 	suite.Equal("User0", user0["name"])
@@ -557,7 +557,7 @@ func (suite *ProxyLoggingSecurityTestSuite) TestEdgeCases() {
 
 		// This should not panic
 		suite.NotPanics(func() {
-			data := make(map[string]interface{})
+			data := make(map[string]any)
 			data["test"] = nil
 			redactSensitiveFields(data, sensitiveFields)
 		})
@@ -577,12 +577,12 @@ func (suite *ProxyLoggingSecurityTestSuite) TestEdgeCases() {
 
 // BenchmarkSanitizeForLogging benchmarks the sanitization function
 func BenchmarkSanitizeForLogging(b *testing.B) {
-	testData := map[string]interface{}{
+	testData := map[string]any{
 		"username": "testuser",
 		"password": "secret123",
 		"api_key":  "sk-123456789",
 		"data":     "normal data",
-		"nested": map[string]interface{}{
+		"nested": map[string]any{
 			"token": "nested-token",
 			"value": "nested-value",
 		},

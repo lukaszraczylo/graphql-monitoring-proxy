@@ -81,7 +81,7 @@ func (rb *RetryBudget) AllowRetry() bool {
 			if rb.logger != nil {
 				rb.logger.Debug(&libpack_logger.LogMessage{
 					Message: "Retry denied: budget exhausted",
-					Pairs: map[string]interface{}{
+					Pairs: map[string]any{
 						"current_tokens": current,
 						"denied_count":   rb.deniedRetries.Load(),
 					},
@@ -150,7 +150,7 @@ func (rb *RetryBudget) refill() {
 }
 
 // GetStats returns current statistics
-func (rb *RetryBudget) GetStats() map[string]interface{} {
+func (rb *RetryBudget) GetStats() map[string]any {
 	totalAttempts := rb.totalAttempts.Load()
 	allowedRetries := rb.allowedRetries.Load()
 	deniedRetries := rb.deniedRetries.Load()
@@ -160,7 +160,7 @@ func (rb *RetryBudget) GetStats() map[string]interface{} {
 		denialRate = float64(deniedRetries) / float64(totalAttempts) * 100
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"enabled":         rb.enabled,
 		"current_tokens":  rb.currentTokens.Load(),
 		"max_tokens":      rb.maxTokens,
@@ -195,7 +195,7 @@ func (rb *RetryBudget) UpdateConfig(config RetryBudgetConfig) {
 	if rb.logger != nil {
 		rb.logger.Info(&libpack_logger.LogMessage{
 			Message: "Retry budget configuration updated",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"tokens_per_sec": config.TokensPerSecond,
 				"max_tokens":     config.MaxTokens,
 				"enabled":        config.Enabled,
@@ -222,7 +222,7 @@ func InitializeRetryBudgetWithContext(ctx context.Context, config RetryBudgetCon
 		if logger != nil && config.Enabled {
 			logger.Info(&libpack_logger.LogMessage{
 				Message: "Retry budget initialized",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"tokens_per_sec": config.TokensPerSecond,
 					"max_tokens":     config.MaxTokens,
 				},

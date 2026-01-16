@@ -29,15 +29,15 @@ const (
 
 // ProxyError represents a structured error response
 type ProxyError struct {
-	Code       string                 `json:"code"`               // Machine-readable error code
-	Message    string                 `json:"message"`            // Human-readable error message
-	Details    string                 `json:"details,omitempty"`  // Additional error details
-	Retryable  bool                   `json:"retryable"`          // Whether the request can be retried
-	StatusCode int                    `json:"status_code"`        // HTTP status code
-	Timestamp  time.Time              `json:"timestamp"`          // When the error occurred
-	TraceID    string                 `json:"trace_id,omitempty"` // Trace ID for correlation
-	Metadata   map[string]interface{} `json:"metadata,omitempty"` // Additional context
-	Cause      error                  `json:"-"`                  // Original error (not serialized)
+	Code       string         `json:"code"`               // Machine-readable error code
+	Message    string         `json:"message"`            // Human-readable error message
+	Details    string         `json:"details,omitempty"`  // Additional error details
+	Retryable  bool           `json:"retryable"`          // Whether the request can be retried
+	StatusCode int            `json:"status_code"`        // HTTP status code
+	Timestamp  time.Time      `json:"timestamp"`          // When the error occurred
+	TraceID    string         `json:"trace_id,omitempty"` // Trace ID for correlation
+	Metadata   map[string]any `json:"metadata,omitempty"` // Additional context
+	Cause      error          `json:"-"`                  // Original error (not serialized)
 }
 
 // Error implements the error interface
@@ -78,7 +78,7 @@ func NewProxyError(code, message string, statusCode int, retryable bool) *ProxyE
 		StatusCode: statusCode,
 		Retryable:  retryable,
 		Timestamp:  time.Now(),
-		Metadata:   make(map[string]interface{}),
+		Metadata:   make(map[string]any),
 	}
 }
 
@@ -101,7 +101,7 @@ func (e *ProxyError) WithTraceID(traceID string) *ProxyError {
 }
 
 // WithMetadata adds metadata
-func (e *ProxyError) WithMetadata(key string, value interface{}) *ProxyError {
+func (e *ProxyError) WithMetadata(key string, value any) *ProxyError {
 	e.Metadata[key] = value
 	return e
 }

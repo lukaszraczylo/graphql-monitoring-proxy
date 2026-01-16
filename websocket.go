@@ -67,7 +67,7 @@ func NewWebSocketProxy(backendURL string, config WebSocketConfig, logger *libpac
 	if logger != nil && config.Enabled {
 		logger.Info(&libpack_logger.LogMessage{
 			Message: "WebSocket proxy enabled",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"backend_url":      backendURL,
 				"ping_interval":    config.PingInterval,
 				"max_message_size": config.MaxMessageSize,
@@ -132,7 +132,7 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 	if wsp.logger != nil {
 		wsp.logger.Info(&libpack_logger.LogMessage{
 			Message: "WebSocket connection established",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"connection_id":      connectionID,
 				"active_connections": wsp.activeConnections.Load(),
 			},
@@ -150,7 +150,7 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 		if wsp.logger != nil {
 			wsp.logger.Error(&libpack_logger.LogMessage{
 				Message: "Failed to read first message from client",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"connection_id": connectionID,
 					"error":         err.Error(),
 				},
@@ -170,7 +170,7 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 		if wsp.logger != nil {
 			wsp.logger.Error(&libpack_logger.LogMessage{
 				Message: "Failed to connect to backend WebSocket",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"connection_id": connectionID,
 					"error":         err.Error(),
 				},
@@ -187,7 +187,7 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 		if wsp.logger != nil {
 			wsp.logger.Error(&libpack_logger.LogMessage{
 				Message: "Failed to forward connection_init to backend",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"connection_id": connectionID,
 					"error":         err.Error(),
 				},
@@ -199,7 +199,7 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 	if wsp.logger != nil {
 		wsp.logger.Debug(&libpack_logger.LogMessage{
 			Message: "Backend WebSocket connection established",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"connection_id":     connectionID,
 				"subprotocol":       backendConn.Subprotocol(),
 				"has_authorization": headers.Get("Authorization") != "",
@@ -231,7 +231,7 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 	if wsp.logger != nil {
 		wsp.logger.Info(&libpack_logger.LogMessage{
 			Message: "WebSocket connection closed",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"connection_id":     connectionID,
 				"duration_seconds":  duration.Seconds(),
 				"messages_sent":     wsp.messagesSent.Load(),
@@ -258,7 +258,7 @@ func (wsp *WebSocketProxy) proxyClientToBackend(ctx context.Context, client *web
 					if wsp.logger != nil {
 						wsp.logger.Debug(&libpack_logger.LogMessage{
 							Message: "Client WebSocket closed normally",
-							Pairs: map[string]interface{}{
+							Pairs: map[string]any{
 								"connection_id": connectionID,
 							},
 						})
@@ -268,7 +268,7 @@ func (wsp *WebSocketProxy) proxyClientToBackend(ctx context.Context, client *web
 					if wsp.logger != nil {
 						wsp.logger.Error(&libpack_logger.LogMessage{
 							Message: "Error reading from client WebSocket",
-							Pairs: map[string]interface{}{
+							Pairs: map[string]any{
 								"connection_id": connectionID,
 								"error":         err.Error(),
 							},
@@ -286,7 +286,7 @@ func (wsp *WebSocketProxy) proxyClientToBackend(ctx context.Context, client *web
 				if wsp.logger != nil {
 					wsp.logger.Error(&libpack_logger.LogMessage{
 						Message: "Error writing to backend WebSocket",
-						Pairs: map[string]interface{}{
+						Pairs: map[string]any{
 							"connection_id": connectionID,
 							"error":         err.Error(),
 						},
@@ -298,7 +298,7 @@ func (wsp *WebSocketProxy) proxyClientToBackend(ctx context.Context, client *web
 			if wsp.logger != nil {
 				wsp.logger.Debug(&libpack_logger.LogMessage{
 					Message: "Message proxied to backend",
-					Pairs: map[string]interface{}{
+					Pairs: map[string]any{
 						"connection_id": connectionID,
 						"message_type":  messageType,
 						"message_size":  len(message),
@@ -322,7 +322,7 @@ func (wsp *WebSocketProxy) proxyBackendToClient(ctx context.Context, backend *go
 					if wsp.logger != nil {
 						wsp.logger.Debug(&libpack_logger.LogMessage{
 							Message: "Backend WebSocket closed normally",
-							Pairs: map[string]interface{}{
+							Pairs: map[string]any{
 								"connection_id": connectionID,
 							},
 						})
@@ -332,7 +332,7 @@ func (wsp *WebSocketProxy) proxyBackendToClient(ctx context.Context, backend *go
 					if wsp.logger != nil {
 						wsp.logger.Error(&libpack_logger.LogMessage{
 							Message: "Error reading from backend WebSocket",
-							Pairs: map[string]interface{}{
+							Pairs: map[string]any{
 								"connection_id": connectionID,
 								"error":         err.Error(),
 							},
@@ -350,7 +350,7 @@ func (wsp *WebSocketProxy) proxyBackendToClient(ctx context.Context, backend *go
 				if wsp.logger != nil {
 					wsp.logger.Error(&libpack_logger.LogMessage{
 						Message: "Error writing to client WebSocket",
-						Pairs: map[string]interface{}{
+						Pairs: map[string]any{
 							"connection_id": connectionID,
 							"error":         err.Error(),
 						},
@@ -362,7 +362,7 @@ func (wsp *WebSocketProxy) proxyBackendToClient(ctx context.Context, backend *go
 			if wsp.logger != nil {
 				wsp.logger.Debug(&libpack_logger.LogMessage{
 					Message: "Message proxied to client",
-					Pairs: map[string]interface{}{
+					Pairs: map[string]any{
 						"connection_id": connectionID,
 						"message_type":  messageType,
 						"message_size":  len(message),
@@ -383,7 +383,7 @@ func (wsp *WebSocketProxy) extractAuthFromPayload(message []byte, originalHeader
 	}
 
 	// Try to parse as JSON to extract headers from payload
-	var msg map[string]interface{}
+	var msg map[string]any
 	if err := json.Unmarshal(message, &msg); err != nil {
 		// Not JSON or parse error, return original headers
 		return enrichedHeaders
@@ -397,13 +397,13 @@ func (wsp *WebSocketProxy) extractAuthFromPayload(message []byte, originalHeader
 	}
 
 	// Extract payload
-	payload, ok := msg["payload"].(map[string]interface{})
+	payload, ok := msg["payload"].(map[string]any)
 	if !ok {
 		return enrichedHeaders
 	}
 
 	// Try to extract headers from payload.headers (graphql-ws format)
-	if payloadHeaders, ok := payload["headers"].(map[string]interface{}); ok {
+	if payloadHeaders, ok := payload["headers"].(map[string]any); ok {
 		for key, value := range payloadHeaders {
 			if strValue, ok := value.(string); ok {
 				enrichedHeaders.Set(key, strValue)
@@ -462,8 +462,8 @@ func (wsp *WebSocketProxy) dialBackend(ctx context.Context, headers http.Header)
 }
 
 // GetStats returns WebSocket statistics
-func (wsp *WebSocketProxy) GetStats() map[string]interface{} {
-	return map[string]interface{}{
+func (wsp *WebSocketProxy) GetStats() map[string]any {
+	return map[string]any{
 		"enabled":            wsp.enabled,
 		"active_connections": wsp.activeConnections.Load(),
 		"total_connections":  wsp.totalConnections.Load(),

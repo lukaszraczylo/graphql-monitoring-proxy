@@ -116,9 +116,9 @@ func (suite *IntegrationSecurityTestSuite) setupTestApps() {
 		}
 
 		// Mock GraphQL response
-		response := map[string]interface{}{
-			"data": map[string]interface{}{
-				"user": map[string]interface{}{
+		response := map[string]any{
+			"data": map[string]any{
+				"user": map[string]any{
 					"id":    "12345",
 					"name":  "Test User",
 					"email": "test@example.com",
@@ -156,7 +156,7 @@ func (suite *IntegrationSecurityTestSuite) TestEndToEndSecurity() {
 		defer func() { cfg.LogLevel = originalLogLevel }()
 
 		// Create GraphQL request with sensitive data
-		graphqlQuery := map[string]interface{}{
+		graphqlQuery := map[string]any{
 			"query": `
 				mutation LoginUser($input: LoginInput!) {
 					login(input: $input) {
@@ -165,8 +165,8 @@ func (suite *IntegrationSecurityTestSuite) TestEndToEndSecurity() {
 					}
 				}
 			`,
-			"variables": map[string]interface{}{
-				"input": map[string]interface{}{
+			"variables": map[string]any{
+				"input": map[string]any{
 					"email":    "user@example.com",
 					"password": "secret123password",
 					"api_key":  "sk-sensitive-key-123",
@@ -194,7 +194,7 @@ func (suite *IntegrationSecurityTestSuite) TestEndToEndSecurity() {
 // TestAPISecurityFlow tests complete API security workflow
 func (suite *IntegrationSecurityTestSuite) TestAPISecurityFlow() {
 	tests := []struct {
-		body           map[string]interface{}
+		body           map[string]any
 		name           string
 		endpoint       string
 		method         string
@@ -207,7 +207,7 @@ func (suite *IntegrationSecurityTestSuite) TestAPISecurityFlow() {
 			endpoint:       "/api/user-ban",
 			method:         "POST",
 			apiKey:         "",
-			body:           map[string]interface{}{"user_id": "malicious-user", "reason": "test ban"},
+			body:           map[string]any{"user_id": "malicious-user", "reason": "test ban"},
 			expectedStatus: 401,
 			description:    "Should reject unauthorized ban attempts",
 		},
@@ -216,7 +216,7 @@ func (suite *IntegrationSecurityTestSuite) TestAPISecurityFlow() {
 			endpoint:       "/api/user-ban",
 			method:         "POST",
 			apiKey:         "' OR '1'='1 --",
-			body:           map[string]interface{}{"user_id": "test-user", "reason": "test ban"},
+			body:           map[string]any{"user_id": "test-user", "reason": "test ban"},
 			expectedStatus: 401,
 			description:    "Should reject SQL injection in API key",
 		},
@@ -225,7 +225,7 @@ func (suite *IntegrationSecurityTestSuite) TestAPISecurityFlow() {
 			endpoint:       "/api/user-ban",
 			method:         "POST",
 			apiKey:         suite.validAPIKey,
-			body:           map[string]interface{}{"user_id": "test-user-ban", "reason": "test ban reason"},
+			body:           map[string]any{"user_id": "test-user-ban", "reason": "test ban reason"},
 			expectedStatus: 200,
 			description:    "Should accept valid ban request",
 		},
@@ -488,9 +488,9 @@ func (suite *IntegrationSecurityTestSuite) TestDataSanitizationIntegration() {
 		defer func() { cfg.LogLevel = originalLogLevel }()
 
 		// Create request with sensitive data
-		sensitiveData := map[string]interface{}{
+		sensitiveData := map[string]any{
 			"query": "{ user { id name } }",
-			"variables": map[string]interface{}{
+			"variables": map[string]any{
 				"password":    "secret123",
 				"api_key":     "sk-sensitive-123",
 				"credit_card": "4111111111111111",
@@ -513,7 +513,7 @@ func (suite *IntegrationSecurityTestSuite) TestDataSanitizationIntegration() {
 		body, err := io.ReadAll(resp.Body)
 		suite.NoError(err)
 
-		var response map[string]interface{}
+		var response map[string]any
 		err = json.Unmarshal(body, &response)
 		suite.NoError(err)
 
@@ -587,7 +587,7 @@ func (suite *IntegrationSecurityTestSuite) TestErrorHandlingSecurityIntegration(
 func (suite *IntegrationSecurityTestSuite) TestComprehensiveSecurityScenario() {
 	suite.Run("Complete security workflow", func() {
 		// 1. Attempt SQL injection via GraphQL
-		maliciousGraphQL := map[string]interface{}{
+		maliciousGraphQL := map[string]any{
 			"query": "{ user(id: \"'; DROP TABLE users; --\") { id } }",
 		}
 
@@ -660,7 +660,7 @@ func BenchmarkSecurityOperations(b *testing.B) {
 	})
 
 	b.Run("Log Sanitization", func(b *testing.B) {
-		testData := map[string]interface{}{
+		testData := map[string]any{
 			"password": "secret123",
 			"api_key":  "sk-123456",
 			"data":     "normal data",

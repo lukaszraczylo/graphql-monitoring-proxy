@@ -103,7 +103,7 @@ func TestAdminDashboard_GetStats(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 
 	// Parse response
-	var stats map[string]interface{}
+	var stats map[string]any
 	body, _ := io.ReadAll(resp.Body)
 	err = json.Unmarshal(body, &stats)
 	assert.NoError(t, err)
@@ -116,7 +116,7 @@ func TestAdminDashboard_GetStats(t *testing.T) {
 	assert.NotNil(t, stats["requests"])
 
 	// Verify request stats structure
-	requests := stats["requests"].(map[string]interface{})
+	requests := stats["requests"].(map[string]any)
 	assert.NotNil(t, requests["total"])
 	assert.NotNil(t, requests["succeeded"])
 	assert.NotNil(t, requests["failed"])
@@ -139,7 +139,7 @@ func TestAdminDashboard_GetHealth(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 
 	// Parse response
-	var health map[string]interface{}
+	var health map[string]any
 	body, _ := io.ReadAll(resp.Body)
 	err = json.Unmarshal(body, &health)
 	assert.NoError(t, err)
@@ -188,7 +188,7 @@ func TestAdminDashboard_GetCircuitBreakerStatus(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 
 	// Parse response
-	var status map[string]interface{}
+	var status map[string]any
 	body, _ := io.ReadAll(resp.Body)
 	err = json.Unmarshal(body, &status)
 	assert.NoError(t, err)
@@ -236,7 +236,7 @@ func TestAdminDashboard_GetCacheStats(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 
 	// Parse response
-	var stats map[string]interface{}
+	var stats map[string]any
 	body, _ := io.ReadAll(resp.Body)
 	err = json.Unmarshal(body, &stats)
 	assert.NoError(t, err)
@@ -260,7 +260,7 @@ func TestAdminDashboard_GetConnectionStats(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 
 	// Parse response
-	var stats map[string]interface{}
+	var stats map[string]any
 	body, _ := io.ReadAll(resp.Body)
 	err = json.Unmarshal(body, &stats)
 	assert.NoError(t, err)
@@ -283,7 +283,7 @@ func TestAdminDashboard_GetRetryBudgetStats(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 
 	// Parse response
-	var stats map[string]interface{}
+	var stats map[string]any
 	body, _ := io.ReadAll(resp.Body)
 	err = json.Unmarshal(body, &stats)
 	assert.NoError(t, err)
@@ -306,7 +306,7 @@ func TestAdminDashboard_GetCoalescingStats(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 
 	// Parse response
-	var stats map[string]interface{}
+	var stats map[string]any
 	body, _ := io.ReadAll(resp.Body)
 	err = json.Unmarshal(body, &stats)
 	assert.NoError(t, err)
@@ -329,7 +329,7 @@ func TestAdminDashboard_GetWebSocketStats(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 
 	// Parse response
-	var stats map[string]interface{}
+	var stats map[string]any
 	body, _ := io.ReadAll(resp.Body)
 	err = json.Unmarshal(body, &stats)
 	assert.NoError(t, err)
@@ -352,7 +352,7 @@ func TestAdminDashboard_ClearCache(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 
 	// Parse response
-	var result map[string]interface{}
+	var result map[string]any
 	body, _ := io.ReadAll(resp.Body)
 	err = json.Unmarshal(body, &result)
 	assert.NoError(t, err)
@@ -383,7 +383,7 @@ func TestAdminDashboard_ResetRetryBudget(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 
 	// Parse response
-	var result map[string]interface{}
+	var result map[string]any
 	body, _ := io.ReadAll(resp.Body)
 	err = json.Unmarshal(body, &result)
 	assert.NoError(t, err)
@@ -410,7 +410,7 @@ func TestAdminDashboard_ResetCoalescing(t *testing.T) {
 	assert.Equal(t, 200, resp.StatusCode)
 
 	// Parse response
-	var result map[string]interface{}
+	var result map[string]any
 	body, _ := io.ReadAll(resp.Body)
 	err = json.Unmarshal(body, &result)
 	assert.NoError(t, err)
@@ -475,7 +475,7 @@ func TestAdminDashboard_IntegrationWithFeatures(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	var rbStats map[string]interface{}
+	var rbStats map[string]any
 	body, _ := io.ReadAll(resp.Body)
 	json.Unmarshal(body, &rbStats)
 	assert.Equal(t, true, rbStats["enabled"])
@@ -486,7 +486,7 @@ func TestAdminDashboard_IntegrationWithFeatures(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	var coalStats map[string]interface{}
+	var coalStats map[string]any
 	body, _ = io.ReadAll(resp.Body)
 	json.Unmarshal(body, &coalStats)
 	assert.Equal(t, true, coalStats["enabled"])
@@ -497,7 +497,7 @@ func TestAdminDashboard_IntegrationWithFeatures(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	var wsStats map[string]interface{}
+	var wsStats map[string]any
 	body, _ = io.ReadAll(resp.Body)
 	json.Unmarshal(body, &wsStats)
 	assert.Equal(t, true, wsStats["enabled"])
