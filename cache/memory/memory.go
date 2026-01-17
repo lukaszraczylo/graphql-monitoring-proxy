@@ -1,3 +1,6 @@
+// Package libpack_cache_memory provides an in-memory LRU cache implementation
+// with automatic compression for large values, memory limits, and background
+// eviction of expired entries.
 package libpack_cache_memory
 
 import (
@@ -61,12 +64,12 @@ func NewWithSize(globalTTL time.Duration, maxMemorySize int64, maxCacheSize int6
 		ctx:           ctx,
 		cancel:        cancel,
 		compressPool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return gzip.NewWriter(nil)
 			},
 		},
 		decompressPool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				r, _ := gzip.NewReader(bytes.NewReader([]byte{}))
 				return r
 			},
@@ -204,7 +207,7 @@ func (c *Cache) Delete(key string) {
 }
 
 func (c *Cache) Clear() {
-	c.entries.Range(func(key, value interface{}) bool {
+	c.entries.Range(func(key, value any) bool {
 		c.entries.Delete(key)
 		return true
 	})
@@ -255,7 +258,7 @@ func (c *Cache) decompress(data []byte) ([]byte, error) {
 
 func (c *Cache) CleanExpiredEntries() {
 	now := time.Now()
-	c.entries.Range(func(key, value interface{}) bool {
+	c.entries.Range(func(key, value any) bool {
 		entry := value.(CacheEntry)
 		if entry.ExpiresAt.Before(now) {
 			if _, exists := c.entries.LoadAndDelete(key); exists {
@@ -276,7 +279,7 @@ func (c *Cache) evictOldest(n int) {
 
 	// Collect all entries with their expiry times
 	entries := make([]keyExpiry, 0, n*2)
-	c.entries.Range(func(k, v interface{}) bool {
+	c.entries.Range(func(k, v any) bool {
 		key := k.(string)
 		entry := v.(CacheEntry)
 		entries = append(entries, keyExpiry{entry.ExpiresAt, key})
@@ -316,7 +319,7 @@ func (c *Cache) evictToFreeMemory(bytesToFree int64) {
 
 	// Collect entries to consider for eviction
 	entries := make([]keyMemorySize, 0, int(c.maxCacheSize/5))
-	c.entries.Range(func(k, v interface{}) bool {
+	c.entries.Range(func(k, v any) bool {
 		key := k.(string)
 		entry := v.(CacheEntry)
 		entries = append(entries, keyMemorySize{entry.ExpiresAt, key, entry.MemorySize})

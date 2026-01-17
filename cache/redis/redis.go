@@ -1,3 +1,6 @@
+// Package libpack_cache_redis provides a Redis-backed cache implementation
+// for distributed caching across multiple proxy instances. Supports key
+// prefixing for multi-tenant isolation.
 package libpack_cache_redis
 
 import (
@@ -42,7 +45,7 @@ func New(redisClientConfig *RedisClientConfig) (*RedisConfig, error) {
 		ctx:    context.Background(),
 		prefix: redisClientConfig.Prefix,
 		builderPool: &sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return &strings.Builder{}
 			},
 		},

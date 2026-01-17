@@ -1,3 +1,6 @@
+// Package libpack_monitoring provides Prometheus-compatible metrics collection
+// and exposure using VictoriaMetrics. Supports counters, gauges, histograms,
+// and custom metrics with labels.
 package libpack_monitoring
 
 import (
@@ -82,7 +85,7 @@ func (ms *MetricsSetup) startPrometheusEndpoint() {
 	if err := app.Listen(fmt.Sprintf(":%d", envutil.GetInt("MONITORING_PORT", 9393))); err != nil {
 		log.Critical(&libpack_logger.LogMessage{
 			Message: "Can't start the MONITORING service",
-			Pairs:   map[string]interface{}{"error": err},
+			Pairs:   map[string]any{"error": err},
 		})
 	}
 }
@@ -109,7 +112,7 @@ func (ms *MetricsSetup) RegisterMetricsGauge(metric_name string, labels map[stri
 	if err := validate_metrics_name(metric_name); err != nil {
 		log.Error(&libpack_logger.LogMessage{
 			Message: "RegisterMetricsGauge() error - invalid metric name",
-			Pairs:   map[string]interface{}{"error": err.Error(), "metric_name": metric_name},
+			Pairs:   map[string]any{"error": err.Error(), "metric_name": metric_name},
 		})
 		// Return a dummy gauge instead of nil to prevent panics
 		return &metrics.Gauge{}
@@ -125,7 +128,7 @@ func (ms *MetricsSetup) RegisterMetricsGaugeFunc(metric_name string, labels map[
 	if err := validate_metrics_name(metric_name); err != nil {
 		log.Error(&libpack_logger.LogMessage{
 			Message: "RegisterMetricsGaugeFunc() error - invalid metric name",
-			Pairs:   map[string]interface{}{"error": err.Error(), "metric_name": metric_name},
+			Pairs:   map[string]any{"error": err.Error(), "metric_name": metric_name},
 		})
 		// Return a dummy gauge instead of nil to prevent panics
 		return &metrics.Gauge{}
@@ -137,7 +140,7 @@ func (ms *MetricsSetup) RegisterMetricsCounter(metric_name string, labels map[st
 	if err := validate_metrics_name(metric_name); err != nil {
 		log.Error(&libpack_logger.LogMessage{
 			Message: "RegisterMetricsCounter() error - invalid metric name",
-			Pairs:   map[string]interface{}{"error": err.Error(), "metric_name": metric_name},
+			Pairs:   map[string]any{"error": err.Error(), "metric_name": metric_name},
 		})
 		// Return a dummy counter instead of nil to prevent panics
 		return &metrics.Counter{}
@@ -152,7 +155,7 @@ func (ms *MetricsSetup) RegisterFloatCounter(metric_name string, labels map[stri
 	if err := validate_metrics_name(metric_name); err != nil {
 		log.Error(&libpack_logger.LogMessage{
 			Message: "RegisterFloatCounter() error - invalid metric name",
-			Pairs:   map[string]interface{}{"error": err.Error(), "metric_name": metric_name},
+			Pairs:   map[string]any{"error": err.Error(), "metric_name": metric_name},
 		})
 		// Return a dummy float counter instead of nil to prevent panics
 		return &metrics.FloatCounter{}
@@ -164,7 +167,7 @@ func (ms *MetricsSetup) RegisterMetricsSummary(metric_name string, labels map[st
 	if err := validate_metrics_name(metric_name); err != nil {
 		log.Error(&libpack_logger.LogMessage{
 			Message: "RegisterMetricsSummary() error - invalid metric name",
-			Pairs:   map[string]interface{}{"error": err.Error(), "metric_name": metric_name},
+			Pairs:   map[string]any{"error": err.Error(), "metric_name": metric_name},
 		})
 		// Return a dummy summary instead of nil to prevent panics
 		return &metrics.Summary{}
@@ -176,7 +179,7 @@ func (ms *MetricsSetup) RegisterMetricsHistogram(metric_name string, labels map[
 	if err := validate_metrics_name(metric_name); err != nil {
 		log.Error(&libpack_logger.LogMessage{
 			Message: "RegisterMetricsHistogram() error - invalid metric name",
-			Pairs:   map[string]interface{}{"error": err.Error(), "metric_name": metric_name},
+			Pairs:   map[string]any{"error": err.Error(), "metric_name": metric_name},
 		})
 		// Return a dummy histogram instead of nil to prevent panics
 		return &metrics.Histogram{}

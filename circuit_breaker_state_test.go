@@ -25,7 +25,7 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerStateTransitions() {
 	// 2. Generate failures to trip the circuit
 	testErr := errors.New("test error")
 	for i := 0; i < cfg.CircuitBreaker.MaxFailures; i++ {
-		_, err := cb.Execute(func() (interface{}, error) {
+		_, err := cb.Execute(func() (any, error) {
 			return nil, testErr
 		})
 		assert.Error(suite.T(), err, "Execute should return error")
@@ -35,7 +35,7 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerStateTransitions() {
 	assert.Equal(suite.T(), gobreaker.StateOpen.String(), cb.State().String(), "Circuit should transition to open state after failures")
 
 	// Verify that requests are rejected during open state
-	_, err := cb.Execute(func() (interface{}, error) {
+	_, err := cb.Execute(func() (any, error) {
 		return "success", nil
 	})
 	assert.Equal(suite.T(), gobreaker.ErrOpenState.Error(), err.Error(), "Should return ErrOpenState when circuit is open")
@@ -55,7 +55,7 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerStateTransitions() {
 	// (Sony's gobreaker transitions to half-open on the next request after timeout)
 	tmpState := cb.State()
 	// Execute a successful request to check state
-	_, _ = cb.Execute(func() (interface{}, error) {
+	_, _ = cb.Execute(func() (any, error) {
 		return "success", nil
 	})
 
@@ -73,7 +73,7 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerStateTransitions() {
 
 	// 6. Execute successful requests in half-open state to transition back to closed
 	for i := 0; i < cfg.CircuitBreaker.MaxRequestsInHalfOpen; i++ {
-		_, err = cb.Execute(func() (interface{}, error) {
+		_, err = cb.Execute(func() (any, error) {
 			return "success", nil
 		})
 		assert.NoError(suite.T(), err, "Execute should not return error")
@@ -104,7 +104,7 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerHalfOpenToOpen() {
 	// 1. Generate failures to trip the circuit
 	testErr := errors.New("test error")
 	for i := 0; i < cfg.CircuitBreaker.MaxFailures; i++ {
-		_, err := cb.Execute(func() (interface{}, error) {
+		_, err := cb.Execute(func() (any, error) {
 			return nil, testErr
 		})
 		assert.Error(suite.T(), err, "Execute should return error")
@@ -119,7 +119,7 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerHalfOpenToOpen() {
 	// The next request should transition the circuit to half-open
 	tmpState := cb.State()
 	// Try a request that will fail
-	_, _ = cb.Execute(func() (interface{}, error) {
+	_, _ = cb.Execute(func() (any, error) {
 		return nil, testErr
 	})
 

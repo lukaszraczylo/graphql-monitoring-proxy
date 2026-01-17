@@ -87,7 +87,7 @@ func StartHTTPProxy() error {
 
 	cfg.Logger.Info(&libpack_logger.LogMessage{
 		Message: "GraphQL proxy starting",
-		Pairs:   map[string]interface{}{"port": cfg.Server.PortGraphQL},
+		Pairs:   map[string]any{"port": cfg.Server.PortGraphQL},
 	})
 
 	if err := server.Listen(fmt.Sprintf(":%d", cfg.Server.PortGraphQL)); err != nil {
@@ -168,7 +168,7 @@ func healthCheck(c *fiber.Ctx) error {
 
 			cfg.Logger.Error(&libpack_logger.LogMessage{
 				Message: "Health check: Can't reach the GraphQL server",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"endpoint":         endpoint,
 					"error":            errorMsg,
 					"response_time_ms": graphqlStatus.ResponseTime,
@@ -224,7 +224,7 @@ func healthCheck(c *fiber.Ctx) error {
 
 			cfg.Logger.Error(&libpack_logger.LogMessage{
 				Message: "Health check: Can't connect to Redis",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"server":           cfg.Cache.CacheRedisURL,
 					"error":            errorMsg,
 					"response_time_ms": redisStatus.ResponseTime,
@@ -243,7 +243,7 @@ func healthCheck(c *fiber.Ctx) error {
 
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Health check completed",
-		Pairs: map[string]interface{}{
+		Pairs: map[string]any{
 			"status":       response.Status,
 			"dependencies": response.Dependencies,
 		},
@@ -275,7 +275,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 
 	// Debug logging for mutation routing analysis (enabled when LOG_LEVEL=DEBUG)
 	if cfg.LogLevel == "DEBUG" {
-		var m map[string]interface{}
+		var m map[string]any
 		if err := json.Unmarshal(c.Body(), &m); err == nil {
 			if query, ok := m["query"].(string); ok {
 				debugParseGraphQLQuery(c, query)
@@ -380,7 +380,7 @@ func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int,
 	if err := proxyTheRequest(c, currentEndpoint); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't proxy the request",
-			Pairs:   map[string]interface{}{"error": err.Error()},
+			Pairs:   map[string]any{"error": err.Error()},
 		})
 		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
 		return c.Status(fiber.StatusInternalServerError).SendString("Can't proxy the request - try again later")
@@ -403,7 +403,7 @@ func logAndMonitorRequest(c *fiber.Ctx, userID, opType, opName string, wasCached
 	if cfg.Server.AccessLog {
 		cfg.Logger.Info(&libpack_logger.LogMessage{
 			Message: "Request processed",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"ip":           c.IP(),
 				"fwd-ip":       c.Get("X-Forwarded-For"),
 				"user_id":      userID,

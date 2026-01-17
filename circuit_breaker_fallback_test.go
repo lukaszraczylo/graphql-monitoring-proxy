@@ -44,7 +44,7 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerCacheFallback() {
 	// Trip the circuit by generating failures
 	testErr := errors.New("test error")
 	for i := 0; i < cfg.CircuitBreaker.MaxFailures; i++ {
-		_, err := cb.Execute(func() (interface{}, error) {
+		_, err := cb.Execute(func() (any, error) {
 			return nil, testErr
 		})
 		assert.Error(suite.T(), err, "Execute should return error")
@@ -108,7 +108,7 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerNoCacheFallback() {
 	// Trip the circuit by generating failures
 	testErr := errors.New("test error")
 	for i := 0; i < cfg.CircuitBreaker.MaxFailures; i++ {
-		_, err := cb.Execute(func() (interface{}, error) {
+		_, err := cb.Execute(func() (any, error) {
 			return nil, testErr
 		})
 		assert.Error(suite.T(), err, "Execute should return error")
@@ -168,7 +168,7 @@ func (suite *CircuitBreakerTestSuite) TestCacheDisabledFallback() {
 	// Trip the circuit by generating failures
 	testErr := errors.New("test error")
 	for i := 0; i < cfg.CircuitBreaker.MaxFailures; i++ {
-		_, err := cb.Execute(func() (interface{}, error) {
+		_, err := cb.Execute(func() (any, error) {
 			return nil, testErr
 		})
 		assert.Error(suite.T(), err, "Execute should return error")

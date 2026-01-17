@@ -193,7 +193,7 @@ func (suite *CircuitBreakerTestSuite) TestExecuteFunctionBehavior() {
 
 	// Test with success
 	result := "success"
-	execResult, err := cb.Execute(func() (interface{}, error) {
+	execResult, err := cb.Execute(func() (any, error) {
 		return result, nil
 	})
 
@@ -202,7 +202,7 @@ func (suite *CircuitBreakerTestSuite) TestExecuteFunctionBehavior() {
 
 	// Test with error
 	testErr := errors.New("test error")
-	_, err = cb.Execute(func() (interface{}, error) {
+	_, err = cb.Execute(func() (any, error) {
 		return nil, testErr
 	})
 

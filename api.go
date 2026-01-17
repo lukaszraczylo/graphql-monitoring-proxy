@@ -37,7 +37,7 @@ func authMiddleware(c *fiber.Ctx) error {
 	if expectedKey == "" {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Admin API authentication disabled - endpoints protected by network segmentation",
-			Pairs:   map[string]interface{}{"endpoint": c.Path()},
+			Pairs:   map[string]any{"endpoint": c.Path()},
 		})
 		return c.Next()
 	}
@@ -46,7 +46,7 @@ func authMiddleware(c *fiber.Ctx) error {
 	if subtle.ConstantTimeCompare([]byte(apiKey), []byte(expectedKey)) != 1 {
 		cfg.Logger.Warning(&libpack_logger.LogMessage{
 			Message: "Unauthorized API access attempt",
-			Pairs:   map[string]interface{}{"endpoint": c.Path(), "ip": c.IP()},
+			Pairs:   map[string]any{"endpoint": c.Path(), "ip": c.IP()},
 		})
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Unauthorized",
@@ -59,6 +59,23 @@ func authMiddleware(c *fiber.Ctx) error {
 func enableApi(ctx context.Context) error {
 	if !cfg.Server.EnableApi {
 		return nil
+	}
+
+	// SECURITY WARNING: Check if API authentication is configured
+	adminAPIKey := os.Getenv("GMP_ADMIN_API_KEY")
+	if adminAPIKey == "" {
+		adminAPIKey = os.Getenv("ADMIN_API_KEY")
+	}
+	if adminAPIKey == "" {
+		cfg.Logger.Warning(&libpack_logger.LogMessage{
+			Message: "⚠️  Admin API enabled WITHOUT authentication - all endpoints are publicly accessible!",
+			Pairs: map[string]any{
+				"security_risk":  "HIGH - Admin API endpoints can be accessed without credentials",
+				"affected_ops":   "user-ban, user-unban, cache-clear, circuit-breaker controls",
+				"recommendation": "Set GMP_ADMIN_API_KEY environment variable or use network segmentation",
+				"api_port":       cfg.Server.ApiPort,
+			},
+		})
 	}
 
 	apiserver := fiber.New(fiber.Config{
@@ -115,7 +132,7 @@ func periodicallyReloadBannedUsers(ctx context.Context) {
 			loadBannedUsers()
 			cfg.Logger.Debug(&libpack_logger.LogMessage{
 				Message: "Banned users reloaded",
-				Pairs:   map[string]interface{}{"users": bannedUsersIDs},
+				Pairs:   map[string]any{"users": bannedUsersIDs},
 			})
 		}
 	}
@@ -128,18 +145,18 @@ func checkIfUserIsBanned(c *fiber.Ctx, userID string) bool {
 
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Checking if user is banned",
-		Pairs:   map[string]interface{}{"user_id": userID, "banned": found},
+		Pairs:   map[string]any{"user_id": userID, "banned": found},
 	})
 
 	if found {
 		cfg.Logger.Info(&libpack_logger.LogMessage{
 			Message: "User is banned",
-			Pairs:   map[string]interface{}{"user_id": userID},
+			Pairs:   map[string]any{"user_id": userID},
 		})
 		if err := c.Status(fiber.StatusForbidden).SendString("User is banned"); err != nil {
 			cfg.Logger.Error(&libpack_logger.LogMessage{
 				Message: "Failed to send banned user response",
-				Pairs:   map[string]interface{}{"error": err.Error()},
+				Pairs:   map[string]any{"error": err.Error()},
 			})
 		}
 	}
@@ -225,7 +242,7 @@ func apiBanUser(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't parse the ban user request",
-			Pairs:   map[string]interface{}{"error": err.Error()},
+			Pairs:   map[string]any{"error": err.Error()},
 		})
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid request payload")
 	}
@@ -240,7 +257,7 @@ func apiBanUser(c *fiber.Ctx) error {
 
 	cfg.Logger.Info(&libpack_logger.LogMessage{
 		Message: "Banned user",
-		Pairs:   map[string]interface{}{"user_id": req.UserID, "reason": req.Reason},
+		Pairs:   map[string]any{"user_id": req.UserID, "reason": req.Reason},
 	})
 
 	if err := storeBannedUsers(); err != nil {
@@ -255,7 +272,7 @@ func apiUnbanUser(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't parse the unban user request",
-			Pairs:   map[string]interface{}{"error": err.Error()},
+			Pairs:   map[string]any{"error": err.Error()},
 		})
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid request payload")
 	}
@@ -270,7 +287,7 @@ func apiUnbanUser(c *fiber.Ctx) error {
 
 	cfg.Logger.Info(&libpack_logger.LogMessage{
 		Message: "Unbanned user",
-		Pairs:   map[string]interface{}{"user_id": req.UserID},
+		Pairs:   map[string]any{"user_id": req.UserID},
 	})
 
 	if err := storeBannedUsers(); err != nil {
@@ -289,7 +306,7 @@ func storeBannedUsers() error {
 		if err := fileLock.Unlock(); err != nil {
 			cfg.Logger.Error(&libpack_logger.LogMessage{
 				Message: "Failed to unlock file",
-				Pairs:   map[string]interface{}{"error": err.Error()},
+				Pairs:   map[string]any{"error": err.Error()},
 			})
 		}
 	}()
@@ -301,7 +318,7 @@ func storeBannedUsers() error {
 	if err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't marshal banned users",
-			Pairs:   map[string]interface{}{"error": err.Error()},
+			Pairs:   map[string]any{"error": err.Error()},
 		})
 		return err
 	}
@@ -309,7 +326,7 @@ func storeBannedUsers() error {
 	if err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0o644); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't write banned users to file",
-			Pairs:   map[string]interface{}{"error": err.Error()},
+			Pairs:   map[string]any{"error": err.Error()},
 		})
 		return err
 	}
@@ -321,12 +338,12 @@ func loadBannedUsers() {
 	if _, err := os.Stat(cfg.Api.BannedUsersFile); os.IsNotExist(err) {
 		cfg.Logger.Info(&libpack_logger.LogMessage{
 			Message: "Banned users file doesn't exist - creating it",
-			Pairs:   map[string]interface{}{"file": cfg.Api.BannedUsersFile},
+			Pairs:   map[string]any{"file": cfg.Api.BannedUsersFile},
 		})
 		if err := os.WriteFile(cfg.Api.BannedUsersFile, []byte("{}"), 0o644); err != nil {
 			cfg.Logger.Error(&libpack_logger.LogMessage{
 				Message: "Can't create and write to the file",
-				Pairs:   map[string]interface{}{"error": err.Error()},
+				Pairs:   map[string]any{"error": err.Error()},
 			})
 			return
 		}
@@ -336,7 +353,7 @@ func loadBannedUsers() {
 	if err := lockFileRead(fileLock); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't lock the file [load]",
-			Pairs:   map[string]interface{}{"error": err.Error()},
+			Pairs:   map[string]any{"error": err.Error()},
 		})
 		return
 	}
@@ -344,7 +361,7 @@ func loadBannedUsers() {
 		if err := fileLock.Unlock(); err != nil {
 			cfg.Logger.Error(&libpack_logger.LogMessage{
 				Message: "Failed to unlock file",
-				Pairs:   map[string]interface{}{"error": err.Error()},
+				Pairs:   map[string]any{"error": err.Error()},
 			})
 		}
 	}()
@@ -353,7 +370,7 @@ func loadBannedUsers() {
 	if err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't read banned users from file",
-			Pairs:   map[string]interface{}{"error": err.Error()},
+			Pairs:   map[string]any{"error": err.Error()},
 		})
 		return
 	}
@@ -362,7 +379,7 @@ func loadBannedUsers() {
 	if err := json.Unmarshal(data, &newBannedUsers); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't unmarshal banned users",
-			Pairs:   map[string]interface{}{"error": err.Error()},
+			Pairs:   map[string]any{"error": err.Error()},
 		})
 		return
 	}
@@ -388,7 +405,7 @@ func lockFile(fileLock *flock.Flock) error {
 		if err != nil {
 			cfg.Logger.Error(&libpack_logger.LogMessage{
 				Message: "Can't lock the file",
-				Pairs:   map[string]interface{}{"error": err.Error()},
+				Pairs:   map[string]any{"error": err.Error()},
 			})
 			return err
 		}
@@ -396,7 +413,7 @@ func lockFile(fileLock *flock.Flock) error {
 	case <-ctx.Done():
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "File lock timeout",
-			Pairs:   map[string]interface{}{"timeout": "30s"},
+			Pairs:   map[string]any{"timeout": "30s"},
 		})
 		return fmt.Errorf("file lock timeout after 30 seconds")
 	}
@@ -418,7 +435,7 @@ func lockFileRead(fileLock *flock.Flock) error {
 		if err != nil {
 			cfg.Logger.Error(&libpack_logger.LogMessage{
 				Message: "Can't lock the file for reading",
-				Pairs:   map[string]interface{}{"error": err.Error()},
+				Pairs:   map[string]any{"error": err.Error()},
 			})
 			return err
 		}
@@ -426,7 +443,7 @@ func lockFileRead(fileLock *flock.Flock) error {
 	case <-ctx.Done():
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "File read lock timeout",
-			Pairs:   map[string]interface{}{"timeout": "30s"},
+			Pairs:   map[string]any{"timeout": "30s"},
 		})
 		return fmt.Errorf("file read lock timeout after 30 seconds")
 	}

@@ -1,0 +1,116 @@
+# Project-specific golangci-lint configuration (v2)
+version: "2"
+
+linters:
+  default: none
+  enable:
+    # Code quality
+    - govet       # Go vet (suspicious constructs)
+    - staticcheck # Advanced static analysis
+    - unused      # Find unused code
+    - errcheck    # Check for unchecked errors
+
+    # Security
+    - gosec       # Security issues
+
+  settings:
+    unused:
+      field-writes-are-uses: true
+      post-statements-are-reads: true
+      exported-is-used: true
+      exported-fields-are-used: true
+
+    govet:
+      enable-all: true
+      disable:
+        # Field alignment is a micro-optimization that reduces readability
+        - fieldalignment
+        # Shadow warnings in this codebase are intentional and safe
+        - shadow
+
+    staticcheck:
+      checks:
+        - "all"
+        # Disable naming convention checks - existing codebase uses underscores
+        # and ALL_CAPS which would require significant refactoring
+        - "-ST1000"  # Package comments
+        - "-ST1003"  # Naming conventions (underscores, ALL_CAPS)
+        # Disable quickfix suggestions - these are style preferences, not errors
+        - "-QF1001"  # De Morgan's law
+        - "-QF1012"  # fmt.Fprintf suggestion
+
+    errcheck:
+      # Don't check error returns on these functions (best-effort cleanup)
+      exclude-functions:
+        - (*github.com/gorilla/websocket.Conn).Close
+        - (*github.com/gorilla/websocket.Conn).SetReadDeadline
+        - (*github.com/gorilla/websocket.Conn).WriteMessage
+        - (*github.com/redis/go-redis/v9.Client).Close
+        - (*github.com/redis/go-redis/v9.Pipeline).Exec
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (*compress/gzip.Reader).Close
+        - (net.Conn).Close
+
+    gosec:
+      excludes:
+        # G104: Errors unhandled - covered by errcheck with proper exclusions
+        - G104
+        # G115: Integer overflow conversion - safe in this codebase
+        # These are uint64 counter values that will never exceed int64 max
+        - G115
+        # G402: TLS InsecureSkipVerify - this is a configurable option
+        # Users explicitly enable this via GMP_DISABLE_TLS_VERIFY env var
+        - G402
+
+  exclusions:
+    presets:
+      - common-false-positives
+    rules:
+      # Test files can have relaxed rules
+      - path: _test\.go
+        linters:
+          - unused
+          - errcheck
+          - gosec
+
+      # Specific file exclusions for known patterns
+      - path: api\.go
+        linters:
+          - gosec
+        text: "G306"
+        # File permissions 0644 for banned users file is intentional
+        # This is a non-sensitive configuration file that may be
+        # read by deployment tools
+
+      # Exclude enableApi naming (would be a breaking change)
+      - path: api\.go
+        text: "ST1003"
+
+      # Generated files
+      - path: \.pb\.go$
+        linters:
+          - all
+
+formatters:
+  enable:
+    - gofmt
+
+  settings:
+    gofmt:
+      simplify: true
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+  build-tags:
+    - ""
+  go: "1.23"
+
+output:
+  formats:
+    text:
+      path: stdout
+      colors: true
+  sort-results: true

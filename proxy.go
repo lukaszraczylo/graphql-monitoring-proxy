@@ -10,7 +10,6 @@ import (
 	"math"
 	"net"
 	"net/url"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +17,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/avast/retry-go/v4"
-	"github.com/goccy/go-json"
 	"github.com/gofiber/fiber/v2"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
@@ -90,7 +88,7 @@ func initCircuitBreaker(config *config) {
 
 	config.Logger.Info(&libpack_logger.LogMessage{
 		Message: "Circuit breaker initialized",
-		Pairs: map[string]interface{}{
+		Pairs: map[string]any{
 			"max_failures":       config.CircuitBreaker.MaxFailures,
 			"timeout_seconds":    config.CircuitBreaker.Timeout,
 			"max_half_open_reqs": config.CircuitBreaker.MaxRequestsInHalfOpen,
@@ -105,7 +103,7 @@ func createTripFunc(config *config) func(counts gobreaker.Counts) bool {
 		if counts.ConsecutiveFailures >= safeUint32(config.CircuitBreaker.MaxFailures) {
 			config.Logger.Warning(&libpack_logger.LogMessage{
 				Message: "Circuit breaker tripped due to consecutive failures",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"consecutive_failures": counts.ConsecutiveFailures,
 					"max_failures":         config.CircuitBreaker.MaxFailures,
 					"total_requests":       counts.Requests,
@@ -122,7 +120,7 @@ func createTripFunc(config *config) func(counts gobreaker.Counts) bool {
 			if failureRatio >= config.CircuitBreaker.FailureRatio {
 				config.Logger.Warning(&libpack_logger.LogMessage{
 					Message: "Circuit breaker tripped due to failure ratio",
-					Pairs: map[string]interface{}{
+					Pairs: map[string]any{
 						"failure_ratio":  failureRatio,
 						"threshold":      config.CircuitBreaker.FailureRatio,
 						"total_failures": counts.TotalFailures,
@@ -162,7 +160,7 @@ func createStateChangeFunc(config *config) func(name string, from gobreaker.Stat
 		// Log state change
 		config.Logger.Info(&libpack_logger.LogMessage{
 			Message: "Circuit breaker state changed",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"from": from.String(),
 				"to":   to.String(),
 				"name": name,
@@ -315,7 +313,7 @@ func setupTracing(c *fiber.Ctx) context.Context {
 		if err != nil {
 			cfg.Logger.Warning(&libpack_logger.LogMessage{
 				Message: "Failed to parse trace header",
-				Pairs:   map[string]interface{}{"error": err.Error()},
+				Pairs:   map[string]any{"error": err.Error()},
 			})
 		} else if spanCtx, err := tracer.ExtractSpanContext(spanInfo); err == nil {
 			ctx = trace.ContextWithSpanContext(ctx, spanCtx)
@@ -392,7 +390,7 @@ func performProxyRequestCore(c *fiber.Ctx, proxyURL string, cacheKey string) err
 	}
 
 	// Execute request through circuit breaker
-	_, err := cb.Execute(func() (interface{}, error) {
+	_, err := cb.Execute(func() (any, error) {
 		// Execute the request with retries
 		err := performProxyRequestWithRetries(c, proxyURL)
 		// Check if the error or status code should trip the circuit breaker
@@ -400,7 +398,7 @@ func performProxyRequestCore(c *fiber.Ctx, proxyURL string, cacheKey string) err
 			// Log error that could potentially trip the circuit
 			cfg.Logger.Warning(&libpack_logger.LogMessage{
 				Message: "Error in circuit-protected request",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"path":  c.Path(),
 					"error": err.Error(),
 				},
@@ -486,9 +484,9 @@ func executeProxyAttempt(c *fiber.Ctx, proxyURL string) error {
 		return proxyErr
 	}
 
-	// Safety check before accessing response
-	if c == nil || c.Response() == nil {
-		return retry.Unrecoverable(fmt.Errorf("fiber context or response became nil"))
+	// Safety check before accessing response (c is already validated at function entry)
+	if c.Response() == nil {
+		return retry.Unrecoverable(fmt.Errorf("fiber response became nil"))
 	}
 
 	// Check status code and determine retry strategy
@@ -551,7 +549,7 @@ func performProxyRequestWithEnhancedRetries(c *fiber.Ctx, proxyURL string, backe
 		retry.OnRetry(func(n uint, err error) {
 			cfg.Logger.Warning(&libpack_logger.LogMessage{
 				Message: "Retrying the request",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"path":              c.Path(),
 					"attempt":           n + 1,
 					"max_attempts":      attempts,
@@ -602,7 +600,7 @@ func performProxyRequestWithEnhancedRetries(c *fiber.Ctx, proxyURL string, backe
 				if !rb.AllowRetry() {
 					cfg.Logger.Warning(&libpack_logger.LogMessage{
 						Message: "Retry denied by budget",
-						Pairs: map[string]interface{}{
+						Pairs: map[string]any{
 							"path":  c.Path(),
 							"error": err.Error(),
 						},
@@ -694,7 +692,7 @@ func handleCircuitOpenGracefulDegradation(c *fiber.Ctx, cacheKey string) error {
 		if cachedResponse := libpack_cache.CacheLookup(cacheKey); cachedResponse != nil {
 			cfg.Logger.Info(&libpack_logger.LogMessage{
 				Message: "Circuit open - serving from cache",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"path": c.Path(),
 				},
 			})
@@ -714,7 +712,7 @@ func handleCircuitOpenGracefulDegradation(c *fiber.Ctx, cacheKey string) error {
 	// No cached response available - provide helpful error response
 	cfg.Logger.Warning(&libpack_logger.LogMessage{
 		Message: "Circuit open - no cached response available",
-		Pairs: map[string]interface{}{
+		Pairs: map[string]any{
 			"path": c.Path(),
 		},
 	})
@@ -770,7 +768,7 @@ func handleGzippedResponse(c *fiber.Ctx) error {
 	if err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Failed to create gzip reader",
-			Pairs:   map[string]interface{}{"error": err.Error()},
+			Pairs:   map[string]any{"error": err.Error()},
 		})
 		return err
 	}
@@ -788,7 +786,7 @@ func handleGzippedResponse(c *fiber.Ctx) error {
 	if err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Failed to decompress response",
-			Pairs:   map[string]interface{}{"error": err.Error()},
+			Pairs:   map[string]any{"error": err.Error()},
 		})
 		return err
 	}
@@ -802,157 +800,6 @@ func handleGzippedResponse(c *fiber.Ctx) error {
 	return nil
 }
 
-// sanitizeForLogging removes sensitive data from request/response bodies before logging
-func sanitizeForLogging(body []byte, contentType string) string {
-	// List of sensitive field patterns to redact
-	sensitiveFields := []string{
-		"password", "passwd", "pwd",
-		"token", "api_key", "apikey", "api-key",
-		"secret", "private_key", "privatekey", "private-key",
-		"authorization", "auth", "bearer",
-		"session", "sessionid", "session_id", "cookie",
-		"ssn", "social_security",
-		"credit_card", "card_number", "cardnumber", "cvv", "cvc",
-		"email", "phone", "address",
-	}
-
-	// Try to parse as JSON if content type suggests it
-	if strings.Contains(strings.ToLower(contentType), "json") {
-		var data map[string]interface{}
-		decoder := json.NewDecoder(bytes.NewReader(body))
-		decoder.UseNumber() // Preserve number precision and type
-		if err := decoder.Decode(&data); err == nil {
-			redactSensitiveFields(data, sensitiveFields)
-			sanitized, _ := json.Marshal(data)
-			return string(sanitized)
-		}
-	}
-
-	// For non-JSON or failed parsing, truncate to prevent logging large bodies
-	bodyStr := string(body)
-	if len(bodyStr) > 1000 {
-		return bodyStr[:1000] + "... [truncated]"
-	}
-
-	// For small non-JSON bodies, do basic string replacement
-	for _, field := range sensitiveFields {
-		// Simple pattern matching for key-value pairs
-		bodyStr = redactPatternInString(bodyStr, field)
-	}
-
-	return bodyStr
-}
-
-// redactSensitiveFields recursively redacts sensitive fields in a map
-func redactSensitiveFields(data map[string]interface{}, fields []string) {
-	for key, value := range data {
-		keyLower := strings.ToLower(key)
-		// Check if the key matches any sensitive field
-		for _, field := range fields {
-			if strings.Contains(keyLower, field) {
-				data[key] = "[REDACTED]"
-				break
-			}
-		}
-		// Recurse for nested objects
-		if nested, ok := value.(map[string]interface{}); ok {
-			redactSensitiveFields(nested, fields)
-		}
-		// Handle arrays of objects
-		if arr, ok := value.([]interface{}); ok {
-			for _, item := range arr {
-				if nestedItem, ok := item.(map[string]interface{}); ok {
-					redactSensitiveFields(nestedItem, fields)
-				}
-			}
-		}
-	}
-}
-
-// redactPatternInString performs basic pattern redaction in strings
-func redactPatternInString(text string, pattern string) string {
-	// Use proper regex to capture and redact complete sensitive values
-	// Order matters: process most specific patterns first
-
-	// 1. JSON pattern: "field":"value" → "field":"[REDACTED]"
-	jsonPattern := regexp.MustCompile(`(?i)"` + regexp.QuoteMeta(pattern) + `"\s*:\s*"[^"]*"`)
-	text = jsonPattern.ReplaceAllStringFunc(text, func(match string) string {
-		return regexp.MustCompile(`:\s*"[^"]*"`).ReplaceAllString(match, `:"[REDACTED]"`)
-	})
-
-	// 2. XML pattern: <field>value</field> → <field>[REDACTED]</field>
-	xmlPattern := regexp.MustCompile(`(?i)<` + regexp.QuoteMeta(pattern) + `>[^<]*</` + regexp.QuoteMeta(pattern) + `>`)
-	xmlMatched := xmlPattern.MatchString(text)
-	text = xmlPattern.ReplaceAllStringFunc(text, func(match string) string {
-		return regexp.MustCompile(`>[^<]*<`).ReplaceAllString(match, ">[REDACTED]<")
-	})
-
-	// If XML pattern was matched, also add a standardized redaction marker for test compatibility
-	if xmlMatched {
-		// Append a form-style marker to indicate redaction occurred
-		if !strings.Contains(text, pattern+"=[REDACTED]") {
-			text = text + " " + pattern + "=[REDACTED]"
-		}
-	}
-
-	// 3. Double quoted pattern: field="value" → field="[REDACTED]"
-	quotedPattern := regexp.MustCompile(`(?i)` + regexp.QuoteMeta(pattern) + `="[^"]*"`)
-	text = quotedPattern.ReplaceAllString(text, pattern+`="[REDACTED]"`)
-
-	// 4. Single quoted pattern: field='value' → field='[REDACTED]'
-	singleQuotedPattern := regexp.MustCompile(`(?i)` + regexp.QuoteMeta(pattern) + `='[^']*'`)
-	text = singleQuotedPattern.ReplaceAllString(text, pattern+`='[REDACTED]'`)
-
-	// 5. Form/URL pattern: field=value& or field=value$ → field=[REDACTED]& or field=[REDACTED]$
-	// This must be last and should only match unquoted values
-	formPattern := regexp.MustCompile(`(?i)` + regexp.QuoteMeta(pattern) + `=([^&\s"']+)(?:[&\s]|$)`)
-	text = formPattern.ReplaceAllStringFunc(text, func(match string) string {
-		// Only replace if the value is not already [REDACTED]
-		if strings.Contains(match, "[REDACTED]") {
-			return match
-		}
-		return regexp.MustCompile(`=([^&\s"']+)`).ReplaceAllString(match, "=[REDACTED]")
-	})
-
-	return text
-}
-
-// convertHeaders converts map[string][]string to map[string]string by taking first value
-func convertHeaders(headers map[string][]string) map[string]string {
-	converted := make(map[string]string)
-	for key, values := range headers {
-		if len(values) > 0 {
-			converted[key] = values[0]
-		}
-	}
-	return converted
-}
-
-// sanitizeHeaders removes sensitive headers from logging
-func sanitizeHeaders(headers map[string]string) map[string]string {
-	sanitized := make(map[string]string)
-	sensitiveHeaders := []string{
-		"authorization", "x-api-key", "x-auth-token", "cookie", "set-cookie",
-		"x-api-secret", "x-access-token", "x-csrf-token",
-	}
-
-	for key, value := range headers {
-		keyLower := strings.ToLower(key)
-		isRedacted := false
-		for _, sensitive := range sensitiveHeaders {
-			if strings.Contains(keyLower, sensitive) {
-				sanitized[key] = "[REDACTED]"
-				isRedacted = true
-				break
-			}
-		}
-		if !isRedacted {
-			sanitized[key] = value
-		}
-	}
-	return sanitized
-}
-
 // logDebugRequest logs the request details when in debug mode with sanitization.
 func logDebugRequest(c *fiber.Ctx) {
 	contentType := string(c.Request().Header.ContentType())
@@ -961,7 +808,7 @@ func logDebugRequest(c *fiber.Ctx) {
 
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Proxying the request",
-		Pairs: map[string]interface{}{
+		Pairs: map[string]any{
 			"path":         c.Path(),
 			"body":         sanitizedBody,
 			"headers":      sanitizedHeaders,
@@ -978,7 +825,7 @@ func logDebugResponse(c *fiber.Ctx) {
 
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Received proxied response",
-		Pairs: map[string]interface{}{
+		Pairs: map[string]any{
 			"path":          c.Path(),
 			"response_body": sanitizedBody,
 			"response_code": c.Response().StatusCode(),
@@ -996,7 +843,7 @@ func safeMaxRequests(maxRequestsInHalfOpen int) uint32 {
 		if cfg != nil && cfg.Logger != nil {
 			cfg.Logger.Warning(&libpack_logger.LogMessage{
 				Message: "Invalid MaxRequestsInHalfOpen value, using default",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"requested_value": maxRequestsInHalfOpen,
 					"default_value":   defaultMaxRequestsInHalfOpen,
 				},

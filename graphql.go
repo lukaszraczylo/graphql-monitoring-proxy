@@ -103,14 +103,14 @@ type parseGraphQLQueryResult struct {
 var (
 	// Pool for request/response maps during unmarshaling
 	queryPool = sync.Pool{
-		New: func() interface{} {
-			return make(map[string]interface{}, 48)
+		New: func() any {
+			return make(map[string]any, 48)
 		},
 	}
 
 	// Pool for parse result objects
 	resultPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &parseGraphQLQueryResult{}
 		},
 	}
@@ -146,7 +146,7 @@ func initGraphQLParsing() {
 	if cfg != nil && cfg.Logger != nil {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "GraphQL query cache initialized",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"max_entries": maxQueryCacheSize,
 				"max_size_mb": 50,
 			},
@@ -244,7 +244,7 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 	res.activeEndpoint = cfg.Server.HostGraphQL
 
 	// Get a map from the pool for JSON unmarshaling
-	m := queryPool.Get().(map[string]interface{})
+	m := queryPool.Get().(map[string]any)
 	defer func() {
 		// Clear and return the map to the pool
 		for k := range m {

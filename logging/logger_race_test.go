@@ -24,7 +24,7 @@ func TestLogConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			msg := &LogMessage{
 				Message: "concurrent log test",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"goroutine_id": id,
 				},
 			}

@@ -9,7 +9,16 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
+	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
+)
+
+// Admin dashboard constants
+const (
+	// WebSocketReadDeadline is the read deadline for WebSocket connections
+	WebSocketReadDeadline = 60 * time.Second
+	// StatsStreamInterval is the interval for streaming stats updates
+	StatsStreamInterval = 2 * time.Second
 )
 
 //go:embed admin/dashboard.html
@@ -60,7 +69,7 @@ func (ad *AdminDashboard) RegisterRoutes(app *fiber.App) {
 	if ad.logger != nil {
 		ad.logger.Info(&libpack_logger.LogMessage{
 			Message: "Admin dashboard routes registered",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"path": "/admin",
 			},
 		})
@@ -88,18 +97,18 @@ func (ad *AdminDashboard) getStats(c *fiber.Ctx) error {
 			if ad.logger != nil {
 				ad.logger.Error(&libpack_logger.LogMessage{
 					Message: "Failed to get aggregated metrics, falling back to local stats",
-					Pairs:   map[string]interface{}{"error": err.Error()},
+					Pairs:   map[string]any{"error": err.Error()},
 				})
 			}
 			// Fall through to local stats on error
 		} else {
 			// Return aggregated cluster stats
-			response := map[string]interface{}{
+			response := map[string]any{
 				"cluster_mode":      true,
 				"total_instances":   metrics.TotalInstances,
 				"healthy_instances": metrics.HealthyInstances,
 				"timestamp":         metrics.LastUpdate.Format(time.RFC3339),
-				"version":           "0.27.0",
+				"version":           libpack_config.PKG_VERSION,
 			}
 
 			// Add combined stats from aggregation
@@ -115,12 +124,12 @@ func (ad *AdminDashboard) getStats(c *fiber.Ctx) error {
 
 	// Local instance stats (fallback or non-cluster mode)
 	uptimeSeconds := time.Since(startTime).Seconds()
-	stats := map[string]interface{}{
+	stats := map[string]any{
 		"cluster_mode":   false,
 		"timestamp":      time.Now().Format(time.RFC3339),
 		"uptime_seconds": uptimeSeconds,
 		"uptime_human":   formatDuration(time.Since(startTime)),
-		"version":        "0.27.0", // TODO: Get from build info
+		"version":        libpack_config.PKG_VERSION,
 	}
 
 	if cfg != nil && cfg.Monitoring != nil {
@@ -130,7 +139,7 @@ func (ad *AdminDashboard) getStats(c *fiber.Ctx) error {
 		total := succeeded + failed + skipped
 
 		// Request statistics
-		requestStats := map[string]interface{}{
+		requestStats := map[string]any{
 			"total":     total,
 			"succeeded": succeeded,
 			"failed":    failed,
@@ -172,7 +181,7 @@ func (ad *AdminDashboard) getStats(c *fiber.Ctx) error {
 			if totalCacheRequests > 0 {
 				hitRate = float64(cacheStats.CacheHits) / float64(totalCacheRequests) * 100
 			}
-			stats["cache_summary"] = map[string]interface{}{
+			stats["cache_summary"] = map[string]any{
 				"hits":         cacheStats.CacheHits,
 				"misses":       cacheStats.CacheMisses,
 				"hit_rate_pct": hitRate,
@@ -205,16 +214,16 @@ func formatDuration(d time.Duration) string {
 func (ad *AdminDashboard) getHealth(c *fiber.Ctx) error {
 	healthMgr := GetBackendHealthManager()
 
-	health := map[string]interface{}{
+	health := map[string]any{
 		"status": "unknown",
-		"backend": map[string]interface{}{
+		"backend": map[string]any{
 			"healthy": false,
 		},
 	}
 
 	if healthMgr != nil {
 		isHealthy := healthMgr.IsHealthy()
-		health["backend"] = map[string]interface{}{
+		health["backend"] = map[string]any{
 			"healthy":              isHealthy,
 			"consecutive_failures": healthMgr.GetConsecutiveFailures(),
 			"last_check":           healthMgr.GetLastHealthCheck().Format(time.RFC3339),
@@ -232,7 +241,7 @@ func (ad *AdminDashboard) getHealth(c *fiber.Ctx) error {
 
 // getCircuitBreakerStatus returns circuit breaker status
 func (ad *AdminDashboard) getCircuitBreakerStatus(c *fiber.Ctx) error {
-	status := map[string]interface{}{
+	status := map[string]any{
 		"enabled": false,
 		"state":   "unknown",
 	}
@@ -247,14 +256,14 @@ func (ad *AdminDashboard) getCircuitBreakerStatus(c *fiber.Ctx) error {
 			cbMutex.RUnlock()
 
 			status["state"] = state.String()
-			status["counts"] = map[string]interface{}{
+			status["counts"] = map[string]any{
 				"requests":              counts.Requests,
 				"total_successes":       counts.TotalSuccesses,
 				"total_failures":        counts.TotalFailures,
 				"consecutive_successes": counts.ConsecutiveSuccesses,
 				"consecutive_failures":  counts.ConsecutiveFailures,
 			}
-			status["config"] = map[string]interface{}{
+			status["config"] = map[string]any{
 				"max_failures":           cfg.CircuitBreaker.MaxFailures,
 				"failure_ratio":          cfg.CircuitBreaker.FailureRatio,
 				"timeout":                cfg.CircuitBreaker.Timeout,
@@ -277,13 +286,13 @@ func (ad *AdminDashboard) getCacheStats(c *fiber.Ctx) error {
 			if ad.logger != nil {
 				ad.logger.Error(&libpack_logger.LogMessage{
 					Message: "Failed to get aggregated cache metrics, falling back to local stats",
-					Pairs:   map[string]interface{}{"error": err.Error()},
+					Pairs:   map[string]any{"error": err.Error()},
 				})
 			}
 			// Fall through to local stats on error
 		} else {
 			// Build aggregated cache stats from combined stats
-			response := map[string]interface{}{
+			response := map[string]any{
 				"cluster_mode":    true,
 				"total_instances": metrics.TotalInstances,
 			}
@@ -321,7 +330,7 @@ func (ad *AdminDashboard) getCacheStats(c *fiber.Ctx) error {
 	}
 
 	// Local instance stats (fallback or non-cluster mode)
-	stats := map[string]interface{}{
+	stats := map[string]any{
 		"cluster_mode": false,
 		"enabled":      false,
 	}
@@ -376,7 +385,7 @@ func (ad *AdminDashboard) getCacheStats(c *fiber.Ctx) error {
 func (ad *AdminDashboard) getConnectionStats(c *fiber.Ctx) error {
 	poolMgr := GetConnectionPoolManager()
 
-	stats := map[string]interface{}{
+	stats := map[string]any{
 		"available": false,
 	}
 
@@ -393,7 +402,7 @@ func (ad *AdminDashboard) getRetryBudgetStats(c *fiber.Ctx) error {
 	rb := GetRetryBudget()
 
 	if rb == nil {
-		return c.JSON(map[string]interface{}{
+		return c.JSON(map[string]any{
 			"enabled": false,
 		})
 	}
@@ -406,7 +415,7 @@ func (ad *AdminDashboard) getCoalescingStats(c *fiber.Ctx) error {
 	rc := GetRequestCoalescer()
 
 	if rc == nil {
-		return c.JSON(map[string]interface{}{
+		return c.JSON(map[string]any{
 			"enabled": false,
 		})
 	}
@@ -419,7 +428,7 @@ func (ad *AdminDashboard) getWebSocketStats(c *fiber.Ctx) error {
 	wsp := GetWebSocketProxy()
 
 	if wsp == nil {
-		return c.JSON(map[string]interface{}{
+		return c.JSON(map[string]any{
 			"enabled": false,
 		})
 	}
@@ -430,7 +439,7 @@ func (ad *AdminDashboard) getWebSocketStats(c *fiber.Ctx) error {
 // clearCache clears the cache
 func (ad *AdminDashboard) clearCache(c *fiber.Ctx) error {
 	libpack_cache.CacheClear()
-	return c.JSON(map[string]interface{}{
+	return c.JSON(map[string]any{
 		"success": true,
 		"message": "Cache cleared successfully",
 	})
@@ -443,7 +452,7 @@ func (ad *AdminDashboard) resetRetryBudget(c *fiber.Ctx) error {
 		rb.Reset()
 	}
 
-	return c.JSON(map[string]interface{}{
+	return c.JSON(map[string]any{
 		"success": true,
 		"message": "Retry budget statistics reset",
 	})
@@ -456,7 +465,7 @@ func (ad *AdminDashboard) resetCoalescing(c *fiber.Ctx) error {
 		rc.Reset()
 	}
 
-	return c.JSON(map[string]interface{}{
+	return c.JSON(map[string]any{
 		"success": true,
 		"message": "Coalescing statistics reset",
 	})
@@ -466,7 +475,7 @@ func (ad *AdminDashboard) resetCoalescing(c *fiber.Ctx) error {
 func (ad *AdminDashboard) getClusterStats(c *fiber.Ctx) error {
 	aggregator := GetMetricsAggregator()
 	if aggregator == nil {
-		return c.Status(503).JSON(map[string]interface{}{
+		return c.Status(503).JSON(map[string]any{
 			"error":        "Cluster mode not available",
 			"message":      "Redis-based metrics aggregation is not enabled",
 			"cluster_mode": false,
@@ -478,17 +487,17 @@ func (ad *AdminDashboard) getClusterStats(c *fiber.Ctx) error {
 		if ad.logger != nil {
 			ad.logger.Error(&libpack_logger.LogMessage{
 				Message: "Failed to get aggregated metrics",
-				Pairs:   map[string]interface{}{"error": err.Error()},
+				Pairs:   map[string]any{"error": err.Error()},
 			})
 		}
-		return c.Status(500).JSON(map[string]interface{}{
+		return c.Status(500).JSON(map[string]any{
 			"error":   "Failed to retrieve cluster metrics",
 			"message": err.Error(),
 		})
 	}
 
 	// Format response similar to regular stats endpoint
-	response := map[string]interface{}{
+	response := map[string]any{
 		"cluster_mode":      true,
 		"total_instances":   metrics.TotalInstances,
 		"healthy_instances": metrics.HealthyInstances,
@@ -503,7 +512,7 @@ func (ad *AdminDashboard) getClusterStats(c *fiber.Ctx) error {
 func (ad *AdminDashboard) getClusterInstances(c *fiber.Ctx) error {
 	aggregator := GetMetricsAggregator()
 	if aggregator == nil {
-		return c.Status(503).JSON(map[string]interface{}{
+		return c.Status(503).JSON(map[string]any{
 			"error":        "Cluster mode not available",
 			"message":      "Redis-based metrics aggregation is not enabled",
 			"cluster_mode": false,
@@ -515,16 +524,16 @@ func (ad *AdminDashboard) getClusterInstances(c *fiber.Ctx) error {
 		if ad.logger != nil {
 			ad.logger.Error(&libpack_logger.LogMessage{
 				Message: "Failed to get instance metrics",
-				Pairs:   map[string]interface{}{"error": err.Error()},
+				Pairs:   map[string]any{"error": err.Error()},
 			})
 		}
-		return c.Status(500).JSON(map[string]interface{}{
+		return c.Status(500).JSON(map[string]any{
 			"error":   "Failed to retrieve instance metrics",
 			"message": err.Error(),
 		})
 	}
 
-	return c.JSON(map[string]interface{}{
+	return c.JSON(map[string]any{
 		"cluster_mode":      true,
 		"total_instances":   metrics.TotalInstances,
 		"healthy_instances": metrics.HealthyInstances,
@@ -537,7 +546,7 @@ func (ad *AdminDashboard) getClusterInstances(c *fiber.Ctx) error {
 func (ad *AdminDashboard) getClusterDebug(c *fiber.Ctx) error {
 	aggregator := GetMetricsAggregator()
 
-	debug := map[string]interface{}{
+	debug := map[string]any{
 		"aggregator_initialized": aggregator != nil,
 		"redis_cache_enabled":    false,
 	}
@@ -562,7 +571,7 @@ func (ad *AdminDashboard) getClusterDebug(c *fiber.Ctx) error {
 			// Show first instance structure as example
 			if len(metrics.Instances) > 0 {
 				first := metrics.Instances[0]
-				debug["sample_instance"] = map[string]interface{}{
+				debug["sample_instance"] = map[string]any{
 					"instance_id":    first.InstanceID,
 					"hostname":       first.Hostname,
 					"uptime_seconds": first.UptimeSeconds,
@@ -573,7 +582,7 @@ func (ad *AdminDashboard) getClusterDebug(c *fiber.Ctx) error {
 				}
 
 				// Show requests structure if it exists
-				if requests, ok := first.Stats["requests"].(map[string]interface{}); ok {
+				if requests, ok := first.Stats["requests"].(map[string]any); ok {
 					debug["sample_requests"] = requests
 				}
 			}
@@ -584,7 +593,7 @@ func (ad *AdminDashboard) getClusterDebug(c *fiber.Ctx) error {
 }
 
 // Helper to get map keys
-func getMapKeys(m map[string]interface{}) []string {
+func getMapKeys(m map[string]any) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -596,7 +605,7 @@ func getMapKeys(m map[string]interface{}) []string {
 func (ad *AdminDashboard) forcePublish(c *fiber.Ctx) error {
 	aggregator := GetMetricsAggregator()
 	if aggregator == nil {
-		return c.Status(503).JSON(map[string]interface{}{
+		return c.Status(503).JSON(map[string]any{
 			"error":   "Aggregator not initialized",
 			"success": false,
 		})
@@ -605,7 +614,7 @@ func (ad *AdminDashboard) forcePublish(c *fiber.Ctx) error {
 	// Trigger publish in goroutine to avoid blocking
 	go aggregator.publishMetrics()
 
-	return c.JSON(map[string]interface{}{
+	return c.JSON(map[string]any{
 		"success":   true,
 		"triggered": true,
 		"message":   "Publish triggered in background",
@@ -634,7 +643,7 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 	if ad.logger != nil {
 		ad.logger.Info(&libpack_logger.LogMessage{
 			Message: "WebSocket client connected to stats stream",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"remote_addr": c.RemoteAddr().String(),
 			},
 		})
@@ -645,18 +654,18 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 		if ad.logger != nil {
 			ad.logger.Info(&libpack_logger.LogMessage{
 				Message: "WebSocket client disconnected from stats stream",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"remote_addr": c.RemoteAddr().String(),
 				},
 			})
 		}
-		c.Close()
+		_ = c.Close() // Best-effort cleanup
 	}()
 
 	// Set up ping/pong handlers
-	c.SetReadDeadline(time.Now().Add(60 * time.Second))
+	_ = c.SetReadDeadline(time.Now().Add(WebSocketReadDeadline))
 	c.SetPongHandler(func(string) error {
-		c.SetReadDeadline(time.Now().Add(60 * time.Second))
+		_ = c.SetReadDeadline(time.Now().Add(WebSocketReadDeadline))
 		return nil
 	})
 
@@ -674,14 +683,14 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 		}
 	}()
 
-	// Stream statistics every 2 seconds
-	ticker := time.NewTicker(2 * time.Second)
+	// Stream statistics at configured interval
+	ticker := time.NewTicker(StatsStreamInterval)
 	defer ticker.Stop()
 
 	// Send initial stats immediately (cluster-aware for dashboard)
 	if stats := ad.gatherAllStatsClusterAware(); stats != nil {
 		if data, err := json.Marshal(stats); err == nil {
-			c.WriteMessage(websocket.TextMessage, data)
+			_ = c.WriteMessage(websocket.TextMessage, data)
 		}
 	}
 
@@ -698,7 +707,7 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 				if ad.logger != nil {
 					ad.logger.Error(&libpack_logger.LogMessage{
 						Message: "Failed to marshal stats for WebSocket",
-						Pairs:   map[string]interface{}{"error": err.Error()},
+						Pairs:   map[string]any{"error": err.Error()},
 					})
 				}
 				return
@@ -709,7 +718,7 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 				if ad.logger != nil {
 					ad.logger.Debug(&libpack_logger.LogMessage{
 						Message: "Failed to write to WebSocket (client likely disconnected)",
-						Pairs:   map[string]interface{}{"error": err.Error()},
+						Pairs:   map[string]any{"error": err.Error()},
 					})
 				}
 				return
@@ -724,34 +733,34 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 
 // gatherAllStats collects all statistics into a single structure
 // This always returns LOCAL stats for this instance (used by metrics aggregator)
-func (ad *AdminDashboard) gatherAllStats() map[string]interface{} {
+func (ad *AdminDashboard) gatherAllStats() map[string]any {
 	return ad.gatherAllStatsWithMode(false)
 }
 
 // gatherAllStatsClusterAware collects statistics with cluster awareness
 // If cluster mode is available, returns aggregated stats from all instances
-func (ad *AdminDashboard) gatherAllStatsClusterAware() map[string]interface{} {
+func (ad *AdminDashboard) gatherAllStatsClusterAware() map[string]any {
 	return ad.gatherAllStatsWithMode(true)
 }
 
 // gatherAllStatsWithMode collects statistics with optional cluster mode
-func (ad *AdminDashboard) gatherAllStatsWithMode(useClusterMode bool) map[string]interface{} {
+func (ad *AdminDashboard) gatherAllStatsWithMode(useClusterMode bool) map[string]any {
 	// Check if cluster mode is requested and available
 	if useClusterMode {
 		if aggregator := GetMetricsAggregator(); aggregator != nil {
 			metrics, err := aggregator.GetAggregatedMetrics()
 			if err == nil && metrics != nil {
 				// Return aggregated cluster stats
-				result := map[string]interface{}{
+				result := map[string]any{
 					"cluster_mode":      true,
 					"total_instances":   metrics.TotalInstances,
 					"healthy_instances": metrics.HealthyInstances,
 				}
 
 				// Build stats section from combined stats
-				stats := map[string]interface{}{
+				stats := map[string]any{
 					"timestamp": metrics.LastUpdate.Format(time.RFC3339),
-					"version":   "0.27.0",
+					"version":   libpack_config.PKG_VERSION,
 				}
 
 				// Copy all combined stats
@@ -771,16 +780,16 @@ func (ad *AdminDashboard) gatherAllStatsWithMode(useClusterMode bool) map[string
 	}
 
 	// Fall back to local stats
-	result := make(map[string]interface{})
+	result := make(map[string]any)
 	result["cluster_mode"] = false
 
 	// Main stats
 	uptimeSeconds := time.Since(startTime).Seconds()
-	stats := map[string]interface{}{
+	stats := map[string]any{
 		"timestamp":      time.Now().Format(time.RFC3339),
 		"uptime_seconds": uptimeSeconds,
 		"uptime_human":   formatDuration(time.Since(startTime)),
-		"version":        "0.27.0",
+		"version":        libpack_config.PKG_VERSION,
 	}
 
 	if cfg != nil && cfg.Monitoring != nil {
@@ -789,7 +798,7 @@ func (ad *AdminDashboard) gatherAllStatsWithMode(useClusterMode bool) map[string
 		skipped := getAdminMetricValue("requests_skipped")
 		total := succeeded + failed + skipped
 
-		requestStats := map[string]interface{}{
+		requestStats := map[string]any{
 			"total":     total,
 			"succeeded": succeeded,
 			"failed":    failed,
@@ -828,7 +837,7 @@ func (ad *AdminDashboard) gatherAllStatsWithMode(useClusterMode bool) map[string
 			if totalCacheRequests > 0 {
 				hitRate = float64(cacheStats.CacheHits) / float64(totalCacheRequests) * 100
 			}
-			stats["cache_summary"] = map[string]interface{}{
+			stats["cache_summary"] = map[string]any{
 				"hits":         cacheStats.CacheHits,
 				"misses":       cacheStats.CacheMisses,
 				"hit_rate_pct": hitRate,
@@ -841,16 +850,16 @@ func (ad *AdminDashboard) gatherAllStatsWithMode(useClusterMode bool) map[string
 
 	// Health
 	healthMgr := GetBackendHealthManager()
-	health := map[string]interface{}{
+	health := map[string]any{
 		"status": "unknown",
-		"backend": map[string]interface{}{
+		"backend": map[string]any{
 			"healthy": false,
 		},
 	}
 
 	if healthMgr != nil {
 		isHealthy := healthMgr.IsHealthy()
-		health["backend"] = map[string]interface{}{
+		health["backend"] = map[string]any{
 			"healthy":              isHealthy,
 			"consecutive_failures": healthMgr.GetConsecutiveFailures(),
 			"last_check":           healthMgr.GetLastHealthCheck().Format(time.RFC3339),
@@ -865,7 +874,7 @@ func (ad *AdminDashboard) gatherAllStatsWithMode(useClusterMode bool) map[string
 	result["health"] = health
 
 	// Circuit breaker
-	cbStatus := map[string]interface{}{
+	cbStatus := map[string]any{
 		"enabled": false,
 		"state":   "unknown",
 	}
@@ -880,14 +889,14 @@ func (ad *AdminDashboard) gatherAllStatsWithMode(useClusterMode bool) map[string
 			cbMutex.RUnlock()
 
 			cbStatus["state"] = state.String()
-			cbStatus["counts"] = map[string]interface{}{
+			cbStatus["counts"] = map[string]any{
 				"requests":              counts.Requests,
 				"total_successes":       counts.TotalSuccesses,
 				"total_failures":        counts.TotalFailures,
 				"consecutive_successes": counts.ConsecutiveSuccesses,
 				"consecutive_failures":  counts.ConsecutiveFailures,
 			}
-			cbStatus["config"] = map[string]interface{}{
+			cbStatus["config"] = map[string]any{
 				"max_failures":           cfg.CircuitBreaker.MaxFailures,
 				"failure_ratio":          cfg.CircuitBreaker.FailureRatio,
 				"timeout":                cfg.CircuitBreaker.Timeout,
@@ -899,7 +908,7 @@ func (ad *AdminDashboard) gatherAllStatsWithMode(useClusterMode bool) map[string
 	result["circuit_breaker"] = cbStatus
 
 	// Cache stats
-	cacheStats := map[string]interface{}{
+	cacheStats := map[string]any{
 		"enabled": false,
 	}
 
@@ -947,7 +956,7 @@ func (ad *AdminDashboard) gatherAllStatsWithMode(useClusterMode bool) map[string
 
 	// Connection stats
 	poolMgr := GetConnectionPoolManager()
-	connStats := map[string]interface{}{
+	connStats := map[string]any{
 		"available": false,
 	}
 
@@ -960,7 +969,7 @@ func (ad *AdminDashboard) gatherAllStatsWithMode(useClusterMode bool) map[string
 	// Retry budget
 	rb := GetRetryBudget()
 	if rb == nil {
-		result["retry_budget"] = map[string]interface{}{"enabled": false}
+		result["retry_budget"] = map[string]any{"enabled": false}
 	} else {
 		result["retry_budget"] = rb.GetStats()
 	}
@@ -968,7 +977,7 @@ func (ad *AdminDashboard) gatherAllStatsWithMode(useClusterMode bool) map[string
 	// Coalescing
 	rc := GetRequestCoalescer()
 	if rc == nil {
-		result["coalescing"] = map[string]interface{}{"enabled": false}
+		result["coalescing"] = map[string]any{"enabled": false}
 	} else {
 		result["coalescing"] = rc.GetStats()
 	}
@@ -976,7 +985,7 @@ func (ad *AdminDashboard) gatherAllStatsWithMode(useClusterMode bool) map[string
 	// WebSocket
 	wsp := GetWebSocketProxy()
 	if wsp == nil {
-		result["websocket"] = map[string]interface{}{"enabled": false}
+		result["websocket"] = map[string]any{"enabled": false}
 	} else {
 		result["websocket"] = wsp.GetStats()
 	}

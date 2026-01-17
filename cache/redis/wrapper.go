@@ -29,7 +29,7 @@ func (w *CacheWrapper) Set(key string, value []byte, ttl time.Duration) {
 	if err := w.redis.Set(key, value, ttl); err != nil {
 		w.logger.Error(&libpack_logger.LogMessage{
 			Message: "Redis set error",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"error": err.Error(),
 				"key":   key,
 			},
@@ -43,7 +43,7 @@ func (w *CacheWrapper) Get(key string) ([]byte, bool) {
 	if err != nil {
 		w.logger.Error(&libpack_logger.LogMessage{
 			Message: "Redis get error",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"error": err.Error(),
 				"key":   key,
 			},
@@ -58,7 +58,7 @@ func (w *CacheWrapper) Delete(key string) {
 	if err := w.redis.Delete(key); err != nil {
 		w.logger.Error(&libpack_logger.LogMessage{
 			Message: "Redis delete error",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"error": err.Error(),
 				"key":   key,
 			},
@@ -71,7 +71,7 @@ func (w *CacheWrapper) Clear() {
 	if err := w.redis.Clear(); err != nil {
 		w.logger.Error(&libpack_logger.LogMessage{
 			Message: "Redis clear error",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"error": err.Error(),
 			},
 		})
@@ -84,7 +84,7 @@ func (w *CacheWrapper) CountQueries() int64 {
 	if err != nil {
 		w.logger.Error(&libpack_logger.LogMessage{
 			Message: "Redis count queries error",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"error": err.Error(),
 			},
 		})

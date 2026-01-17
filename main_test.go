@@ -146,8 +146,8 @@ func (suite *Tests) Test_envVariableSetting() {
 
 func (suite *Tests) Test_getDetailsFromEnv() {
 	tests := []struct {
-		defaultValue interface{}
-		expected     interface{}
+		defaultValue any
+		expected     any
 		name         string
 		key          string
 		envValue     string

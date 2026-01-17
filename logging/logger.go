@@ -1,3 +1,6 @@
+// Package libpack_logger provides structured JSON logging with configurable
+// log levels, caller information, and automatic sensitive data redaction.
+// Supports debug, info, warning, and error log levels.
 package libpack_logger
 
 import (
@@ -47,13 +50,13 @@ type Logger struct {
 
 // LogMessage represents a log message with optional pairs.
 type LogMessage struct {
-	Pairs   map[string]interface{}
+	Pairs   map[string]any
 	Message string
 }
 
 // bufferPool is used to reuse bytes.Buffer for efficiency.
 var bufferPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return new(bytes.Buffer)
 	},
 }
@@ -132,7 +135,7 @@ func (l *Logger) shouldLog(level int) bool {
 // log writes the log message with the given level.
 func (l *Logger) log(level int, m *LogMessage) {
 	if m.Pairs == nil {
-		m.Pairs = make(map[string]interface{})
+		m.Pairs = make(map[string]any)
 	}
 
 	m.Pairs[fieldNames["timestamp"]] = time.Now().Format(l.timeFormat)

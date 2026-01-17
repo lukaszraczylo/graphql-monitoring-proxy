@@ -48,7 +48,7 @@ func enableHasuraEventCleaner(ctx context.Context) error {
 
 	logger.Info(&libpack_logger.LogMessage{
 		Message: "Event cleaner enabled",
-		Pairs:   map[string]interface{}{"interval_in_days": clearOlderThan},
+		Pairs:   map[string]any{"interval_in_days": clearOlderThan},
 	})
 
 	// Parse pool configuration
@@ -67,7 +67,7 @@ func enableHasuraEventCleaner(ctx context.Context) error {
 	if err != nil {
 		logger.Error(&libpack_logger.LogMessage{
 			Message: "Failed to create connection pool",
-			Pairs:   map[string]interface{}{"error": err.Error()},
+			Pairs:   map[string]any{"error": err.Error()},
 		})
 		return err
 	}
@@ -125,7 +125,7 @@ func cleanEvents(ctx context.Context, pool *pgxpool.Pool, clearOlderThan int, lo
 		} else {
 			logger.Debug(&libpack_logger.LogMessage{
 				Message: "Successfully executed query",
-				Pairs:   map[string]interface{}{"query": query, "interval": interval},
+				Pairs:   map[string]any{"query": query, "interval": interval},
 			})
 		}
 	}
@@ -137,7 +137,7 @@ func cleanEvents(ctx context.Context, pool *pgxpool.Pool, clearOlderThan int, lo
 		}
 		logger.Error(&libpack_logger.LogMessage{
 			Message: "Failed to execute some queries",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"failed_queries": failedQueries,
 				"errors":         errMsgs,
 			},

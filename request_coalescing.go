@@ -76,7 +76,7 @@ func (rc *RequestCoalescer) Do(key string, fn func() (*CoalescedResponse, error)
 		if rc.logger != nil {
 			rc.logger.Debug(&libpack_logger.LogMessage{
 				Message: "Request coalesced with in-flight request",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"key":     key[:min(len(key), 32)] + "...",
 					"waiters": waiters,
 				},
@@ -115,7 +115,7 @@ func (rc *RequestCoalescer) Do(key string, fn func() (*CoalescedResponse, error)
 		if rc.logger != nil {
 			rc.logger.Debug(&libpack_logger.LogMessage{
 				Message: "Request coalesced (race condition)",
-				Pairs: map[string]interface{}{
+				Pairs: map[string]any{
 					"key":     key[:min(len(key), 32)] + "...",
 					"waiters": waiters,
 				},
@@ -163,7 +163,7 @@ func (rc *RequestCoalescer) Do(key string, fn func() (*CoalescedResponse, error)
 	if rc.logger != nil && waiters > 1 {
 		rc.logger.Info(&libpack_logger.LogMessage{
 			Message: "Request completed, served coalesced waiters",
-			Pairs: map[string]interface{}{
+			Pairs: map[string]any{
 				"key":         key[:min(len(key), 32)] + "...",
 				"waiters":     waiters,
 				"duration_ms": duration.Milliseconds(),
@@ -183,7 +183,7 @@ func (rc *RequestCoalescer) Do(key string, fn func() (*CoalescedResponse, error)
 }
 
 // GetStats returns coalescing statistics
-func (rc *RequestCoalescer) GetStats() map[string]interface{} {
+func (rc *RequestCoalescer) GetStats() map[string]any {
 	totalRequests := rc.totalRequests.Load()
 	coalescedRequests := rc.coalescedRequests.Load()
 
@@ -199,7 +199,7 @@ func (rc *RequestCoalescer) GetStats() map[string]interface{} {
 		savings = float64(coalescedRequests) / float64(primaryRequests) * 100
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"enabled":             rc.enabled,
 		"total_requests":      totalRequests,
 		"primary_requests":    primaryRequests,
