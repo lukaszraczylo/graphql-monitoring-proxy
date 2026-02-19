@@ -3,7 +3,7 @@ module github.com/lukaszraczylo/graphql-monitoring-proxy
 go 1.25.0
 
 require (
-	github.com/VictoriaMetrics/metrics v1.41.1
+	github.com/VictoriaMetrics/metrics v1.41.2
 	github.com/alicebob/miniredis/v2 v2.33.0
 	github.com/avast/retry-go/v4 v4.7.0
 	github.com/goccy/go-json v0.10.5
