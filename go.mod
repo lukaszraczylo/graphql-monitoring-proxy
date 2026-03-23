@@ -14,7 +14,7 @@ require (
 	github.com/gookit/goutil v0.7.4
 	github.com/gorilla/websocket v1.5.3
 	github.com/graphql-go/graphql v0.8.1
-	github.com/jackc/pgx/v5 v5.9.0
+	github.com/jackc/pgx/v5 v5.9.1
 	github.com/lukaszraczylo/ask v0.0.0-20240916204100-6e9ef53a62d9
 	github.com/lukaszraczylo/go-ratecounter v0.1.12
 	github.com/lukaszraczylo/go-simple-graphql v1.2.89
