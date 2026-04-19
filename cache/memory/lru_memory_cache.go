@@ -52,13 +52,9 @@ func NewLRUMemoryCache(maxMemorySize, maxEntries int64) *LRUMemoryCache {
 
 // Set adds or updates an entry in the cache
 func (c *LRUMemoryCache) Set(key string, value []byte, ttl time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Calculate expiry time
-	expiresAt := time.Now().Add(ttl)
-
-	// Check if we should compress
+	// Compress OUTSIDE the lock — gzip is CPU-bound and pool ops are
+	// goroutine-safe. Result is just a byte slice, safe to hand to the
+	// critical section below.
 	compressed := false
 	finalValue := value
 	if len(value) > 1024 { // Compress if larger than 1KB
@@ -69,6 +65,10 @@ func (c *LRUMemoryCache) Set(key string, value []byte, ttl time.Duration) {
 	}
 
 	entrySize := int64(len(key) + len(finalValue) + 64) // 64 bytes overhead estimate
+	expiresAt := time.Now().Add(ttl)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	// Check if key exists
 	if existing, exists := c.entries[key]; exists {
@@ -107,34 +107,49 @@ func (c *LRUMemoryCache) Set(key string, value []byte, ttl time.Duration) {
 
 // Get retrieves a value from the cache
 func (c *LRUMemoryCache) Get(key string) ([]byte, bool) {
+	// Snapshot the stored bytes under the lock, then release before
+	// decompressing — gzip is CPU-bound and must not serialise other ops.
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	entry, exists := c.entries[key]
 	if !exists {
+		c.mu.Unlock()
 		return nil, false
 	}
 
-	// Check if expired
+	// Check if expired (must use the entry's stored expiry while locked)
 	if time.Now().After(entry.expiresAt) {
 		c.removeEntry(entry)
+		c.mu.Unlock()
 		return nil, false
 	}
 
 	// Move to front (most recently used)
 	c.evictList.MoveToFront(entry.element)
 
-	// Decompress if needed
-	if entry.compressed {
-		if decompressed, err := c.decompress(entry.value); err == nil {
-			return decompressed, true
-		}
-		// If decompression fails, remove the entry
-		c.removeEntry(entry)
-		return nil, false
+	if !entry.compressed {
+		// Uncompressed payload is immutable once stored, safe to return directly.
+		value := entry.value
+		c.mu.Unlock()
+		return value, true
 	}
 
-	return entry.value, true
+	// Snapshot compressed bytes locally, drop lock, then decompress.
+	compressedBytes := entry.value
+	c.mu.Unlock()
+
+	decompressed, err := c.decompress(compressedBytes)
+	if err == nil {
+		return decompressed, true
+	}
+
+	// Decompression failed — re-acquire lock to remove the bad entry,
+	// but only if it still exists and still points at the same payload.
+	c.mu.Lock()
+	if cur, ok := c.entries[key]; ok && cur == entry {
+		c.removeEntry(cur)
+	}
+	c.mu.Unlock()
+	return nil, false
 }
 
 // Delete removes an entry from the cache

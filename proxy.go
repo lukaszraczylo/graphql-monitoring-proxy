@@ -31,6 +31,19 @@ var (
 	ErrCircuitOpen = errors.New("circuit breaker is open")
 )
 
+// Sentinel errors for the proxy request retry path. Grouped here so callers
+// can use errors.Is for comparison instead of brittle string matching.
+// Message text MUST match the historical fmt.Errorf strings — tests and
+// callers may assert on .Error().
+var (
+	// errFiberCtxNilDuringRetry — fiber context dropped while retrying.
+	errFiberCtxNilDuringRetry = errors.New("fiber context became nil during retry")
+	// errFiberRespNil — fiber response object became nil mid-request.
+	errFiberRespNil = errors.New("fiber response became nil")
+	// errFiberCtxNil — fiber context was nil before the request started.
+	errFiberCtxNil = errors.New("fiber context is nil")
+)
+
 // Default values for circuit breaker
 const (
 	defaultMaxRequestsInHalfOpen = 10 // Default maximum requests in half-open state
@@ -40,6 +53,30 @@ const (
 var (
 	cb      *gobreaker.CircuitBreaker
 	cbMutex sync.RWMutex
+)
+
+// Package-level substring tables used by isConnectionError / isTimeoutError.
+// Hoisted to avoid per-call slice allocations on the hot path. All entries
+// must be lower-case; callers lower-case the error string once before matching.
+var (
+	connectionErrorSubstrings = []string{
+		"connection refused",
+		"connection reset",
+		"no route to host",
+		"network is unreachable",
+		"broken pipe",
+		"connection closed",
+		"eof",
+		"no such host",
+		"dial tcp",
+		"dial udp",
+	}
+
+	timeoutErrorSubstrings = []string{
+		"timeout",
+		"deadline exceeded",
+		"context deadline exceeded",
+	}
 )
 
 // safeUint32 converts an int to uint32 safely, handling negative values and values exceeding uint32 max
@@ -351,7 +388,7 @@ func performProxyRequest(c *fiber.Ctx, proxyURL string) error {
 			return &CoalescedResponse{
 				Body:       c.Response().Body(),
 				StatusCode: c.Response().StatusCode(),
-				Headers:    make(map[string]string),
+				// Headers intentionally left nil; not populated or read anywhere.
 			}, nil
 		})
 
@@ -449,7 +486,7 @@ func performProxyRequestWithRetries(c *fiber.Ctx, proxyURL string) error {
 func executeProxyAttempt(c *fiber.Ctx, proxyURL string) error {
 	// Additional safety check inside retry loop
 	if c == nil {
-		return retry.Unrecoverable(fmt.Errorf("fiber context became nil during retry"))
+		return retry.Unrecoverable(errFiberCtxNilDuringRetry)
 	}
 
 	// Get connection pool manager for stats tracking
@@ -486,7 +523,7 @@ func executeProxyAttempt(c *fiber.Ctx, proxyURL string) error {
 
 	// Safety check before accessing response (c is already validated at function entry)
 	if c.Response() == nil {
-		return retry.Unrecoverable(fmt.Errorf("fiber response became nil"))
+		return retry.Unrecoverable(errFiberRespNil)
 	}
 
 	// Check status code and determine retry strategy
@@ -518,7 +555,7 @@ func executeProxyAttempt(c *fiber.Ctx, proxyURL string) error {
 func performProxyRequestWithEnhancedRetries(c *fiber.Ctx, proxyURL string, backendUnhealthy bool) error {
 	// Safety check for nil context
 	if c == nil {
-		return fmt.Errorf("fiber context is nil")
+		return errFiberCtxNil
 	}
 
 	var attempts uint
@@ -620,20 +657,7 @@ func isConnectionError(err error) bool {
 	}
 
 	errStr := strings.ToLower(err.Error())
-	connectionErrors := []string{
-		"connection refused",
-		"connection reset",
-		"no route to host",
-		"network is unreachable",
-		"broken pipe",
-		"connection closed",
-		"eof",
-		"no such host",
-		"dial tcp",
-		"dial udp",
-	}
-
-	for _, connErr := range connectionErrors {
+	for _, connErr := range connectionErrorSubstrings {
 		if strings.Contains(errStr, connErr) {
 			return true
 		}
@@ -648,9 +672,12 @@ func isTimeoutError(err error) bool {
 		return false
 	}
 	errStr := strings.ToLower(err.Error())
-	return strings.Contains(errStr, "timeout") ||
-		strings.Contains(errStr, "deadline exceeded") ||
-		strings.Contains(errStr, "context deadline exceeded")
+	for _, tErr := range timeoutErrorSubstrings {
+		if strings.Contains(errStr, tErr) {
+			return true
+		}
+	}
+	return false
 }
 
 // isRetryableStatusCode determines if an HTTP status code should trigger a retry

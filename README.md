@@ -198,6 +198,7 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `MAX_CONNS_PER_HOST`      | Maximum connections per host            | `1024`                     |
 | `CLIENT_DISABLE_TLS_VERIFY` | Disable TLS verification              | `false`                    |
 | `LOG_LEVEL`               | The log level                           | `info`                     |
+| `ENABLE_ALLOCATION_TRACKING` | Enable per-request memory allocation tracking | `false`            |
 | `BLOCK_SCHEMA_INTROSPECTION`| Blocks the schema introspection       | `false`                    |
 | `ALLOWED_INTROSPECTION`  | Allow only certain queries in introspection | ``                  |
 | `ENABLE_ACCESS_LOG`       | Enable the access log                   | `false`                    |
@@ -224,6 +225,7 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `WEBSOCKET_PONG_TIMEOUT`  | WebSocket pong timeout in seconds      | `60`                       |
 | `WEBSOCKET_MAX_MESSAGE_SIZE` | Max WebSocket message size in bytes | `524288` (512KB)           |
 | `ADMIN_DASHBOARD_ENABLE`  | Enable admin dashboard UI              | `true`                     |
+| `PPROF_PORT`              | Localhost-only debug pprof endpoint port (default: disabled). Never expose publicly. | ``       |
 
 ### Tracing
 
@@ -1098,16 +1100,18 @@ If you'd like the `/healthz` endpoint to perform actual check for the connectivi
 
 Example metrics produced by the proxy:
 
+The `executed_query` and `timed_query` metrics carry only the `{op_type, cached}` label set. The previous `user_id` and `op_name` labels were removed to bound Prometheus cardinality (per-user and per-operation-name labels caused unbounded series growth).
+
 ```
-graphql_proxy_timed_query_bucket{cached="false",user_id="-",op_type="mutation",op_name="updateUserDetails",vmrange="1.000e-02...1.136e-02"} 6
-graphql_proxy_timed_query_count{op_name="",cached="false",user_id="-",op_type=""} 78
-graphql_proxy_timed_query_bucket{op_name="MyQuery",cached="false",user_id="-",op_type="query",vmrange="5.995e+00...6.813e+00"} 1
-graphql_proxy_timed_query_sum{op_name="MyQuery",cached="false",user_id="-",op_type="query"} 6
-graphql_proxy_timed_query_count{op_name="MyQuery",cached="false",user_id="-",op_type="query"} 1
-graphql_proxy_executed_query{user_id="-",op_type="mutation",op_name="updateKnownSpammer",cached="false"} 1486
-graphql_proxy_executed_query{user_id="-",op_type="query",op_name="checkIfAdminsNeedRefreshing",cached="false"} 13167
-graphql_proxy_executed_query{user_id="1337",op_type="query",op_name="checkIfKnownMedia",cached="false"} 429
-graphql_proxy_executed_query{user_id="-",op_type="query",op_name="checkIfSpamAIRequiresUpdate",cached="false"} 8891
+graphql_proxy_timed_query_bucket{op_type="mutation",cached="false",vmrange="1.000e-02...1.136e-02"} 6
+graphql_proxy_timed_query_count{op_type="",cached="false"} 78
+graphql_proxy_timed_query_bucket{op_type="query",cached="false",vmrange="5.995e+00...6.813e+00"} 1
+graphql_proxy_timed_query_sum{op_type="query",cached="false"} 6
+graphql_proxy_timed_query_count{op_type="query",cached="false"} 1
+graphql_proxy_executed_query{op_type="mutation",cached="false"} 1486
+graphql_proxy_executed_query{op_type="query",cached="false"} 13167
+graphql_proxy_executed_query{op_type="query",cached="false"} 429
+graphql_proxy_executed_query{op_type="query",cached="true"} 8891
 graphql_proxy_requests_failed 324
 graphql_proxy_requests_skipped 0
 graphql_proxy_requests_succesful 454823

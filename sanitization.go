@@ -4,9 +4,45 @@ import (
 	"bytes"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/goccy/go-json"
 )
+
+// patternRegexCache caches the 5 outer regexes per sensitive field name.
+// Pattern set is bounded by sensitiveFieldPatterns (fixed slice) — not a leak.
+var patternRegexCache sync.Map // map[string]*patternRegexSet
+
+type patternRegexSet struct {
+	json        *regexp.Regexp
+	xml         *regexp.Regexp
+	quoted      *regexp.Regexp
+	singleQuote *regexp.Regexp
+	form        *regexp.Regexp
+}
+
+// Constant inner regexes, pattern-independent — compile once.
+var (
+	jsonValueRe = regexp.MustCompile(`:\s*"[^"]*"`)
+	xmlValueRe  = regexp.MustCompile(`>[^<]*<`)
+	formValueRe = regexp.MustCompile(`=([^&\s"']+)`)
+)
+
+func getPatternRegexSet(pattern string) *patternRegexSet {
+	if v, ok := patternRegexCache.Load(pattern); ok {
+		return v.(*patternRegexSet)
+	}
+	quoted := regexp.QuoteMeta(pattern)
+	set := &patternRegexSet{
+		json:        regexp.MustCompile(`(?i)"` + quoted + `"\s*:\s*"[^"]*"`),
+		xml:         regexp.MustCompile(`(?i)<` + quoted + `>[^<]*</` + quoted + `>`),
+		quoted:      regexp.MustCompile(`(?i)` + quoted + `="[^"]*"`),
+		singleQuote: regexp.MustCompile(`(?i)` + quoted + `='[^']*'`),
+		form:        regexp.MustCompile(`(?i)` + quoted + `=([^&\s"']+)(?:[&\s]|$)`),
+	}
+	actual, _ := patternRegexCache.LoadOrStore(pattern, set)
+	return actual.(*patternRegexSet)
+}
 
 // Sanitization constants
 const (
@@ -110,18 +146,17 @@ func redactSensitiveFields(data map[string]any, fields []string) {
 func redactPatternInString(text string, pattern string) string {
 	// Use proper regex to capture and redact complete sensitive values
 	// Order matters: process most specific patterns first
+	set := getPatternRegexSet(pattern)
 
 	// 1. JSON pattern: "field":"value" → "field":"[REDACTED]"
-	jsonPattern := regexp.MustCompile(`(?i)"` + regexp.QuoteMeta(pattern) + `"\s*:\s*"[^"]*"`)
-	text = jsonPattern.ReplaceAllStringFunc(text, func(match string) string {
-		return regexp.MustCompile(`:\s*"[^"]*"`).ReplaceAllString(match, `:"[REDACTED]"`)
+	text = set.json.ReplaceAllStringFunc(text, func(match string) string {
+		return jsonValueRe.ReplaceAllString(match, `:"[REDACTED]"`)
 	})
 
 	// 2. XML pattern: <field>value</field> → <field>[REDACTED]</field>
-	xmlPattern := regexp.MustCompile(`(?i)<` + regexp.QuoteMeta(pattern) + `>[^<]*</` + regexp.QuoteMeta(pattern) + `>`)
-	xmlMatched := xmlPattern.MatchString(text)
-	text = xmlPattern.ReplaceAllStringFunc(text, func(match string) string {
-		return regexp.MustCompile(`>[^<]*<`).ReplaceAllString(match, ">[REDACTED]<")
+	xmlMatched := set.xml.MatchString(text)
+	text = set.xml.ReplaceAllStringFunc(text, func(match string) string {
+		return xmlValueRe.ReplaceAllString(match, ">[REDACTED]<")
 	})
 
 	// If XML pattern was matched, also add a standardized redaction marker for test compatibility
@@ -133,22 +168,19 @@ func redactPatternInString(text string, pattern string) string {
 	}
 
 	// 3. Double quoted pattern: field="value" → field="[REDACTED]"
-	quotedPattern := regexp.MustCompile(`(?i)` + regexp.QuoteMeta(pattern) + `="[^"]*"`)
-	text = quotedPattern.ReplaceAllString(text, pattern+`="[REDACTED]"`)
+	text = set.quoted.ReplaceAllString(text, pattern+`="[REDACTED]"`)
 
 	// 4. Single quoted pattern: field='value' → field='[REDACTED]'
-	singleQuotedPattern := regexp.MustCompile(`(?i)` + regexp.QuoteMeta(pattern) + `='[^']*'`)
-	text = singleQuotedPattern.ReplaceAllString(text, pattern+`='[REDACTED]'`)
+	text = set.singleQuote.ReplaceAllString(text, pattern+`='[REDACTED]'`)
 
 	// 5. Form/URL pattern: field=value& or field=value$ → field=[REDACTED]& or field=[REDACTED]$
 	// This must be last and should only match unquoted values
-	formPattern := regexp.MustCompile(`(?i)` + regexp.QuoteMeta(pattern) + `=([^&\s"']+)(?:[&\s]|$)`)
-	text = formPattern.ReplaceAllStringFunc(text, func(match string) string {
+	text = set.form.ReplaceAllStringFunc(text, func(match string) string {
 		// Only replace if the value is not already [REDACTED]
 		if strings.Contains(match, "[REDACTED]") {
 			return match
 		}
-		return regexp.MustCompile(`=([^&\s"']+)`).ReplaceAllString(match, "=[REDACTED]")
+		return formValueRe.ReplaceAllString(match, "=[REDACTED]")
 	})
 
 	return text

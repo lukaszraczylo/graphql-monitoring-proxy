@@ -25,6 +25,14 @@ type TracingSetup struct {
 	tracer         trace.Tracer
 }
 
+// constSpanAttrs holds attributes that are identical for every span created
+// by this package. Building the slice once at package init avoids two
+// allocations per StartSpan / StartSpanWithAttributes call.
+var constSpanAttrs = []attribute.KeyValue{
+	semconv.ServiceName("graphql-monitoring-proxy"),
+	semconv.ServiceVersion("1.0"),
+}
+
 type TraceSpanInfo struct {
 	TraceParent string `json:"traceparent"`
 }
@@ -158,12 +166,11 @@ func (ts *TracingSetup) StartSpanWithAttributes(ctx context.Context, name string
 		return trace.SpanFromContext(ctx), ctx
 	}
 
-	// Convert string attributes to KeyValue pairs
-	attributes := make([]attribute.KeyValue, 0, len(attrs)+2)
-	attributes = append(attributes,
-		semconv.ServiceName("graphql-monitoring-proxy"),
-		semconv.ServiceVersion("1.0"),
-	)
+	// Convert string attributes to KeyValue pairs.
+	// Pre-size with constants + per-call attrs, copy constant block in one shot,
+	// then append the dynamic attributes.
+	attributes := make([]attribute.KeyValue, len(constSpanAttrs), len(constSpanAttrs)+len(attrs))
+	copy(attributes, constSpanAttrs)
 
 	for k, v := range attrs {
 		attributes = append(attributes, attribute.String(k, v))

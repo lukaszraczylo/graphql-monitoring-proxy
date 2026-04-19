@@ -190,7 +190,11 @@ func (suite *ConnectionResilienceTestSuite) TestIntegratedHealthManagement() {
 	})
 
 	suite.Run("health manager startup", func() {
-		healthMgr := InitializeBackendHealth(cfg.Client.FastProxyClient, cfg.Server.HostGraphQL, cfg.Logger)
+		// Use NewBackendHealthManager directly: InitializeBackendHealth is sync.Once-gated
+		// and may have already fired earlier in the process (e.g. via parseConfig in
+		// another test), in which case it returns whatever the global currently is —
+		// which TearDownTest above just nilled.
+		healthMgr := NewBackendHealthManager(cfg.Client.FastProxyClient, cfg.Server.HostGraphQL, cfg.Logger)
 		backendHealthManager = healthMgr
 
 		// Start health checking

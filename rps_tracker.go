@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -10,9 +9,8 @@ import (
 // RPSTracker tracks requests per second using periodic sampling
 type RPSTracker struct {
 	lastCount      atomic.Int64
-	lastSampleTime atomic.Int64 // Unix nano
-	currentRPS     uint64       // stored as uint64, accessed with atomic operations
-	mu             sync.RWMutex // for currentRPS updates
+	lastSampleTime atomic.Int64  // Unix nano
+	currentRPS     atomic.Uint64 // centirps (RPS * 100)
 	ctx            context.Context
 	cancel         context.CancelFunc
 }
@@ -74,9 +72,7 @@ func (r *RPSTracker) sample() {
 	if elapsed > 0 {
 		rps := float64(currentCount) / elapsed
 		// Store RPS as centirps for precision (multiply by 100)
-		r.mu.Lock()
-		atomic.StoreUint64(&r.currentRPS, uint64(rps*100))
-		r.mu.Unlock()
+		r.currentRPS.Store(uint64(rps * 100))
 	}
 
 	// Reset for next sample
@@ -86,9 +82,7 @@ func (r *RPSTracker) sample() {
 
 // GetCurrentRPS returns the current requests per second
 func (r *RPSTracker) GetCurrentRPS() float64 {
-	r.mu.RLock()
-	centirps := atomic.LoadUint64(&r.currentRPS)
-	r.mu.RUnlock()
+	centirps := r.currentRPS.Load()
 	return float64(centirps) / 100.0
 }
 

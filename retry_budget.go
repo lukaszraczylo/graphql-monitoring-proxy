@@ -16,7 +16,6 @@ type RetryBudget struct {
 	maxTokens       int64
 	currentTokens   atomic.Int64
 	lastRefill      atomic.Int64 // Unix timestamp in nanoseconds
-	mu              sync.RWMutex
 	enabled         bool
 	logger          *libpack_logger.Logger
 	ctx             context.Context
@@ -182,9 +181,6 @@ func (rb *RetryBudget) Reset() {
 
 // UpdateConfig updates the retry budget configuration
 func (rb *RetryBudget) UpdateConfig(config RetryBudgetConfig) {
-	rb.mu.Lock()
-	defer rb.mu.Unlock()
-
 	rb.tokensPerSecond = config.TokensPerSecond
 	rb.maxTokens = int64(config.MaxTokens)
 	rb.enabled = config.Enabled

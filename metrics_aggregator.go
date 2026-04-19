@@ -248,7 +248,7 @@ func (ma *MetricsAggregator) publishMetrics() {
 
 	} else {
 		// Fallback: if stats extraction fails, use empty map
-		if ma.logger != nil {
+		if ma.logger != nil && ma.logger.IsLevelEnabled(libpack_logger.LEVEL_ERROR) {
 			ma.logger.Error(&libpack_logger.LogMessage{
 				Message: "Failed to extract stats from allStats - using empty stats",
 				Pairs: map[string]any{
@@ -571,7 +571,7 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 				totalAvgRPS += avgRPS
 			}
 		} else {
-			if ma.logger != nil {
+			if ma.logger != nil && ma.logger.IsLevelEnabled(libpack_logger.LEVEL_WARN) {
 				// Log what keys are actually in Stats for debugging
 				keys := make([]string, 0, len(instance.Stats))
 				for k := range instance.Stats {

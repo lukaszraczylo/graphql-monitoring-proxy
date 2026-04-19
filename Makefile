@@ -1,6 +1,14 @@
 CI_RUN?=false
 TIMESTAMP := $(shell date +%Y%m%d-%H%M%S)
 
+# Build hardening flags
+# -s: omit symbol table, -w: omit DWARF debug info (smaller binaries)
+LDFLAGS ?= -s -w
+# -trimpath: remove local filesystem paths from binary (reproducible builds)
+GOFLAGS ?= -trimpath
+# CGO_ENABLED=0: static binary, no libc dependency (distroless-friendly)
+export CGO_ENABLED = 0
+
 # ADDITIONAL_BUILD_FLAGS=""
 
 # ifeq ($(CI_RUN), true)
@@ -17,15 +25,15 @@ run: build ## run application
 
 .PHONY: build
 build: ## build the binary
-	go build -o graphql-proxy *.go
+	go build $(GOFLAGS) -ldflags="$(LDFLAGS)" -o graphql-proxy *.go
 
 .PHONY: test
 test: ## run tests on library
-	@LOG_LEVEL=info go test -v -cover -race ./...
+	@CGO_ENABLED=1 LOG_LEVEL=info go test -v -cover -race ./...
 
 .PHONY: test-packages
 test-packages: ## run tests on packages
-	@go test -v -cover ./pkg/...
+	@CGO_ENABLED=1 go test -v -cover -race ./pkg/...
 
 .PHONY: all
 all: test-packages test
@@ -37,11 +45,11 @@ update: ## update dependencies
 
 .PHONY: build-amd64
 build-amd64: ## build the Linux AMD64 binary
-	GOOS=linux GOARCH=amd64 go build -o graphql-proxy-amd64 *.go
+	GOOS=linux GOARCH=amd64 go build $(GOFLAGS) -ldflags="$(LDFLAGS)" -o graphql-proxy-amd64 *.go
 
 .PHONY: build-arm64
 build-arm64: ## build the Linux ARM64 binary
-	GOOS=linux GOARCH=arm64 go build -o graphql-proxy-arm64 *.go
+	GOOS=linux GOARCH=arm64 go build $(GOFLAGS) -ldflags="$(LDFLAGS)" -o graphql-proxy-arm64 *.go
 
 .PHONY: build-all
 build-all: build-amd64 build-arm64 ## build both AMD64 and ARM64 binaries

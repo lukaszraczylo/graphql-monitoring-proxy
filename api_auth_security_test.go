@@ -46,7 +46,7 @@ func (suite *APIAuthSecurityTestSuite) SetupTest() {
 	})
 
 	// Initialize banned users map
-	bannedUsersIDs = make(map[string]string)
+	replaceBannedUsers(map[string]string{})
 
 	// Setup banned users file path
 	cfg.Api.BannedUsersFile = filepath.Join(os.TempDir(), "banned_users_auth_test.json")

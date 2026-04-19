@@ -33,7 +33,7 @@ func (suite *Tests) Test_apiBanUser() {
 	// Test valid ban request
 	suite.Run("valid ban request", func() {
 		// Clear banned users map
-		bannedUsersIDs = make(map[string]string)
+		replaceBannedUsers(map[string]string{})
 
 		reqBody := `{"user_id": "test-user-123", "reason": "testing"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/user-ban", bytes.NewBufferString(reqBody))
@@ -48,12 +48,11 @@ func (suite *Tests) Test_apiBanUser() {
 		assert.Contains(suite.T(), string(body), "OK: user banned")
 
 		// Verify user was added to banned users map
-		bannedUsersIDsMutex.RLock()
-		reason, exists := bannedUsersIDs["test-user-123"]
-		bannedUsersIDsMutex.RUnlock()
-
+		v, exists := bannedUsersIDs.Load("test-user-123")
 		assert.True(suite.T(), exists)
-		assert.Equal(suite.T(), "testing", reason)
+		if exists {
+			assert.Equal(suite.T(), "testing", v.(string))
+		}
 
 		// Verify file was created
 		_, err = os.Stat(cfg.Api.BannedUsersFile)
@@ -124,8 +123,7 @@ func (suite *Tests) Test_apiUnbanUser() {
 	// Test valid unban request
 	suite.Run("valid unban request", func() {
 		// Add a user to the banned list
-		bannedUsersIDs = make(map[string]string)
-		bannedUsersIDs["test-user-123"] = "testing"
+		replaceBannedUsers(map[string]string{"test-user-123": "testing"})
 
 		reqBody := `{"user_id": "test-user-123"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/user-unban", bytes.NewBufferString(reqBody))
@@ -140,10 +138,7 @@ func (suite *Tests) Test_apiUnbanUser() {
 		assert.Contains(suite.T(), string(body), "OK: user unbanned")
 
 		// Verify user was removed from banned users map
-		bannedUsersIDsMutex.RLock()
-		_, exists := bannedUsersIDs["test-user-123"]
-		bannedUsersIDsMutex.RUnlock()
-
+		_, exists := bannedUsersIDs.Load("test-user-123")
 		assert.False(suite.T(), exists)
 	})
 
@@ -273,7 +268,7 @@ func (suite *Tests) Test_checkIfUserIsBanned() {
 
 	// Test with non-banned user
 	suite.Run("non-banned user", func() {
-		bannedUsersIDs = make(map[string]string)
+		replaceBannedUsers(map[string]string{})
 
 		isBanned := checkIfUserIsBanned(ctx, "non-banned-user")
 		assert.False(suite.T(), isBanned)
@@ -282,8 +277,7 @@ func (suite *Tests) Test_checkIfUserIsBanned() {
 
 	// Test with banned user
 	suite.Run("banned user", func() {
-		bannedUsersIDs = make(map[string]string)
-		bannedUsersIDs["banned-user"] = "testing"
+		replaceBannedUsers(map[string]string{"banned-user": "testing"})
 
 		isBanned := checkIfUserIsBanned(ctx, "banned-user")
 		assert.True(suite.T(), isBanned)
@@ -303,7 +297,7 @@ func (suite *Tests) Test_loadBannedUsers() {
 		// Remove file if it exists
 		_ = os.Remove(cfg.Api.BannedUsersFile)
 
-		bannedUsersIDs = make(map[string]string)
+		replaceBannedUsers(map[string]string{})
 		loadBannedUsers()
 
 		// Verify file was created
@@ -311,7 +305,7 @@ func (suite *Tests) Test_loadBannedUsers() {
 		assert.NoError(suite.T(), err)
 
 		// Verify banned users map is empty
-		assert.Equal(suite.T(), 0, len(bannedUsersIDs))
+		assert.Equal(suite.T(), 0, len(snapshotBannedUsers()))
 	})
 
 	// Test with existing file
@@ -325,13 +319,14 @@ func (suite *Tests) Test_loadBannedUsers() {
 		err := os.WriteFile(cfg.Api.BannedUsersFile, data, 0o644)
 		assert.NoError(suite.T(), err)
 
-		bannedUsersIDs = make(map[string]string)
+		replaceBannedUsers(map[string]string{})
 		loadBannedUsers()
 
 		// Verify banned users map was loaded
-		assert.Equal(suite.T(), 2, len(bannedUsersIDs))
-		assert.Equal(suite.T(), "reason 1", bannedUsersIDs["test-user-1"])
-		assert.Equal(suite.T(), "reason 2", bannedUsersIDs["test-user-2"])
+		snap := snapshotBannedUsers()
+		assert.Equal(suite.T(), 2, len(snap))
+		assert.Equal(suite.T(), "reason 1", snap["test-user-1"])
+		assert.Equal(suite.T(), "reason 2", snap["test-user-2"])
 	})
 
 	// Test with invalid JSON
@@ -340,11 +335,11 @@ func (suite *Tests) Test_loadBannedUsers() {
 		err := os.WriteFile(cfg.Api.BannedUsersFile, []byte("{invalid json}"), 0o644)
 		assert.NoError(suite.T(), err)
 
-		bannedUsersIDs = make(map[string]string)
+		replaceBannedUsers(map[string]string{})
 		loadBannedUsers()
 
 		// Verify banned users map is empty (load failed)
-		assert.Equal(suite.T(), 0, len(bannedUsersIDs))
+		assert.Equal(suite.T(), 0, len(snapshotBannedUsers()))
 	})
 
 	// Cleanup
@@ -362,10 +357,10 @@ func (suite *Tests) Test_storeBannedUsers() {
 	// Test storing banned users
 	suite.Run("store banned users", func() {
 		// Set up test data
-		bannedUsersIDs = map[string]string{
+		replaceBannedUsers(map[string]string{
 			"test-user-1": "reason 1",
 			"test-user-2": "reason 2",
-		}
+		})
 
 		err := storeBannedUsers()
 		assert.NoError(suite.T(), err)

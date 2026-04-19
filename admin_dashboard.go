@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -687,10 +688,19 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 	ticker := time.NewTicker(StatsStreamInterval)
 	defer ticker.Stop()
 
+	// Per-connection encoder + buffer reused across ticks to avoid
+	// a fresh json.Marshal allocation every 2s per connection.
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+
 	// Send initial stats immediately (cluster-aware for dashboard)
 	if stats := ad.gatherAllStatsClusterAware(); stats != nil {
-		if data, err := json.Marshal(stats); err == nil {
-			_ = c.WriteMessage(websocket.TextMessage, data)
+		buf.Reset()
+		if err := enc.Encode(stats); err == nil {
+			// json.Encoder.Encode appends a trailing newline; strip it
+			// so the wire format matches the previous json.Marshal output.
+			_ = c.WriteMessage(websocket.TextMessage, bytes.TrimRight(buf.Bytes(), "\n"))
 		}
 	}
 
@@ -701,9 +711,9 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 			// Gather all stats (cluster-aware for dashboard)
 			stats := ad.gatherAllStatsClusterAware()
 
-			// Marshal to JSON
-			data, err := json.Marshal(stats)
-			if err != nil {
+			// Encode into reused buffer (no per-tick allocation churn)
+			buf.Reset()
+			if err := enc.Encode(stats); err != nil {
 				if ad.logger != nil {
 					ad.logger.Error(&libpack_logger.LogMessage{
 						Message: "Failed to marshal stats for WebSocket",
@@ -713,8 +723,8 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 				return
 			}
 
-			// Send to client
-			if err := c.WriteMessage(websocket.TextMessage, data); err != nil {
+			// Send to client (strip trailing newline from Encoder to match prior format)
+			if err := c.WriteMessage(websocket.TextMessage, bytes.TrimRight(buf.Bytes(), "\n")); err != nil {
 				if ad.logger != nil {
 					ad.logger.Debug(&libpack_logger.LogMessage{
 						Message: "Failed to write to WebSocket (client likely disconnected)",

@@ -293,7 +293,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 	}
 
 	// Handle caching
-	wasCached, err := handleCaching(c, parsedResult, extractedUserID)
+	wasCached, err := handleCaching(c, parsedResult, extractedUserID, extractedRoleName)
 	if err != nil {
 		return err
 	}
@@ -326,10 +326,7 @@ func extractUserInfo(c *fiber.Ctx) (string, string) {
 }
 
 // handleCaching manages the caching logic for GraphQL requests
-func handleCaching(c *fiber.Ctx, parsedResult *parseGraphQLQueryResult, userID string) (bool, error) {
-	// Extract user role for cache key (in addition to userID already passed)
-	_, userRole := extractUserInfo(c)
-
+func handleCaching(c *fiber.Ctx, parsedResult *parseGraphQLQueryResult, userID, userRole string) (bool, error) {
 	// Calculate query hash for cache key - now includes user context for security
 	calculatedQueryHash := libpack_cache.CalculateHash(c, userID, userRole)
 
@@ -393,11 +390,10 @@ func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int,
 
 // logAndMonitorRequest logs and monitors the request processing.
 func logAndMonitorRequest(c *fiber.Ctx, userID, opType, opName string, wasCached bool, duration time.Duration, startTime time.Time) {
+	// Low-cardinality labels only: user_id and op_name dropped to prevent Prometheus explosion.
 	labels := map[string]string{
 		"op_type": opType,
-		"op_name": opName,
 		"cached":  strconv.FormatBool(wasCached),
-		"user_id": userID,
 	}
 
 	if cfg.Server.AccessLog {

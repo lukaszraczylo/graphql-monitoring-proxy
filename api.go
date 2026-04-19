@@ -17,10 +17,7 @@ import (
 	"github.com/sony/gobreaker"
 )
 
-var (
-	bannedUsersIDs      = make(map[string]string)
-	bannedUsersIDsMutex sync.RWMutex
-)
+var bannedUsersIDs sync.Map // key: userID string, value: reason string
 
 // authMiddleware provides API key authentication for admin endpoints
 func authMiddleware(c *fiber.Ctx) error {
@@ -132,16 +129,14 @@ func periodicallyReloadBannedUsers(ctx context.Context) {
 			loadBannedUsers()
 			cfg.Logger.Debug(&libpack_logger.LogMessage{
 				Message: "Banned users reloaded",
-				Pairs:   map[string]any{"users": bannedUsersIDs},
+				Pairs:   map[string]any{"users": snapshotBannedUsers()},
 			})
 		}
 	}
 }
 
 func checkIfUserIsBanned(c *fiber.Ctx, userID string) bool {
-	bannedUsersIDsMutex.RLock()
-	_, found := bannedUsersIDs[userID]
-	bannedUsersIDsMutex.RUnlock()
+	_, found := bannedUsersIDs.Load(userID)
 
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Checking if user is banned",
@@ -251,9 +246,7 @@ func apiBanUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString("user_id and reason are required")
 	}
 
-	bannedUsersIDsMutex.Lock()
-	bannedUsersIDs[req.UserID] = req.Reason
-	bannedUsersIDsMutex.Unlock()
+	bannedUsersIDs.Store(req.UserID, req.Reason)
 
 	cfg.Logger.Info(&libpack_logger.LogMessage{
 		Message: "Banned user",
@@ -281,9 +274,7 @@ func apiUnbanUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString("user_id is required")
 	}
 
-	bannedUsersIDsMutex.Lock()
-	delete(bannedUsersIDs, req.UserID)
-	bannedUsersIDsMutex.Unlock()
+	bannedUsersIDs.Delete(req.UserID)
 
 	cfg.Logger.Info(&libpack_logger.LogMessage{
 		Message: "Unbanned user",
@@ -311,9 +302,7 @@ func storeBannedUsers() error {
 		}
 	}()
 
-	bannedUsersIDsMutex.RLock()
-	data, err := json.Marshal(bannedUsersIDs)
-	bannedUsersIDsMutex.RUnlock()
+	data, err := json.Marshal(snapshotBannedUsers())
 
 	if err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
@@ -384,9 +373,33 @@ func loadBannedUsers() {
 		return
 	}
 
-	bannedUsersIDsMutex.Lock()
-	bannedUsersIDs = newBannedUsers
-	bannedUsersIDsMutex.Unlock()
+	replaceBannedUsers(newBannedUsers)
+}
+
+// snapshotBannedUsers returns a plain map copy of the current banned users.
+func snapshotBannedUsers() map[string]string {
+	out := make(map[string]string)
+	bannedUsersIDs.Range(func(k, v any) bool {
+		ks, kok := k.(string)
+		vs, vok := v.(string)
+		if kok && vok {
+			out[ks] = vs
+		}
+		return true
+	})
+	return out
+}
+
+// replaceBannedUsers swaps the banned users set with the provided map.
+// Existing entries are removed before inserting the new ones.
+func replaceBannedUsers(newUsers map[string]string) {
+	bannedUsersIDs.Range(func(k, _ any) bool {
+		bannedUsersIDs.Delete(k)
+		return true
+	})
+	for k, v := range newUsers {
+		bannedUsersIDs.Store(k, v)
+	}
 }
 
 func lockFile(fileLock *flock.Flock) error {

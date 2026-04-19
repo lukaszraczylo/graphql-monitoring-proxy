@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -15,6 +16,10 @@ import (
 	"syscall"
 	"time"
 
+	// Register pprof handlers on http.DefaultServeMux. Listener is bound to
+	// 127.0.0.1 only and gated by PPROF_PORT — never expose publicly.
+	_ "net/http/pprof" //nolint:gosec // G108: handlers gated by PPROF_PORT, bound to 127.0.0.1 only
+
 	"github.com/gofiber/fiber/v2/middleware/proxy"
 	"github.com/gookit/goutil/envutil"
 	graphql "github.com/lukaszraczylo/go-simple-graphql"
@@ -23,6 +28,9 @@ import (
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 	libpack_tracing "github.com/lukaszraczylo/graphql-monitoring-proxy/tracing"
+
+	// Auto-tune GOMAXPROCS from cgroup CPU quota (containerized workloads).
+	_ "go.uber.org/automaxprocs"
 )
 
 var (
@@ -170,6 +178,7 @@ func parseConfig() {
 		return strings.Split(urls, ",")
 	}()
 	c.LogLevel = strings.ToUpper(getDetailsFromEnv("LOG_LEVEL", "info"))
+	c.EnableAllocationTracking = getDetailsFromEnv("ENABLE_ALLOCATION_TRACKING", false)
 	// Logger setup
 	c.Logger = libpack_logging.New().SetMinLogLevel(libpack_logging.GetLogLevel(c.LogLevel)).
 		SetFieldName("timestamp", "ts").SetFieldName("message", "msg").SetShowCaller(false)
@@ -309,6 +318,39 @@ func parseConfig() {
 
 	// Admin dashboard configuration
 	c.AdminDashboard.Enable = getDetailsFromEnv("ADMIN_DASHBOARD_ENABLE", true)
+
+	// Optional debug pprof endpoint. Disabled unless PPROF_PORT is set to a
+	// valid integer. Bound to 127.0.0.1 ONLY — pprof must never be exposed
+	// publicly (it leaks memory layout, allows arbitrary CPU profiles, etc).
+	if pprofPortStr := getDetailsFromEnv("PPROF_PORT", ""); pprofPortStr != "" {
+		if pprofPort, err := strconv.Atoi(pprofPortStr); err == nil && pprofPort > 0 && pprofPort < 65536 {
+			addr := "127.0.0.1:" + strconv.Itoa(pprofPort)
+			c.Logger.Info(&libpack_logging.LogMessage{
+				Message: "pprof endpoint listening on " + addr,
+			})
+			go func(listenAddr string) {
+				srv := &http.Server{
+					Addr:              listenAddr,
+					Handler:           nil,
+					ReadHeaderTimeout: 5 * time.Second,
+					ReadTimeout:       30 * time.Second,
+					WriteTimeout:      120 * time.Second,
+					IdleTimeout:       120 * time.Second,
+				}
+				if err := srv.ListenAndServe(); err != nil {
+					c.Logger.Error(&libpack_logging.LogMessage{
+						Message: "pprof endpoint failed",
+						Pairs:   map[string]any{"error": err.Error(), "addr": listenAddr},
+					})
+				}
+			}(addr)
+		} else {
+			c.Logger.Warning(&libpack_logging.LogMessage{
+				Message: "PPROF_PORT set but invalid; pprof endpoint disabled",
+				Pairs:   map[string]any{"value": pprofPortStr},
+			})
+		}
+	}
 
 	cfgMutex.Lock()
 	cfg = &c

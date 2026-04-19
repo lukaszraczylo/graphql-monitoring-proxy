@@ -132,6 +132,13 @@ func (l *Logger) shouldLog(level int) bool {
 	return level >= l.minLogLevel
 }
 
+// IsLevelEnabled reports whether the given level would be emitted by this logger.
+// Useful to gate expensive log-field construction (map/slice allocations) behind a
+// cheap level check when the log call would otherwise be dropped.
+func (l *Logger) IsLevelEnabled(level int) bool {
+	return level >= l.minLogLevel
+}
+
 // log writes the log message with the given level.
 func (l *Logger) log(level int, m *LogMessage) {
 	if m.Pairs == nil {

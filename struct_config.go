@@ -18,11 +18,12 @@ type EndpointCBConfig struct {
 // config is a struct that holds the configuration of the application.
 // It includes settings for logging, monitoring, client connections, security, and server behavior.
 type config struct {
-	Logger     *libpack_logging.Logger
-	Monitoring *libpack_monitoring.MetricsSetup
-	LogLevel   string
-	Api        struct{ BannedUsersFile string }
-	Tracing    struct {
+	Logger                   *libpack_logging.Logger
+	Monitoring               *libpack_monitoring.MetricsSetup
+	LogLevel                 string
+	EnableAllocationTracking bool
+	Api                      struct{ BannedUsersFile string }
+	Tracing                  struct {
 		Endpoint string
 		Enable   bool
 	}

@@ -18,9 +18,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 	cfg.Api.BannedUsersFile = filepath.Join(os.TempDir(), "banned_users_reload_test.json")
 
 	// Initial empty banned users
-	bannedUsersIDsMutex.Lock()
-	bannedUsersIDs = make(map[string]string)
-	bannedUsersIDsMutex.Unlock()
+	replaceBannedUsers(map[string]string{})
 
 	// Create a test version of periodicallyReloadBannedUsers that executes once and signals completion
 	done := make(chan bool)
@@ -37,9 +35,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		_ = os.Remove(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
 
 		// Ensure banned users map is empty
-		bannedUsersIDsMutex.Lock()
-		bannedUsersIDs = make(map[string]string)
-		bannedUsersIDsMutex.Unlock()
+		replaceBannedUsers(map[string]string{})
 
 		// Execute reloader once
 		go testPeriodicallyReloadBannedUsers()
@@ -50,9 +46,7 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		assert.NoError(suite.T(), err)
 
 		// Safely check the map
-		bannedUsersIDsMutex.RLock()
-		mapSize := len(bannedUsersIDs)
-		bannedUsersIDsMutex.RUnlock()
+		mapSize := len(snapshotBannedUsers())
 
 		// Verify map is still empty
 		assert.Equal(suite.T(), 0, mapSize)
@@ -70,20 +64,17 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		assert.NoError(suite.T(), err)
 
 		// Clear the banned users map
-		bannedUsersIDsMutex.Lock()
-		bannedUsersIDs = make(map[string]string)
-		bannedUsersIDsMutex.Unlock()
+		replaceBannedUsers(map[string]string{})
 
 		// Execute reloader once
 		go testPeriodicallyReloadBannedUsers()
 		<-done
 
 		// Safely check the map
-		bannedUsersIDsMutex.RLock()
-		mapSize := len(bannedUsersIDs)
-		value1 := bannedUsersIDs["test-user-reload-1"]
-		value2 := bannedUsersIDs["test-user-reload-2"]
-		bannedUsersIDsMutex.RUnlock()
+		snap := snapshotBannedUsers()
+		mapSize := len(snap)
+		value1 := snap["test-user-reload-1"]
+		value2 := snap["test-user-reload-2"]
 
 		// Verify banned users map was loaded
 		assert.Equal(suite.T(), 2, mapSize)
@@ -102,19 +93,16 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		assert.NoError(suite.T(), err)
 
 		// Clear the banned users map
-		bannedUsersIDsMutex.Lock()
-		bannedUsersIDs = make(map[string]string)
-		bannedUsersIDsMutex.Unlock()
+		replaceBannedUsers(map[string]string{})
 
 		// Execute reloader once to load initial data
 		go testPeriodicallyReloadBannedUsers()
 		<-done
 
 		// Safely check the map
-		bannedUsersIDsMutex.RLock()
-		mapSize := len(bannedUsersIDs)
-		initialValue := bannedUsersIDs["test-user-initial"]
-		bannedUsersIDsMutex.RUnlock()
+		snap := snapshotBannedUsers()
+		mapSize := len(snap)
+		initialValue := snap["test-user-initial"]
 
 		// Verify initial data was loaded
 		assert.Equal(suite.T(), 1, mapSize)
@@ -134,12 +122,11 @@ func (suite *Tests) Test_PeriodicallyReloadBannedUsers() {
 		<-done
 
 		// Safely check the map
-		bannedUsersIDsMutex.RLock()
-		mapSize = len(bannedUsersIDs)
-		value1 := bannedUsersIDs["test-user-updated-1"]
-		value2 := bannedUsersIDs["test-user-updated-2"]
-		_, exists := bannedUsersIDs["test-user-initial"]
-		bannedUsersIDsMutex.RUnlock()
+		snap = snapshotBannedUsers()
+		mapSize = len(snap)
+		value1 := snap["test-user-updated-1"]
+		value2 := snap["test-user-updated-2"]
+		_, exists := snap["test-user-initial"]
 
 		// Verify updated data was loaded
 		assert.Equal(suite.T(), 2, mapSize)
@@ -175,19 +162,16 @@ func (suite *Tests) Test_LoadUnloadBannedUsers() {
 	// Test loading banned users
 	suite.Run("load banned users", func() {
 		// Clear the banned users map
-		bannedUsersIDsMutex.Lock()
-		bannedUsersIDs = make(map[string]string)
-		bannedUsersIDsMutex.Unlock()
+		replaceBannedUsers(map[string]string{})
 
 		// Load banned users
 		loadBannedUsers()
 
 		// Check the banned users map
-		bannedUsersIDsMutex.RLock()
-		count := len(bannedUsersIDs)
-		reason1 := bannedUsersIDs["user1"]
-		reason2 := bannedUsersIDs["user2"]
-		bannedUsersIDsMutex.RUnlock()
+		snap := snapshotBannedUsers()
+		count := len(snap)
+		reason1 := snap["user1"]
+		reason2 := snap["user2"]
 
 		assert.Equal(suite.T(), 2, count)
 		assert.Equal(suite.T(), "reason1", reason1)
@@ -197,32 +181,27 @@ func (suite *Tests) Test_LoadUnloadBannedUsers() {
 	// Test updating banned users
 	suite.Run("update banned users", func() {
 		// Update the banned users map
-		bannedUsersIDsMutex.Lock()
-		bannedUsersIDs = map[string]string{
+		replaceBannedUsers(map[string]string{
 			"user3": "reason3",
 			"user4": "reason4",
-		}
-		bannedUsersIDsMutex.Unlock()
+		})
 
 		// Store the updated banned users
 		err := storeBannedUsers()
 		assert.NoError(suite.T(), err)
 
 		// Clear the banned users map
-		bannedUsersIDsMutex.Lock()
-		bannedUsersIDs = make(map[string]string)
-		bannedUsersIDsMutex.Unlock()
+		replaceBannedUsers(map[string]string{})
 
 		// Load banned users again
 		loadBannedUsers()
 
 		// Check the banned users map
-		bannedUsersIDsMutex.RLock()
-		count := len(bannedUsersIDs)
-		reason3 := bannedUsersIDs["user3"]
-		reason4 := bannedUsersIDs["user4"]
-		_, user1Exists := bannedUsersIDs["user1"]
-		bannedUsersIDsMutex.RUnlock()
+		snap := snapshotBannedUsers()
+		count := len(snap)
+		reason3 := snap["user3"]
+		reason4 := snap["user4"]
+		_, user1Exists := snap["user1"]
 
 		assert.Equal(suite.T(), 2, count)
 		assert.Equal(suite.T(), "reason3", reason3)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sync"
 	"sync/atomic"
 
 	"github.com/VictoriaMetrics/metrics"
@@ -9,9 +10,10 @@ import (
 
 // CircuitBreakerMetrics manages circuit breaker metrics without recreating gauges
 type CircuitBreakerMetrics struct {
-	stateValue   atomic.Value // stores float64
-	stateGauge   *metrics.Gauge
-	failCounters map[string]*metrics.Counter
+	stateValue     atomic.Value // stores float64
+	stateGauge     *metrics.Gauge
+	failCountersMu sync.RWMutex
+	failCounters   map[string]*metrics.Counter
 }
 
 // NewCircuitBreakerMetrics creates a new circuit breaker metrics manager
@@ -51,12 +53,19 @@ func (cbm *CircuitBreakerMetrics) GetState() float64 {
 
 // GetOrCreateFailCounter returns a counter for the given state key
 func (cbm *CircuitBreakerMetrics) GetOrCreateFailCounter(monitoring *libpack_monitoring.MetricsSetup, stateKey string) *metrics.Counter {
-	if counter, exists := cbm.failCounters[stateKey]; exists {
+	cbm.failCountersMu.RLock()
+	counter, exists := cbm.failCounters[stateKey]
+	cbm.failCountersMu.RUnlock()
+	if exists {
 		return counter
 	}
 
-	// Create new counter
-	counter := monitoring.RegisterMetricsCounter(stateKey, nil)
+	cbm.failCountersMu.Lock()
+	defer cbm.failCountersMu.Unlock()
+	if counter, exists := cbm.failCounters[stateKey]; exists {
+		return counter
+	}
+	counter = monitoring.RegisterMetricsCounter(stateKey, nil)
 	cbm.failCounters[stateKey] = counter
 	return counter
 }

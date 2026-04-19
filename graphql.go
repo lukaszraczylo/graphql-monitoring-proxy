@@ -227,9 +227,10 @@ func trackParsingAllocations() func() {
 func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 	startTime := time.Now()
 
-	// Set up allocation tracking
-	trackAllocs := trackParsingAllocations()
-	defer trackAllocs()
+	if cfg != nil && cfg.EnableAllocationTracking {
+		trackAllocs := trackParsingAllocations()
+		defer trackAllocs()
+	}
 
 	// Get a result object from the pool and initialize it
 	res := resultPool.Get().(*parseGraphQLQueryResult)
@@ -321,68 +322,56 @@ func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
 	res.shouldIgnore = false
 	res.operationName = "undefined"
 
-	// First scan for mutations - they take priority
+	// Single pass over definitions: gather operation type, mutation flag,
+	// operation name, and process directives / introspection checks together.
+	// Mutations take priority for operationType regardless of order.
 	hasMutation := false
-	var mutationName string
 
 	for _, d := range p.Definitions {
-		if oper, ok := d.(*ast.OperationDefinition); ok {
-			operationType := strings.ToLower(oper.Operation)
-			if operationType == "mutation" {
-				hasMutation = true
-				res.operationType = "mutation"
-				if oper.Name != nil {
-					mutationName = oper.Name.Value
-					// Use mutation name immediately, sanitized to prevent metric panics
-					res.operationName = sanitizeOperationName(mutationName)
-				}
-				break // Found a mutation, no need to continue first pass
-			}
+		oper, ok := d.(*ast.OperationDefinition)
+		if !ok {
+			continue
 		}
-	}
 
-	// Now process all definitions for other information
-	for _, d := range p.Definitions {
-		if oper, ok := d.(*ast.OperationDefinition); ok {
-			operationType := strings.ToLower(oper.Operation)
+		// Lower-case operation string ONCE per definition.
+		operationType := strings.ToLower(oper.Operation)
+		isMutation := operationType == "mutation"
 
-			// If we already found a mutation, only update name if needed
-			if hasMutation {
-				// We already set operation type to mutation in first pass
-				// Only set name if we didn't find a mutation name earlier
-				if res.operationName == "undefined" && oper.Name != nil {
-					res.operationName = sanitizeOperationName(oper.Name.Value)
-				}
-			} else {
-				// No mutation found, use the normal logic
-				if res.operationType == "" {
-					res.operationType = operationType
-				}
-
-				if res.operationName == "undefined" && oper.Name != nil {
-					res.operationName = sanitizeOperationName(oper.Name.Value)
-				}
+		// Operation type assignment: mutations take priority; otherwise first-seen wins.
+		if isMutation && !hasMutation {
+			hasMutation = true
+			res.operationType = "mutation"
+			// Mutation name takes precedence — overwrite "undefined" if present.
+			if oper.Name != nil {
+				res.operationName = sanitizeOperationName(oper.Name.Value)
 			}
+		} else if !hasMutation && res.operationType == "" {
+			res.operationType = operationType
+		}
 
-			// Block mutations in read-only mode
-			if res.operationType == "mutation" && cfg.Server.ReadOnlyMode {
-				if ifNotInTest() {
-					cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
-				}
-				_ = c.Status(403).SendString("The server is in read-only mode")
-				res.shouldBlock = true
-				return res
+		// Operation name fill-in for non-mutation cases (or mutation w/o name handled above).
+		if res.operationName == "undefined" && oper.Name != nil {
+			res.operationName = sanitizeOperationName(oper.Name.Value)
+		}
+
+		// Block mutations in read-only mode
+		if res.operationType == "mutation" && cfg.Server.ReadOnlyMode {
+			if ifNotInTest() {
+				cfg.Monitoring.Increment(libpack_monitoring.MetricsSkipped, nil)
 			}
+			_ = c.Status(403).SendString("The server is in read-only mode")
+			res.shouldBlock = true
+			return res
+		}
 
-			// Process directives (like @cached)
-			processDirectives(oper, res)
+		// Process directives (like @cached)
+		processDirectives(oper, res)
 
-			// Check for introspection queries if they're blocked
-			if cfg.Security.BlockIntrospection && checkSelections(c, oper.GetSelectionSet().Selections) {
-				_ = c.Status(403).SendString("Introspection queries are not allowed")
-				res.shouldBlock = true
-				return res
-			}
+		// Check for introspection queries if they're blocked
+		if cfg.Security.BlockIntrospection && checkSelections(c, oper.GetSelectionSet().Selections) {
+			_ = c.Status(403).SendString("Introspection queries are not allowed")
+			res.shouldBlock = true
+			return res
 		}
 	}
 
