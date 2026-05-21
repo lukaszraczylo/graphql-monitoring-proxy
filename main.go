@@ -28,10 +28,16 @@ import (
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 	libpack_tracing "github.com/lukaszraczylo/graphql-monitoring-proxy/tracing"
+	telemetry "github.com/lukaszraczylo/oss-telemetry"
 
 	// Auto-tune GOMAXPROCS from cgroup CPU quota (containerized workloads).
 	_ "go.uber.org/automaxprocs"
 )
+
+// appVersion is the build version. Set via ldflags during build:
+//
+//	-X main.appVersion=v1.2.3
+var appVersion = "dev"
 
 var (
 	cfg             *config
@@ -512,6 +518,8 @@ func parseConfig() {
 }
 
 func main() {
+	telemetry.Send("graphql-monitoring-proxy", appVersion)
+
 	// Parse configuration
 	parseConfig()
 
