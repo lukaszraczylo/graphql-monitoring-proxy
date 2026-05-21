@@ -1119,3 +1119,16 @@ graphql_proxy_cache_hit{microservice="graphql_proxy",pod="hasura-w-proxy-interna
 graphql_proxy_cache_hit{pod="hasura-w-proxy-internal-6b5f4b4bbb-9xwfc",microservice="graphql_proxy"} 1
 graphql_proxy_cache_miss{microservice="graphql_proxy",pod="hasura-w-proxy-internal-6b5f4b4bbb-9xwfc"} 23
 ```
+
+## Telemetry
+
+On startup this binary sends a single anonymous adoption ping — project name,
+version, timestamp; no identifiers, no GraphQL operations, no query/response
+content. Fire-and-forget with a 2-second timeout; cannot block startup or
+panic.
+
+See **[oss-telemetry — Disabling telemetry](https://github.com/lukaszraczylo/oss-telemetry#disabling-telemetry)**
+for the exact wire format, source, and full opt-out documentation.
+
+Quick opt-out: set any of `DO_NOT_TRACK=1`, `OSS_TELEMETRY_DISABLED=1`,
+or `GRAPHQL_MONITORING_PROXY_DISABLE_TELEMETRY=1`.
