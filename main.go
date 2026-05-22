@@ -518,7 +518,7 @@ func parseConfig() {
 }
 
 func main() {
-	telemetry.Send("graphql-monitoring-proxy", appVersion)
+	telemetry.SendForModule("graphql-monitoring-proxy", "github.com/lukaszraczylo/graphql-monitoring-proxy", appVersion)
 
 	// Parse configuration
 	parseConfig()
