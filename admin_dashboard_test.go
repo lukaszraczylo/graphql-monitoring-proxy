@@ -76,10 +76,13 @@ func TestAdminDashboard_ServeDashboard(t *testing.T) {
 	contentType := resp.Header.Get("Content-Type")
 	assert.Contains(t, contentType, "text/html")
 
-	// Verify HTML content is returned
+	// Verify the dashboard HTML is returned (assert on stable markers, not
+	// the cosmetic page title which is part of the UI and may change).
 	body, err := io.ReadAll(resp.Body)
 	assert.NoError(t, err)
-	assert.Contains(t, string(body), "GraphQL Proxy Admin Dashboard")
+	assert.Contains(t, string(body), "<!DOCTYPE html>")
+	assert.Contains(t, string(body), "graphql-proxy")
+	assert.Contains(t, string(body), "/admin/ws/stats")
 }
 
 func TestAdminDashboard_GetStats(t *testing.T) {

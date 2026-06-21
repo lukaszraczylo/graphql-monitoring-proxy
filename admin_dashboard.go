@@ -670,6 +670,16 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 		return nil
 	})
 
+	// Determine the requested view. "local" forces this-instance stats; any
+	// other value (default) is cluster-aware and returns aggregated metrics
+	// when a metrics aggregator is available. This makes the dashboard's
+	// "Cluster view" toggle a real control rather than cosmetic, since the
+	// WebSocket stream is the primary data path.
+	gather := ad.gatherAllStatsClusterAware
+	if c.Query("view") == "local" {
+		gather = ad.gatherAllStats
+	}
+
 	// Channel to signal when to stop
 	done := make(chan struct{})
 
@@ -694,8 +704,8 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 
-	// Send initial stats immediately (cluster-aware for dashboard)
-	if stats := ad.gatherAllStatsClusterAware(); stats != nil {
+	// Send initial stats immediately (honours the requested view)
+	if stats := gather(); stats != nil {
 		buf.Reset()
 		if err := enc.Encode(stats); err == nil {
 			// json.Encoder.Encode appends a trailing newline; strip it
@@ -708,8 +718,8 @@ func (ad *AdminDashboard) handleStatsWebSocket(c *websocket.Conn) {
 	for {
 		select {
 		case <-ticker.C:
-			// Gather all stats (cluster-aware for dashboard)
-			stats := ad.gatherAllStatsClusterAware()
+			// Gather all stats (honours the requested view)
+			stats := gather()
 
 			// Encode into reused buffer (no per-tick allocation churn)
 			buf.Reset()
