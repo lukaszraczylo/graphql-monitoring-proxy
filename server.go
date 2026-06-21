@@ -357,6 +357,13 @@ func handleCaching(c *fiber.Ctx, parsedResult *parseGraphQLQueryResult, userID, 
 
 	// Try to get from cache
 	if cachedResponse := libpack_cache.CacheLookup(calculatedQueryHash); cachedResponse != nil {
+		// Count cache-served requests toward RPS too. Cache hits return here
+		// without reaching proxyTheRequest (where misses/proxied requests are
+		// recorded), so without this the dashboard's current RPS reads 0
+		// whenever traffic is served from cache.
+		if rpsTracker := GetRPSTracker(); rpsTracker != nil {
+			rpsTracker.RecordRequest()
+		}
 		cfg.Monitoring.Increment(libpack_monitoring.MetricsCacheHit, nil)
 		c.Set("X-Cache-Hit", "true")
 		c.Set("Content-Type", "application/json")
