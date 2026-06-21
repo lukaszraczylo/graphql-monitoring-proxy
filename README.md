@@ -1021,14 +1021,17 @@ Ban details will be stored in the `banned_users.json` file, which you can mount 
 The admin dashboard provides a real-time, web-based interface for monitoring proxy performance and health. Access it at `/admin` or `/admin/dashboard` on the main proxy port (default: `:8080/admin`).
 
 **Features:**
-- **Real-time metrics**: Auto-refreshes every 5 seconds
+- **Live metrics**: Streamed over a WebSocket (`/admin/ws/stats`) every 2 seconds, with automatic fallback to 5-second HTTP polling if the WebSocket is unavailable
+- **Overview**: Proxy version, uptime, total/succeeded/failed/skipped requests, success rate, and current/average requests per second
+- **Live charts**: Requests-per-second and cache-hit-rate over time
 - **System health**: Backend GraphQL and Redis connectivity status
 - **Circuit breaker**: Current state, configuration, and statistics
 - **Request coalescing**: Deduplication rate and backend savings
 - **Retry budget**: Available tokens and denial rate
-- **WebSocket**: Active connections and message statistics
+- **WebSocket**: Active proxied connections
 - **Connection pool**: Active connections and health status
-- **Cache statistics**: Hit/miss rates and memory usage
+- **Cache statistics**: Hit/miss rates and memory usage (in-memory cache; shown as `n/a` for Redis)
+- **Cluster view**: When Redis cluster mode is enabled (`ENABLE_REDIS_CACHE=true`), a header toggle switches between aggregated cluster metrics and this-node-only stats, with a per-instance breakdown table. In single-node deployments the toggle is shown disabled.
 
 **Configuration:**
 ```bash
@@ -1068,16 +1071,29 @@ GMP_ADMIN_DASHBOARD_ENABLE=true
    - Retry budget: Current tokens, max tokens, total attempts, denied retries, and denial rate
    - Control actions: Reset statistics, clear cache
 
+5. **Cluster** (Redis cluster mode only)
+   - Total and healthy instance counts, plus cluster uptime
+   - Per-instance breakdown table (host, uptime, requests, success rate, RPS, cache hit rate)
+   - Header toggle to switch between aggregated cluster view and this-node-only view
+
 **API Endpoints:**
-The dashboard fetches data from these API endpoints:
+The dashboard streams from a WebSocket and reads these endpoints:
+- `GET /admin/ws/stats` - WebSocket stats stream (primary data path; cluster-aware by default, `?view=local` streams this-node-only stats)
+- `GET /admin/api/stats` - Overview and request statistics
 - `GET /admin/api/health` - System health status
 - `GET /admin/api/circuit-breaker` - Circuit breaker status
+- `GET /admin/api/cache` - Cache statistics
 - `GET /admin/api/coalescing` - Request coalescing statistics
 - `GET /admin/api/retry-budget` - Retry budget statistics
 - `GET /admin/api/websocket` - WebSocket connection statistics
 - `GET /admin/api/connections` - Connection pool statistics
+- `GET /admin/api/cluster/stats` - Aggregated cluster statistics (Redis cluster mode)
+- `GET /admin/api/cluster/instances` - Per-instance metrics (Redis cluster mode)
+- `GET /admin/api/cluster/debug` - Cluster aggregation diagnostics
+- `POST /admin/api/cache/clear` - Clear the cache
 - `POST /admin/api/coalescing/reset` - Reset coalescing stats
 - `POST /admin/api/retry-budget/reset` - Reset retry budget stats
+- `POST /admin/api/cluster/force-publish` - Force an immediate metrics publish (diagnostics)
 
 **Screenshot:**
 ![Admin Dashboard](static/admin-dashboard.png)
