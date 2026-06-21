@@ -109,6 +109,11 @@ func (ms *MetricsSetup) ListActiveMetrics() []string {
 }
 
 func (ms *MetricsSetup) RegisterMetricsGauge(metric_name string, labels map[string]string, val float64) *metrics.Gauge {
+	if ms == nil {
+		// Monitoring may not be initialized yet (e.g. during config parsing,
+		// before the monitoring server starts). Return a dummy to prevent panics.
+		return &metrics.Gauge{}
+	}
 	if err := validate_metrics_name(metric_name); err != nil {
 		log.Error(&libpack_logger.LogMessage{
 			Message: "RegisterMetricsGauge() error - invalid metric name",
@@ -125,6 +130,9 @@ func (ms *MetricsSetup) RegisterMetricsGauge(metric_name string, labels map[stri
 // RegisterMetricsGaugeFunc registers a gauge with a callback function that is called on every scrape
 // This is useful for metrics that need to return a dynamic value
 func (ms *MetricsSetup) RegisterMetricsGaugeFunc(metric_name string, labels map[string]string, fn func() float64) *metrics.Gauge {
+	if ms == nil {
+		return &metrics.Gauge{}
+	}
 	if err := validate_metrics_name(metric_name); err != nil {
 		log.Error(&libpack_logger.LogMessage{
 			Message: "RegisterMetricsGaugeFunc() error - invalid metric name",
@@ -137,6 +145,9 @@ func (ms *MetricsSetup) RegisterMetricsGaugeFunc(metric_name string, labels map[
 }
 
 func (ms *MetricsSetup) RegisterMetricsCounter(metric_name string, labels map[string]string) *metrics.Counter {
+	if ms == nil {
+		return &metrics.Counter{}
+	}
 	if err := validate_metrics_name(metric_name); err != nil {
 		log.Error(&libpack_logger.LogMessage{
 			Message: "RegisterMetricsCounter() error - invalid metric name",
@@ -152,6 +163,9 @@ func (ms *MetricsSetup) RegisterMetricsCounter(metric_name string, labels map[st
 }
 
 func (ms *MetricsSetup) RegisterFloatCounter(metric_name string, labels map[string]string) *metrics.FloatCounter {
+	if ms == nil {
+		return &metrics.FloatCounter{}
+	}
 	if err := validate_metrics_name(metric_name); err != nil {
 		log.Error(&libpack_logger.LogMessage{
 			Message: "RegisterFloatCounter() error - invalid metric name",
@@ -164,6 +178,9 @@ func (ms *MetricsSetup) RegisterFloatCounter(metric_name string, labels map[stri
 }
 
 func (ms *MetricsSetup) RegisterMetricsSummary(metric_name string, labels map[string]string) *metrics.Summary {
+	if ms == nil {
+		return &metrics.Summary{}
+	}
 	if err := validate_metrics_name(metric_name); err != nil {
 		log.Error(&libpack_logger.LogMessage{
 			Message: "RegisterMetricsSummary() error - invalid metric name",
@@ -176,6 +193,9 @@ func (ms *MetricsSetup) RegisterMetricsSummary(metric_name string, labels map[st
 }
 
 func (ms *MetricsSetup) RegisterMetricsHistogram(metric_name string, labels map[string]string) *metrics.Histogram {
+	if ms == nil {
+		return &metrics.Histogram{}
+	}
 	if err := validate_metrics_name(metric_name); err != nil {
 		log.Error(&libpack_logger.LogMessage{
 			Message: "RegisterMetricsHistogram() error - invalid metric name",
