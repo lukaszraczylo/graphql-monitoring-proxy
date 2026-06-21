@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/goccy/go-json"
-	fiber "github.com/gofiber/fiber/v2"
+	fiber "github.com/gofiber/fiber/v3"
 	"github.com/graphql-go/graphql/language/ast"
 	"github.com/graphql-go/graphql/language/parser"
 	"github.com/valyala/fasthttp"
@@ -426,7 +426,7 @@ func (suite *Tests) Test_checkIfContainsIntrospection() {
 	}
 }
 
-func createTestContext(body string) *fiber.Ctx {
+func createTestContext(body string) fiber.Ctx {
 	app := fiber.New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	ctx.Request().SetBody([]byte(body))

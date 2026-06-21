@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/memory"
 	libpack_logging "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	"github.com/stretchr/testify/assert"
@@ -31,9 +31,8 @@ func (suite *Tests) SetupTest() {
 	// Setup test
 	suite.app = fiber.New(
 		fiber.Config{
-			DisableStartupMessage: true,
-			JSONEncoder:           json.Marshal,
-			JSONDecoder:           json.Unmarshal,
+			JSONEncoder: json.Marshal,
+			JSONDecoder: json.Unmarshal,
 		},
 	)
 

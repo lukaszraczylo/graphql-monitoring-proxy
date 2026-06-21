@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	fiber "github.com/gofiber/fiber/v2"
+	fiber "github.com/gofiber/fiber/v3"
 	"github.com/gookit/goutil/strutil"
 	libpack_cache_memory "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/memory"
 	libpack_cache_redis "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/redis"
@@ -79,7 +79,7 @@ var (
 //   - Same query, same variables, different user → different cache key
 //
 // Different variable values will always produce different cache keys.
-func CalculateHash(c *fiber.Ctx, userID string, userRole string) string {
+func CalculateHash(c fiber.Ctx, userID string, userRole string) string {
 	cacheKeyData := string(c.Body())
 
 	// Include user context in cache key (default behavior for security)

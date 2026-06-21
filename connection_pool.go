@@ -18,6 +18,8 @@ type ConnectionPoolManager struct {
 	client                *fasthttp.Client
 	cancel                context.CancelFunc
 	logger                *libpack_logging.Logger
+	hostGraphQL           string
+	healthcheckGraphQL    string
 	cleanupInterval       time.Duration
 	keepAliveInterval     time.Duration
 	recoveryCheckInterval time.Duration
@@ -43,6 +45,14 @@ func NewConnectionPoolManager(client *fasthttp.Client) *ConnectionPoolManager {
 	// Set logger if available
 	if cfg != nil && cfg.Logger != nil {
 		cpm.logger = cfg.Logger
+	}
+
+	// Capture backend URLs at creation. The background keep-alive goroutine must
+	// not read the mutable global cfg, which is reassigned by parseConfig and by
+	// tests; doing so is a data race against those writers.
+	if cfg != nil {
+		cpm.hostGraphQL = cfg.Server.HostGraphQL
+		cpm.healthcheckGraphQL = cfg.Server.HealthcheckGraphQL
 	}
 
 	// Start periodic maintenance tasks
@@ -133,8 +143,10 @@ func (cpm *ConnectionPoolManager) performKeepAlive() {
 		return
 	}
 
-	// Only perform keep-alive if we have a backend URL configured
-	if cfg == nil || cfg.Server.HostGraphQL == "" {
+	// Only perform keep-alive if we have a backend URL configured.
+	// Uses the URL captured at creation (cpm.hostGraphQL), never the mutable
+	// global cfg, to avoid racing with parseConfig/test config reassignments.
+	if cpm.hostGraphQL == "" {
 		return
 	}
 
@@ -152,10 +164,10 @@ func (cpm *ConnectionPoolManager) performKeepAlive() {
 	defer fasthttp.ReleaseResponse(resp)
 
 	// Try to use health check endpoint if available, otherwise use base URL
-	healthURL := cfg.Server.HealthcheckGraphQL
+	healthURL := cpm.healthcheckGraphQL
 	if healthURL == "" {
 		// Use base URL with proper path separator
-		baseURL := cfg.Server.HostGraphQL
+		baseURL := cpm.hostGraphQL
 		if !strings.HasSuffix(baseURL, "/") {
 			baseURL += "/"
 		}

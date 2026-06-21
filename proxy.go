@@ -17,7 +17,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/avast/retry-go/v4"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
@@ -270,7 +270,7 @@ func createFasthttpClient(clientConfig *config) *fasthttp.Client {
 }
 
 // proxyTheRequest handles the request proxying logic.
-func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
+func proxyTheRequest(c fiber.Ctx, currentEndpoint string) error {
 	// Record request for RPS tracking
 	if rpsTracker := GetRPSTracker(); rpsTracker != nil {
 		rpsTracker.RecordRequest()
@@ -337,7 +337,7 @@ func proxyTheRequest(c *fiber.Ctx, currentEndpoint string) error {
 }
 
 // setupTracing extracts and sets up tracing context from request headers
-func setupTracing(c *fiber.Ctx) context.Context {
+func setupTracing(c fiber.Ctx) context.Context {
 	ctx := context.Background()
 
 	if !cfg.Tracing.Enable || tracer == nil {
@@ -361,7 +361,7 @@ func setupTracing(c *fiber.Ctx) context.Context {
 }
 
 // performProxyRequest executes the proxy request with retries, circuit breaker, and request coalescing
-func performProxyRequest(c *fiber.Ctx, proxyURL string) error {
+func performProxyRequest(c fiber.Ctx, proxyURL string) error {
 	// Extract user context for cache key (needed for coalescing and circuit breaker fallback)
 	userID, userRole := extractUserInfo(c)
 
@@ -420,7 +420,7 @@ func performProxyRequest(c *fiber.Ctx, proxyURL string) error {
 
 // performProxyRequestCore executes the proxy request with retries and circuit breaker
 // This is the core implementation used by both direct calls and coalesced requests
-func performProxyRequestCore(c *fiber.Ctx, proxyURL string, cacheKey string) error {
+func performProxyRequestCore(c fiber.Ctx, proxyURL string, cacheKey string) error {
 	// If circuit breaker is not enabled, use the original method
 	if !cfg.CircuitBreaker.Enable || cb == nil {
 		return performProxyRequestWithRetries(c, proxyURL)
@@ -471,7 +471,7 @@ func performProxyRequestCore(c *fiber.Ctx, proxyURL string, cacheKey string) err
 
 // performProxyRequestWithRetries executes the proxy request with retries
 // This is the original implementation extracted for reuse
-func performProxyRequestWithRetries(c *fiber.Ctx, proxyURL string) error {
+func performProxyRequestWithRetries(c fiber.Ctx, proxyURL string) error {
 	// Check backend health first if available
 	healthMgr := GetBackendHealthManager()
 	if healthMgr != nil && !healthMgr.IsHealthy() {
@@ -483,7 +483,7 @@ func performProxyRequestWithRetries(c *fiber.Ctx, proxyURL string) error {
 }
 
 // executeProxyAttempt performs a single proxy attempt with error handling
-func executeProxyAttempt(c *fiber.Ctx, proxyURL string) error {
+func executeProxyAttempt(c fiber.Ctx, proxyURL string) error {
 	// Additional safety check inside retry loop
 	if c == nil {
 		return retry.Unrecoverable(errFiberCtxNilDuringRetry)
@@ -552,7 +552,7 @@ func executeProxyAttempt(c *fiber.Ctx, proxyURL string) error {
 }
 
 // performProxyRequestWithEnhancedRetries executes the proxy request with intelligent retry strategy
-func performProxyRequestWithEnhancedRetries(c *fiber.Ctx, proxyURL string, backendUnhealthy bool) error {
+func performProxyRequestWithEnhancedRetries(c fiber.Ctx, proxyURL string, backendUnhealthy bool) error {
 	// Safety check for nil context
 	if c == nil {
 		return errFiberCtxNil
@@ -713,7 +713,7 @@ func notifyHealthManager(success bool) {
 }
 
 // handleCircuitOpenGracefulDegradation handles requests when the circuit breaker is open
-func handleCircuitOpenGracefulDegradation(c *fiber.Ctx, cacheKey string) error {
+func handleCircuitOpenGracefulDegradation(c fiber.Ctx, cacheKey string) error {
 	// Try to serve from cache if configured and available
 	if cfg.CircuitBreaker.ReturnCachedOnOpen {
 		if cachedResponse := libpack_cache.CacheLookup(cacheKey); cachedResponse != nil {
@@ -750,7 +750,7 @@ func handleCircuitOpenGracefulDegradation(c *fiber.Ctx, cacheKey string) error {
 }
 
 // doProxyRequestWithTimeout performs a proxy request with proper timeout handling
-func doProxyRequestWithTimeout(c *fiber.Ctx, proxyURL string, client *fasthttp.Client) error {
+func doProxyRequestWithTimeout(c fiber.Ctx, proxyURL string, client *fasthttp.Client) error {
 	// Calculate timeout from client configuration
 	clientTimeout := time.Duration(cfg.Client.ClientTimeout) * time.Second
 	if clientTimeout <= 0 {
@@ -785,7 +785,7 @@ func doProxyRequestWithTimeout(c *fiber.Ctx, proxyURL string, client *fasthttp.C
 }
 
 // handleGzippedResponse decompresses gzipped responses
-func handleGzippedResponse(c *fiber.Ctx) error {
+func handleGzippedResponse(c fiber.Ctx) error {
 	if !bytes.EqualFold(c.Response().Header.Peek("Content-Encoding"), []byte("gzip")) {
 		return nil
 	}
@@ -828,7 +828,7 @@ func handleGzippedResponse(c *fiber.Ctx) error {
 }
 
 // logDebugRequest logs the request details when in debug mode with sanitization.
-func logDebugRequest(c *fiber.Ctx) {
+func logDebugRequest(c fiber.Ctx) {
 	contentType := string(c.Request().Header.ContentType())
 	sanitizedBody := sanitizeForLogging(c.Body(), contentType)
 	sanitizedHeaders := sanitizeHeaders(convertHeaders(c.GetReqHeaders()))
@@ -845,7 +845,7 @@ func logDebugRequest(c *fiber.Ctx) {
 }
 
 // logDebugResponse logs the response details when in debug mode with sanitization.
-func logDebugResponse(c *fiber.Ctx) {
+func logDebugResponse(c fiber.Ctx) {
 	contentType := string(c.Response().Header.ContentType())
 	sanitizedBody := sanitizeForLogging(c.Response().Body(), contentType)
 	sanitizedHeaders := sanitizeHeaders(convertHeaders(c.GetRespHeaders()))

@@ -10,7 +10,7 @@ import (
 	"unicode"
 
 	"github.com/goccy/go-json"
-	fiber "github.com/gofiber/fiber/v2"
+	fiber "github.com/gofiber/fiber/v3"
 	"github.com/graphql-go/graphql/language/ast"
 	"github.com/graphql-go/graphql/language/parser"
 	"github.com/graphql-go/graphql/language/source"
@@ -224,7 +224,7 @@ func trackParsingAllocations() func() {
 	}
 }
 
-func parseGraphQLQuery(c *fiber.Ctx) *parseGraphQLQueryResult {
+func parseGraphQLQuery(c fiber.Ctx) *parseGraphQLQueryResult {
 	startTime := time.Now()
 
 	if cfg != nil && cfg.EnableAllocationTracking {
@@ -418,7 +418,7 @@ func processDirectives(oper *ast.OperationDefinition, res *parseGraphQLQueryResu
 }
 
 // checkSelections recursively checks if any selection is an introspection query that should be blocked
-func checkSelections(c *fiber.Ctx, selections []ast.Selection) bool {
+func checkSelections(c fiber.Ctx, selections []ast.Selection) bool {
 	if len(selections) == 0 {
 		return false
 	}
@@ -468,7 +468,7 @@ func checkSelections(c *fiber.Ctx, selections []ast.Selection) bool {
 	return false
 }
 
-func checkIfContainsIntrospection(c *fiber.Ctx, query string) bool {
+func checkIfContainsIntrospection(c fiber.Ctx, query string) bool {
 	startTime := time.Now()
 	blocked := false
 

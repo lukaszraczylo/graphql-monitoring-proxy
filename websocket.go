@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/websocket/v2"
+	"github.com/gofiber/contrib/v3/websocket"
+	"github.com/gofiber/fiber/v3"
 	gorillaws "github.com/gorilla/websocket"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
@@ -79,7 +79,7 @@ func NewWebSocketProxy(backendURL string, config WebSocketConfig, logger *libpac
 }
 
 // HandleWebSocket upgrades the connection and proxies WebSocket traffic
-func (wsp *WebSocketProxy) HandleWebSocket(c *fiber.Ctx) error {
+func (wsp *WebSocketProxy) HandleWebSocket(c fiber.Ctx) error {
 	if !wsp.enabled {
 		return fiber.NewError(fiber.StatusNotImplemented, "WebSocket support is disabled")
 	}
@@ -477,7 +477,7 @@ func (wsp *WebSocketProxy) GetStats() map[string]any {
 }
 
 // IsWebSocketRequest checks if the request is a WebSocket upgrade request
-func IsWebSocketRequest(c *fiber.Ctx) bool {
+func IsWebSocketRequest(c fiber.Ctx) bool {
 	return websocket.IsWebSocketUpgrade(c) ||
 		c.Get("Upgrade") == "websocket" ||
 		c.Get("Connection") == "Upgrade"

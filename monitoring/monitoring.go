@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/VictoriaMetrics/metrics"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/gookit/goutil/envutil"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
@@ -78,11 +78,10 @@ func (ms *MetricsSetup) Shutdown() {
 
 func (ms *MetricsSetup) startPrometheusEndpoint() {
 	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-		AppName:               fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
+		AppName: fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
 	})
 	app.Get("/metrics", ms.metricsEndpoint)
-	if err := app.Listen(fmt.Sprintf(":%d", envutil.GetInt("MONITORING_PORT", 9393))); err != nil {
+	if err := app.Listen(fmt.Sprintf(":%d", envutil.GetInt("MONITORING_PORT", 9393)), fiber.ListenConfig{DisableStartupMessage: true}); err != nil {
 		log.Critical(&libpack_logger.LogMessage{
 			Message: "Can't start the MONITORING service",
 			Pairs:   map[string]any{"error": err},
@@ -90,7 +89,7 @@ func (ms *MetricsSetup) startPrometheusEndpoint() {
 	}
 }
 
-func (ms *MetricsSetup) metricsEndpoint(c *fiber.Ctx) error {
+func (ms *MetricsSetup) metricsEndpoint(c fiber.Ctx) error {
 	ms.metrics_set.WritePrometheus(c.Response().BodyWriter())
 	ms.metrics_set_custom.WritePrometheus(c.Response().BodyWriter())
 

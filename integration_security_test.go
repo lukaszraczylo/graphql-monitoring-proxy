@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	"github.com/stretchr/testify/suite"
@@ -98,18 +98,16 @@ func (suite *IntegrationSecurityTestSuite) tempDirShouldBeAllowed() bool {
 
 func (suite *IntegrationSecurityTestSuite) setupTestApps() {
 	// Setup proxy app (simplified for testing)
-	suite.proxyApp = fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	suite.proxyApp = fiber.New(fiber.Config{})
 
 	// Add proxy routes with security middleware
-	suite.proxyApp.Use(func(c *fiber.Ctx) error {
+	suite.proxyApp.Use(func(c fiber.Ctx) error {
 		// Add request UUID for tracking
 		c.Locals("request_uuid", fmt.Sprintf("test-uuid-%d", time.Now().UnixNano()))
 		return c.Next()
 	})
 
-	suite.proxyApp.Post("/graphql", func(c *fiber.Ctx) error {
+	suite.proxyApp.Post("/graphql", func(c fiber.Ctx) error {
 		// Simulate GraphQL proxy behavior with logging
 		if cfg.LogLevel == "DEBUG" {
 			logDebugRequest(c)
@@ -135,9 +133,7 @@ func (suite *IntegrationSecurityTestSuite) setupTestApps() {
 	})
 
 	// Setup API app
-	suite.apiApp = fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	suite.apiApp = fiber.New(fiber.Config{})
 
 	api := suite.apiApp.Group("/api")
 	api.Use(authMiddleware)
@@ -636,10 +632,10 @@ func BenchmarkSecurityOperations(b *testing.B) {
 	os.Setenv("GMP_ADMIN_API_KEY", validAPIKey)
 	defer os.Unsetenv("GMP_ADMIN_API_KEY")
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	api := app.Group("/api")
 	api.Use(authMiddleware)
-	api.Get("/test", func(c *fiber.Ctx) error {
+	api.Get("/test", func(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
 

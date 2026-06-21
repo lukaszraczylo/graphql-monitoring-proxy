@@ -19,8 +19,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/websocket/v2"
+	"github.com/gofiber/contrib/v3/websocket"
+	"github.com/gofiber/fiber/v3"
 	gorillaws "github.com/gorilla/websocket"
 	libpack_cache_mem "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/memory"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
@@ -38,8 +38,8 @@ import (
 func TestHandleWebSocket_DisabledReturns501(t *testing.T) {
 	wsp := NewWebSocketProxy("http://127.0.0.1:1", WebSocketConfig{Enabled: false}, libpack_logger.New(), nil)
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-	app.Get("/ws", func(c *fiber.Ctx) error {
+	app := fiber.New()
+	app.Get("/ws", func(c fiber.Ctx) error {
 		return wsp.HandleWebSocket(c)
 	})
 
@@ -49,7 +49,7 @@ func TestHandleWebSocket_DisabledReturns501(t *testing.T) {
 	req.Header.Set("Sec-WebSocket-Version", "13")
 	req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
 
-	resp, err := app.Test(req, 5000)
+	resp, err := app.Test(req, fiber.TestConfig{Timeout: 5000 * time.Millisecond})
 	require.NoError(t, err)
 	assert.Equal(t, fiber.StatusNotImplemented, resp.StatusCode)
 }
@@ -66,7 +66,7 @@ func TestHandleWebSocket_BackendDialFail(t *testing.T) {
 		nil,
 	)
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	app.Get("/ws", websocket.New(func(c *websocket.Conn) {
 		wsp.handleConnection(context.Background(), c, http.Header{})
 	}))
@@ -131,9 +131,9 @@ func TestIsWebSocketRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := fiber.New(fiber.Config{DisableStartupMessage: true})
+			app := fiber.New()
 			var got bool
-			app.Get("/chk", func(c *fiber.Ctx) error {
+			app.Get("/chk", func(c fiber.Ctx) error {
 				got = IsWebSocketRequest(c)
 				return c.SendStatus(200)
 			})
@@ -142,7 +142,7 @@ func TestIsWebSocketRequest(t *testing.T) {
 			for k, v := range tt.headers {
 				req.Header.Set(k, v)
 			}
-			resp, err := app.Test(req, 2000)
+			resp, err := app.Test(req, fiber.TestConfig{Timeout: 2000 * time.Millisecond})
 			require.NoError(t, err)
 			_ = resp.Body.Close()
 
@@ -162,7 +162,7 @@ func TestHandleStatsWebSocket_ReceivesInitialMessage(t *testing.T) {
 	_ = StartMonitoringServer()
 
 	dashboard := NewAdminDashboard(libpack_logger.New())
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	dashboard.RegisterRoutes(app)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -207,7 +207,7 @@ func TestHandleStatsWebSocket_ClientCloseExitsLoop(t *testing.T) {
 	// Use an isolated logger — not the global cfg.Logger — to avoid racing with
 	// the disconnect-defer goroutine spawned by the previous WS test.
 	dashboard := NewAdminDashboard(libpack_logger.New())
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	dashboard.RegisterRoutes(app)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

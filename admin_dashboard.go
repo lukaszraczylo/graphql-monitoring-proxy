@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/websocket/v2"
+	"github.com/gofiber/contrib/v3/websocket"
+	"github.com/gofiber/fiber/v3"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
@@ -78,7 +78,7 @@ func (ad *AdminDashboard) RegisterRoutes(app *fiber.App) {
 }
 
 // serveDashboard serves the dashboard HTML
-func (ad *AdminDashboard) serveDashboard(c *fiber.Ctx) error {
+func (ad *AdminDashboard) serveDashboard(c fiber.Ctx) error {
 	data, err := dashboardHTML.ReadFile("admin/dashboard.html")
 	if err != nil {
 		return c.Status(500).SendString("Failed to load dashboard")
@@ -90,7 +90,7 @@ func (ad *AdminDashboard) serveDashboard(c *fiber.Ctx) error {
 
 // getStats returns overall proxy statistics
 // In cluster mode (when metrics aggregator is available), returns aggregated stats from all instances
-func (ad *AdminDashboard) getStats(c *fiber.Ctx) error {
+func (ad *AdminDashboard) getStats(c fiber.Ctx) error {
 	// Check if cluster mode is enabled - if so, return aggregated stats
 	if aggregator := GetMetricsAggregator(); aggregator != nil {
 		metrics, err := aggregator.GetAggregatedMetrics()
@@ -212,7 +212,7 @@ func formatDuration(d time.Duration) string {
 }
 
 // getHealth returns health status
-func (ad *AdminDashboard) getHealth(c *fiber.Ctx) error {
+func (ad *AdminDashboard) getHealth(c fiber.Ctx) error {
 	healthMgr := GetBackendHealthManager()
 
 	health := map[string]any{
@@ -241,7 +241,7 @@ func (ad *AdminDashboard) getHealth(c *fiber.Ctx) error {
 }
 
 // getCircuitBreakerStatus returns circuit breaker status
-func (ad *AdminDashboard) getCircuitBreakerStatus(c *fiber.Ctx) error {
+func (ad *AdminDashboard) getCircuitBreakerStatus(c fiber.Ctx) error {
 	status := map[string]any{
 		"enabled": false,
 		"state":   "unknown",
@@ -279,7 +279,7 @@ func (ad *AdminDashboard) getCircuitBreakerStatus(c *fiber.Ctx) error {
 
 // getCacheStats returns cache statistics
 // In cluster mode, returns aggregated cache stats from all instances
-func (ad *AdminDashboard) getCacheStats(c *fiber.Ctx) error {
+func (ad *AdminDashboard) getCacheStats(c fiber.Ctx) error {
 	// Check if cluster mode is enabled - if so, return aggregated cache stats
 	if aggregator := GetMetricsAggregator(); aggregator != nil {
 		metrics, err := aggregator.GetAggregatedMetrics()
@@ -383,7 +383,7 @@ func (ad *AdminDashboard) getCacheStats(c *fiber.Ctx) error {
 }
 
 // getConnectionStats returns connection pool statistics
-func (ad *AdminDashboard) getConnectionStats(c *fiber.Ctx) error {
+func (ad *AdminDashboard) getConnectionStats(c fiber.Ctx) error {
 	poolMgr := GetConnectionPoolManager()
 
 	stats := map[string]any{
@@ -399,7 +399,7 @@ func (ad *AdminDashboard) getConnectionStats(c *fiber.Ctx) error {
 }
 
 // getRetryBudgetStats returns retry budget statistics
-func (ad *AdminDashboard) getRetryBudgetStats(c *fiber.Ctx) error {
+func (ad *AdminDashboard) getRetryBudgetStats(c fiber.Ctx) error {
 	rb := GetRetryBudget()
 
 	if rb == nil {
@@ -412,7 +412,7 @@ func (ad *AdminDashboard) getRetryBudgetStats(c *fiber.Ctx) error {
 }
 
 // getCoalescingStats returns request coalescing statistics
-func (ad *AdminDashboard) getCoalescingStats(c *fiber.Ctx) error {
+func (ad *AdminDashboard) getCoalescingStats(c fiber.Ctx) error {
 	rc := GetRequestCoalescer()
 
 	if rc == nil {
@@ -425,7 +425,7 @@ func (ad *AdminDashboard) getCoalescingStats(c *fiber.Ctx) error {
 }
 
 // getWebSocketStats returns WebSocket statistics
-func (ad *AdminDashboard) getWebSocketStats(c *fiber.Ctx) error {
+func (ad *AdminDashboard) getWebSocketStats(c fiber.Ctx) error {
 	wsp := GetWebSocketProxy()
 
 	if wsp == nil {
@@ -438,7 +438,7 @@ func (ad *AdminDashboard) getWebSocketStats(c *fiber.Ctx) error {
 }
 
 // clearCache clears the cache
-func (ad *AdminDashboard) clearCache(c *fiber.Ctx) error {
+func (ad *AdminDashboard) clearCache(c fiber.Ctx) error {
 	libpack_cache.CacheClear()
 	return c.JSON(map[string]any{
 		"success": true,
@@ -447,7 +447,7 @@ func (ad *AdminDashboard) clearCache(c *fiber.Ctx) error {
 }
 
 // resetRetryBudget resets retry budget statistics
-func (ad *AdminDashboard) resetRetryBudget(c *fiber.Ctx) error {
+func (ad *AdminDashboard) resetRetryBudget(c fiber.Ctx) error {
 	rb := GetRetryBudget()
 	if rb != nil {
 		rb.Reset()
@@ -460,7 +460,7 @@ func (ad *AdminDashboard) resetRetryBudget(c *fiber.Ctx) error {
 }
 
 // resetCoalescing resets coalescing statistics
-func (ad *AdminDashboard) resetCoalescing(c *fiber.Ctx) error {
+func (ad *AdminDashboard) resetCoalescing(c fiber.Ctx) error {
 	rc := GetRequestCoalescer()
 	if rc != nil {
 		rc.Reset()
@@ -473,7 +473,7 @@ func (ad *AdminDashboard) resetCoalescing(c *fiber.Ctx) error {
 }
 
 // getClusterStats returns aggregated statistics from all proxy instances
-func (ad *AdminDashboard) getClusterStats(c *fiber.Ctx) error {
+func (ad *AdminDashboard) getClusterStats(c fiber.Ctx) error {
 	aggregator := GetMetricsAggregator()
 	if aggregator == nil {
 		return c.Status(503).JSON(map[string]any{
@@ -510,7 +510,7 @@ func (ad *AdminDashboard) getClusterStats(c *fiber.Ctx) error {
 }
 
 // getClusterInstances returns detailed metrics for each proxy instance
-func (ad *AdminDashboard) getClusterInstances(c *fiber.Ctx) error {
+func (ad *AdminDashboard) getClusterInstances(c fiber.Ctx) error {
 	aggregator := GetMetricsAggregator()
 	if aggregator == nil {
 		return c.Status(503).JSON(map[string]any{
@@ -544,7 +544,7 @@ func (ad *AdminDashboard) getClusterInstances(c *fiber.Ctx) error {
 }
 
 // getClusterDebug returns debug information about cluster mode
-func (ad *AdminDashboard) getClusterDebug(c *fiber.Ctx) error {
+func (ad *AdminDashboard) getClusterDebug(c fiber.Ctx) error {
 	aggregator := GetMetricsAggregator()
 
 	debug := map[string]any{
@@ -603,7 +603,7 @@ func getMapKeys(m map[string]any) []string {
 }
 
 // forcePublish forces an immediate metrics publish for testing
-func (ad *AdminDashboard) forcePublish(c *fiber.Ctx) error {
+func (ad *AdminDashboard) forcePublish(c fiber.Ctx) error {
 	aggregator := GetMetricsAggregator()
 	if aggregator == nil {
 		return c.Status(503).JSON(map[string]any{
@@ -612,7 +612,12 @@ func (ad *AdminDashboard) forcePublish(c *fiber.Ctx) error {
 		})
 	}
 
-	// Trigger publish in goroutine to avoid blocking
+	// Trigger publish in a detached goroutine: this is a fire-and-forget
+	// background publish that intentionally outlives the request. publishMetrics
+	// creates its own context.WithTimeout(context.Background(), ...); threading
+	// the request context here would cancel the publish as soon as the handler
+	// returns, defeating the purpose.
+	//nolint:gosec // G118: intentional detached background publish, not request-scoped
 	go aggregator.publishMetrics()
 
 	return c.JSON(map[string]any{

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
-	fiber "github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
+	fiber "github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/google/uuid"
 
 	graphql "github.com/lukaszraczylo/go-simple-graphql"
@@ -42,19 +42,18 @@ func StartHTTPProxy() error {
 	})
 
 	serverConfig := fiber.Config{
-		DisableStartupMessage: true,
-		AppName:               fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
-		IdleTimeout:           time.Duration(cfg.Client.ClientTimeout) * time.Second,
-		ReadTimeout:           time.Duration(cfg.Client.ClientTimeout) * time.Second,
-		WriteTimeout:          time.Duration(cfg.Client.ClientTimeout) * time.Second,
-		JSONEncoder:           json.Marshal,
-		JSONDecoder:           json.Unmarshal,
+		AppName:      fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
+		IdleTimeout:  time.Duration(cfg.Client.ClientTimeout) * time.Second,
+		ReadTimeout:  time.Duration(cfg.Client.ClientTimeout) * time.Second,
+		WriteTimeout: time.Duration(cfg.Client.ClientTimeout) * time.Second,
+		JSONEncoder:  json.Marshal,
+		JSONDecoder:  json.Unmarshal,
 	}
 
 	server := fiber.New(serverConfig)
 
 	server.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
+		AllowOrigins: []string{"*"},
 	}))
 
 	server.Use(AddRequestUUID)
@@ -71,7 +70,7 @@ func StartHTTPProxy() error {
 
 	// WebSocket support - must be registered before catch-all routes
 	if cfg.WebSocket.Enable {
-		server.Get("/v1/graphql", func(c *fiber.Ctx) error {
+		server.Get("/v1/graphql", func(c fiber.Ctx) error {
 			if IsWebSocketRequest(c) {
 				wsp := GetWebSocketProxy()
 				if wsp != nil {
@@ -90,7 +89,7 @@ func StartHTTPProxy() error {
 		Pairs:   map[string]any{"port": cfg.Server.PortGraphQL},
 	})
 
-	if err := server.Listen(fmt.Sprintf(":%d", cfg.Server.PortGraphQL)); err != nil {
+	if err := server.Listen(fmt.Sprintf(":%d", cfg.Server.PortGraphQL), fiber.ListenConfig{DisableStartupMessage: true}); err != nil {
 		return fmt.Errorf("failed to start HTTP proxy server on port %d: %w",
 			cfg.Server.PortGraphQL, err)
 	}
@@ -99,18 +98,18 @@ func StartHTTPProxy() error {
 }
 
 // proxyTheRequestToDefault proxies the request to the default GraphQL endpoint.
-func proxyTheRequestToDefault(c *fiber.Ctx) error {
+func proxyTheRequestToDefault(c fiber.Ctx) error {
 	return proxyTheRequest(c, cfg.Server.HostGraphQL)
 }
 
 // AddRequestUUID adds a unique request UUID to the context.
-func AddRequestUUID(c *fiber.Ctx) error {
+func AddRequestUUID(c fiber.Ctx) error {
 	c.Locals("request_uuid", uuid.NewString())
 	return c.Next()
 }
 
 // checkAllowedURLs checks if the requested URL is allowed.
-func checkAllowedURLs(c *fiber.Ctx) bool {
+func checkAllowedURLs(c fiber.Ctx) bool {
 	if len(allowedUrls) == 0 {
 		return true
 	}
@@ -120,7 +119,7 @@ func checkAllowedURLs(c *fiber.Ctx) bool {
 }
 
 // healthCheck performs a comprehensive health check on the GraphQL server and its dependencies.
-func healthCheck(c *fiber.Ctx) error {
+func healthCheck(c fiber.Ctx) error {
 	// Prepare the response structure
 	response := HealthCheckResponse{
 		Status:       "healthy",
@@ -254,7 +253,7 @@ func healthCheck(c *fiber.Ctx) error {
 }
 
 // processGraphQLRequest handles the incoming GraphQL requests.
-func processGraphQLRequest(c *fiber.Ctx) error {
+func processGraphQLRequest(c fiber.Ctx) error {
 	startTime := time.Now()
 
 	// Extract user information and check permissions
@@ -305,7 +304,7 @@ func processGraphQLRequest(c *fiber.Ctx) error {
 }
 
 // extractUserInfo extracts user ID and role from request headers
-func extractUserInfo(c *fiber.Ctx) (string, string) {
+func extractUserInfo(c fiber.Ctx) (string, string) {
 	extractedUserID := "-"
 	extractedRoleName := "-"
 
@@ -326,7 +325,7 @@ func extractUserInfo(c *fiber.Ctx) (string, string) {
 }
 
 // handleCaching manages the caching logic for GraphQL requests
-func handleCaching(c *fiber.Ctx, parsedResult *parseGraphQLQueryResult, userID, userRole string) (bool, error) {
+func handleCaching(c fiber.Ctx, parsedResult *parseGraphQLQueryResult, userID, userRole string) (bool, error) {
 	// Calculate query hash for cache key - now includes user context for security
 	calculatedQueryHash := libpack_cache.CalculateHash(c, userID, userRole)
 
@@ -380,7 +379,7 @@ func handleCaching(c *fiber.Ctx, parsedResult *parseGraphQLQueryResult, userID, 
 }
 
 // proxyAndCacheTheRequest proxies and caches the request if needed.
-func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int, currentEndpoint string) error {
+func proxyAndCacheTheRequest(c fiber.Ctx, queryCacheHash string, cacheTime int, currentEndpoint string) error {
 	if err := proxyTheRequest(c, currentEndpoint); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't proxy the request",
@@ -396,7 +395,7 @@ func proxyAndCacheTheRequest(c *fiber.Ctx, queryCacheHash string, cacheTime int,
 }
 
 // logAndMonitorRequest logs and monitors the request processing.
-func logAndMonitorRequest(c *fiber.Ctx, userID, opType, opName string, wasCached bool, duration time.Duration, startTime time.Time) {
+func logAndMonitorRequest(c fiber.Ctx, userID, opType, opName string, wasCached bool, duration time.Duration, startTime time.Time) {
 	// Low-cardinality labels only: user_id and op_name dropped to prevent Prometheus explosion.
 	labels := map[string]string{
 		"op_type": opType,

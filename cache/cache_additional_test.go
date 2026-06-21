@@ -5,7 +5,7 @@ import (
 	"compress/gzip"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	libpack_cache_memory "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/memory"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	"github.com/valyala/fasthttp"

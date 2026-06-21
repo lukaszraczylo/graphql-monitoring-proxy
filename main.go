@@ -20,7 +20,7 @@ import (
 	// 127.0.0.1 only and gated by PPROF_PORT — never expose publicly.
 	_ "net/http/pprof" //nolint:gosec // G108: handlers gated by PPROF_PORT, bound to 127.0.0.1 only
 
-	"github.com/gofiber/fiber/v2/middleware/proxy"
+	"github.com/gofiber/fiber/v3/middleware/proxy"
 	"github.com/gookit/goutil/envutil"
 	graphql "github.com/lukaszraczylo/go-simple-graphql"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"

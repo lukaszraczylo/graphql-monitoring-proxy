@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/valyala/fasthttp"
 )
 
@@ -200,7 +200,7 @@ func (suite *Tests) TestErrorPropagation() {
 // TestMiddlewareErrorPropagation tests error propagation through the middleware chain
 func (suite *Tests) TestMiddlewareErrorPropagation() {
 	// Setup a basic middleware chain that mimics the production setup
-	testMiddleware := func(c *fiber.Ctx) error {
+	testMiddleware := func(c fiber.Ctx) error {
 		// Access request path to check proper error propagation
 		path := c.Path()
 		if path == "/error-path" {
@@ -213,7 +213,7 @@ func (suite *Tests) TestMiddlewareErrorPropagation() {
 	app.Use(testMiddleware)
 
 	// Setup the handler that would receive the request after middleware
-	app.Post("/graphql", func(c *fiber.Ctx) error {
+	app.Post("/graphql", func(c fiber.Ctx) error {
 		// This should not be called if middleware returns error
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{"data": "success"})
 	})

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	fiber "github.com/gofiber/fiber/v2"
+	fiber "github.com/gofiber/fiber/v3"
 	"github.com/graphql-go/graphql/language/ast"
 	"github.com/graphql-go/graphql/language/parser"
 	"github.com/graphql-go/graphql/language/source"
@@ -20,7 +20,7 @@ import (
 //   - Automatic detection of mutations routed to wrong endpoints
 //
 // To enable: Set LOG_LEVEL=DEBUG and restart the proxy
-func debugParseGraphQLQuery(c *fiber.Ctx, query string) {
+func debugParseGraphQLQuery(c fiber.Ctx, query string) {
 	if cfg == nil || cfg.Logger == nil {
 		return
 	}

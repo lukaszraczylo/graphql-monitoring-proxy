@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	"github.com/valyala/fasthttp"
 )
@@ -441,8 +441,8 @@ func TestCoverageMicro_IsWebSocketRequest(t *testing.T) {
 		},
 	}
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-	app.Get("/ws-test", func(c *fiber.Ctx) error {
+	app := fiber.New()
+	app.Get("/ws-test", func(c fiber.Ctx) error {
 		result := IsWebSocketRequest(c)
 		if result {
 			return c.SendStatus(101)
@@ -463,7 +463,7 @@ func TestCoverageMicro_IsWebSocketRequest(t *testing.T) {
 				req.Header.Set("Connection", "Upgrade")
 			}
 
-			resp, err := app.Test(req, -1)
+			resp, err := app.Test(req, fiber.TestConfig{Timeout: 0})
 			if err != nil {
 				t.Fatalf("app.Test error: %v", err)
 			}
@@ -541,15 +541,15 @@ func TestCoverageMicro_SetupTracing_Disabled(t *testing.T) {
 			cfgMutex.Unlock()
 		}()
 
-		app := fiber.New(fiber.Config{DisableStartupMessage: true})
+		app := fiber.New()
 		var capturedCtx context.Context
-		app.Get("/trace-test", func(c *fiber.Ctx) error {
+		app.Get("/trace-test", func(c fiber.Ctx) error {
 			capturedCtx = setupTracing(c)
 			return c.SendStatus(200)
 		})
 
 		req := httptest.NewRequest("GET", "/trace-test", nil)
-		resp, err := app.Test(req, -1)
+		resp, err := app.Test(req, fiber.TestConfig{Timeout: 0})
 		if err != nil {
 			t.Fatalf("app.Test error: %v", err)
 		}

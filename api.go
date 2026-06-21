@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
-	fiber "github.com/gofiber/fiber/v2"
+	fiber "github.com/gofiber/fiber/v3"
 	"github.com/gofrs/flock"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
@@ -20,7 +20,7 @@ import (
 var bannedUsersIDs sync.Map // key: userID string, value: reason string
 
 // authMiddleware provides API key authentication for admin endpoints
-func authMiddleware(c *fiber.Ctx) error {
+func authMiddleware(c fiber.Ctx) error {
 	apiKey := c.Get("X-API-Key")
 
 	// Get expected key from config (try GMP_ prefix first, then fallback)
@@ -76,8 +76,7 @@ func enableApi(ctx context.Context) error {
 	}
 
 	apiserver := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-		AppName:               fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
+		AppName: fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
 	})
 
 	api := apiserver.Group("/api")
@@ -97,7 +96,7 @@ func enableApi(ctx context.Context) error {
 	// Start server in a goroutine and handle shutdown
 	errCh := make(chan error, 1)
 	go func() {
-		if err := apiserver.Listen(fmt.Sprintf(":%d", cfg.Server.ApiPort)); err != nil {
+		if err := apiserver.Listen(fmt.Sprintf(":%d", cfg.Server.ApiPort), fiber.ListenConfig{DisableStartupMessage: true}); err != nil {
 			errCh <- err
 		}
 	}()
@@ -135,7 +134,7 @@ func periodicallyReloadBannedUsers(ctx context.Context) {
 	}
 }
 
-func checkIfUserIsBanned(c *fiber.Ctx, userID string) bool {
+func checkIfUserIsBanned(c fiber.Ctx, userID string) bool {
 	_, found := bannedUsersIDs.Load(userID)
 
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
@@ -158,7 +157,7 @@ func checkIfUserIsBanned(c *fiber.Ctx, userID string) bool {
 	return found
 }
 
-func apiClearCache(c *fiber.Ctx) error {
+func apiClearCache(c fiber.Ctx) error {
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Clearing cache via API",
 	})
@@ -169,12 +168,12 @@ func apiClearCache(c *fiber.Ctx) error {
 	return c.SendString("OK: cache cleared")
 }
 
-func apiCacheStats(c *fiber.Ctx) error {
+func apiCacheStats(c fiber.Ctx) error {
 	return c.JSON(libpack_cache.GetCacheStats())
 }
 
 // apiCircuitBreakerHealth returns the health status of the circuit breaker
-func apiCircuitBreakerHealth(c *fiber.Ctx) error {
+func apiCircuitBreakerHealth(c fiber.Ctx) error {
 	if cb == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 			"status":  "disabled",
@@ -232,9 +231,9 @@ type apiBanUserRequest struct {
 	Reason string `json:"reason"`
 }
 
-func apiBanUser(c *fiber.Ctx) error {
+func apiBanUser(c fiber.Ctx) error {
 	var req apiBanUserRequest
-	if err := c.BodyParser(&req); err != nil {
+	if err := c.Bind().Body(&req); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't parse the ban user request",
 			Pairs:   map[string]any{"error": err.Error()},
@@ -260,9 +259,9 @@ func apiBanUser(c *fiber.Ctx) error {
 	return c.SendString("OK: user banned")
 }
 
-func apiUnbanUser(c *fiber.Ctx) error {
+func apiUnbanUser(c fiber.Ctx) error {
 	var req apiBanUserRequest
-	if err := c.BodyParser(&req); err != nil {
+	if err := c.Bind().Body(&req); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
 			Message: "Can't parse the unban user request",
 			Pairs:   map[string]any{"error": err.Error()},
@@ -463,7 +462,7 @@ func lockFileRead(fileLock *flock.Flock) error {
 }
 
 // apiBackendHealth returns the health status of the GraphQL backend
-func apiBackendHealth(c *fiber.Ctx) error {
+func apiBackendHealth(c fiber.Ctx) error {
 	healthMgr := GetBackendHealthManager()
 	if healthMgr == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
@@ -499,7 +498,7 @@ func apiBackendHealth(c *fiber.Ctx) error {
 }
 
 // apiConnectionPoolHealth returns the health status of the connection pool
-func apiConnectionPoolHealth(c *fiber.Ctx) error {
+func apiConnectionPoolHealth(c fiber.Ctx) error {
 	poolMgr := GetConnectionPoolManager()
 	if poolMgr == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{

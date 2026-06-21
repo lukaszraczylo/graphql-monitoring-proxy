@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	"github.com/valyala/fasthttp"
 )
@@ -20,11 +20,11 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestAddRequestUUID_SetsLocalsAndCallsNext(t *testing.T) {
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	app.Use(AddRequestUUID)
 
 	var captured string
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		if v, ok := c.Locals("request_uuid").(string); ok {
 			captured = v
 		}
@@ -32,7 +32,7 @@ func TestAddRequestUUID_SetsLocalsAndCallsNext(t *testing.T) {
 	})
 
 	req := httptest.NewRequest("GET", "/", nil)
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req, fiber.TestConfig{Timeout: 0})
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -51,11 +51,11 @@ func TestAddRequestUUID_SetsLocalsAndCallsNext(t *testing.T) {
 }
 
 func TestAddRequestUUID_UniquePerRequest(t *testing.T) {
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	app.Use(AddRequestUUID)
 
 	seen := make([]string, 0, 5)
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		if v, ok := c.Locals("request_uuid").(string); ok {
 			seen = append(seen, v)
 		}
@@ -64,7 +64,7 @@ func TestAddRequestUUID_UniquePerRequest(t *testing.T) {
 
 	for i := range 5 {
 		req := httptest.NewRequest("GET", "/", nil)
-		resp, err := app.Test(req, -1)
+		resp, err := app.Test(req, fiber.TestConfig{Timeout: 0})
 		if err != nil {
 			t.Fatalf("request %d: %v", i, err)
 		}
@@ -89,12 +89,12 @@ func TestHealthCheck_Returns200WithJSON(t *testing.T) {
 	parseConfig()
 	_ = StartMonitoringServer()
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	app.Get("/health", healthCheck)
 
 	// Pass check_graphql=false to avoid real network call
 	req := httptest.NewRequest("GET", "/health?check_graphql=false&check_redis=false", nil)
-	resp, err := app.Test(req, 10000)
+	resp, err := app.Test(req, fiber.TestConfig{Timeout: 10000 * time.Millisecond})
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -135,11 +135,11 @@ func TestHealthCheck_UnhealthyWhenGraphQLDown(t *testing.T) {
 		cfgMutex.Unlock()
 	}()
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	app.Get("/health", healthCheck)
 
 	req := httptest.NewRequest("GET", "/health?check_redis=false", nil)
-	resp, err := app.Test(req, 15000)
+	resp, err := app.Test(req, fiber.TestConfig{Timeout: 15000 * time.Millisecond})
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -190,14 +190,14 @@ func TestProcessGraphQLRequest_ValidBodyProxiesToBackend(t *testing.T) {
 		cfgMutex.Unlock()
 	}()
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	app.Post("/*", processGraphQLRequest)
 
 	body := `{"query":"query { __typename }"}`
 	req := httptest.NewRequest("POST", "/v1/graphql", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := app.Test(req, 10000)
+	resp, err := app.Test(req, fiber.TestConfig{Timeout: 10000 * time.Millisecond})
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -236,7 +236,7 @@ func TestProcessGraphQLRequest_MalformedBodyStillHandled(t *testing.T) {
 		cfgMutex.Unlock()
 	}()
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	app.Post("/*", processGraphQLRequest)
 
 	// Not valid JSON — proxy should still forward or return gracefully
@@ -244,7 +244,7 @@ func TestProcessGraphQLRequest_MalformedBodyStillHandled(t *testing.T) {
 	req := httptest.NewRequest("POST", "/v1/graphql", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := app.Test(req, 10000)
+	resp, err := app.Test(req, fiber.TestConfig{Timeout: 10000 * time.Millisecond})
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -302,7 +302,7 @@ func TestHandleCaching_CacheHitReturnsStoredResponse(t *testing.T) {
 		cfgMutex.Unlock()
 	}()
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	app.Post("/*", processGraphQLRequest)
 
 	queryBody := `{"query":"query { users { id } }"}`
@@ -310,7 +310,7 @@ func TestHandleCaching_CacheHitReturnsStoredResponse(t *testing.T) {
 	// First request — cache miss, hits backend
 	req1 := httptest.NewRequest("POST", "/v1/graphql", strings.NewReader(queryBody))
 	req1.Header.Set("Content-Type", "application/json")
-	resp1, err := app.Test(req1, 10000)
+	resp1, err := app.Test(req1, fiber.TestConfig{Timeout: 10000 * time.Millisecond})
 	if err != nil {
 		t.Fatalf("first request: %v", err)
 	}
@@ -323,7 +323,7 @@ func TestHandleCaching_CacheHitReturnsStoredResponse(t *testing.T) {
 	// Second identical request — should hit cache
 	req2 := httptest.NewRequest("POST", "/v1/graphql", strings.NewReader(queryBody))
 	req2.Header.Set("Content-Type", "application/json")
-	resp2, err := app.Test(req2, 10000)
+	resp2, err := app.Test(req2, fiber.TestConfig{Timeout: 10000 * time.Millisecond})
 	if err != nil {
 		t.Fatalf("second request: %v", err)
 	}
@@ -380,7 +380,7 @@ func TestHandleCaching_CacheMissProxiesRequest(t *testing.T) {
 		cfgMutex.Unlock()
 	}()
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	app.Post("/*", processGraphQLRequest)
 
 	// Unique query so no prior cache entry
@@ -388,7 +388,7 @@ func TestHandleCaching_CacheMissProxiesRequest(t *testing.T) {
 	req := httptest.NewRequest("POST", "/v1/graphql", strings.NewReader(queryBody))
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := app.Test(req, 10000)
+	resp, err := app.Test(req, fiber.TestConfig{Timeout: 10000 * time.Millisecond})
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -430,10 +430,10 @@ func TestHandleCaching_DirectCacheHitBranch(t *testing.T) {
 		cfgMutex.Unlock()
 	}()
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 
 	var wasCachedResult bool
-	app.Post("/test", func(c *fiber.Ctx) error {
+	app.Post("/test", func(c fiber.Ctx) error {
 		parsedResult := &parseGraphQLQueryResult{
 			cacheTime:      60,
 			cacheRequest:   true,
@@ -507,7 +507,7 @@ func TestHandleCaching_NoCacheEnabled_ProxiesDirect(t *testing.T) {
 		cfgMutex.Unlock()
 	}()
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 
 	reqCtx := &fasthttp.RequestCtx{}
 	reqCtx.Request.SetRequestURI("/v1/graphql")
