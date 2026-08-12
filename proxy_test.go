@@ -14,6 +14,23 @@ func (suite *Tests) Test_proxyTheRequest() {
 		"Content-Type":    "application/json",
 	}
 
+	// Use local servers so the test is deterministic and has no network dependency.
+	// okServer emulates a healthy GraphQL endpoint; errServer emulates a wrong
+	// endpoint (returns a non-200, as the historical google.com host did).
+	okServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"ok":true}}`))
+	}))
+	defer okServer.Close()
+
+	errServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"errors":[{"message":"not found"}]}`))
+	}))
+	defer errServer.Close()
+
 	tests := []struct {
 		headers      map[string]string
 		name         string
@@ -27,90 +44,90 @@ func (suite *Tests) Test_proxyTheRequest() {
 		{
 			name:         "test_empty",
 			body:         `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
-			host:         "https://telegram-bot.app/",
+			host:         okServer.URL,
 			path:         "/v1/graphql",
 			headers:      supplied_headers,
 			wantErr:      false,
-			wantEndpoint: "https://telegram-bot.app/",
+			wantEndpoint: okServer.URL,
 		},
 		{
 			name:         "test_wrong_url",
 			body:         `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
-			host:         "https://google.com/",
+			host:         errServer.URL,
 			path:         "/v1/wrongURL",
 			headers:      supplied_headers,
 			wantErr:      true,
-			wantEndpoint: "https://google.com/",
+			wantEndpoint: errServer.URL,
 		},
 		{
 			name:         "Test read only mode",
 			body:         `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
-			host:         "https://google.com/",
-			hostRO:       "https://telegram-bot.app/",
+			host:         errServer.URL,
+			hostRO:       okServer.URL,
 			path:         "/v1/graphql",
 			headers:      supplied_headers,
 			wantErr:      false,
-			wantEndpoint: "https://telegram-bot.app/",
+			wantEndpoint: okServer.URL,
 		},
 		{
 			name:   "Test read only mode wrong host",
 			body:   `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
-			host:   "https://telegram-bot.app/",
-			hostRO: "https://google.com/",
+			host:   okServer.URL,
+			hostRO: errServer.URL,
 
 			path:         "/v1/graphql",
 			headers:      supplied_headers,
 			wantErr:      true,
-			wantEndpoint: "https://google.com/",
+			wantEndpoint: errServer.URL,
 		},
 		{
 			name:         "Test mutation with endpoint flip",
 			body:         `{"query":"mutation {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
-			host:         "https://telegram-bot.app/",
-			hostRO:       "https://google.com/",
+			host:         okServer.URL,
+			hostRO:       errServer.URL,
 			path:         "/v1/graphql",
 			headers:      supplied_headers,
 			wantErr:      false,
-			wantEndpoint: "https://telegram-bot.app/",
+			wantEndpoint: okServer.URL,
 		},
 		{
 			name:         "Test query string preservation",
 			body:         `{"query":"query {\n            __type(name: \"Query\") {\n              name\n            }\n          }"}`,
-			host:         "https://telegram-bot.app/",
+			host:         okServer.URL,
 			path:         "/v1/graphql?var=value&foo=bar",
 			headers:      supplied_headers,
 			wantErr:      false,
-			wantEndpoint: "https://telegram-bot.app/",
+			wantEndpoint: okServer.URL,
 		},
 		{
 			name:         "Test mutation with multiple operations (bug fix regression test)",
 			body:         `{"query":"mutation getOrCreateUser { insert_tg_users_one(object: {id: 123}) { id } } query otherQuery { users { id } }"}`,
-			host:         "https://telegram-bot.app/",
-			hostRO:       "https://google.com/",
+			host:         okServer.URL,
+			hostRO:       errServer.URL,
 			path:         "/v1/graphql",
 			headers:      supplied_headers,
 			wantErr:      false,
-			wantEndpoint: "https://telegram-bot.app/",
+			wantEndpoint: okServer.URL,
 		},
 		{
 			name:         "Test mutation followed by fragment (bug fix regression test)",
 			body:         `{"query":"mutation insertUser { insert_users_one(object: {name: \"test\"}) { ...userFields } } fragment userFields on users { id name }"}`,
-			host:         "https://telegram-bot.app/",
-			hostRO:       "https://google.com/",
+			host:         okServer.URL,
+			hostRO:       errServer.URL,
 			path:         "/v1/graphql",
 			headers:      supplied_headers,
 			wantErr:      false,
-			wantEndpoint: "https://telegram-bot.app/",
+			wantEndpoint: okServer.URL,
 		},
 		{
 			name:         "Test complex mutation document (main-bot style)",
 			body:         `{"query":"mutation getOrCreateUser($user_id: bigint!, $group_id: bigint!) { insert_tg_users_one(object: {id: $user_id}, on_conflict: {constraint: tg_users_pkey, update_columns: last_seen}) { id } insert_tg_groups_one(object: {id: $group_id}, on_conflict: {constraint: tg_groups_pkey, update_columns: last_seen}) { id } }"}`,
-			host:         "https://telegram-bot.app/",
-			hostRO:       "https://google.com/",
+			host:         okServer.URL,
+			hostRO:       errServer.URL,
 			path:         "/v1/graphql",
 			headers:      supplied_headers,
 			wantErr:      false,
-			wantEndpoint: "https://telegram-bot.app/",
+			wantEndpoint: okServer.URL,
 		},
 	}
 
@@ -174,7 +191,7 @@ func (suite *Tests) Test_proxyTheRequestWithPayloads() {
 		// {
 		// 	name:    "Test with large payload",
 		// 	payload: strings.Repeat("a", 10*1024*1024), // 10MB payload
-		// 	url:     "https://google.com/",
+		// 	url:     errServer.URL,
 		// 	wantErr: false,
 		// },
 	}
