@@ -510,10 +510,17 @@ func executeProxyAttempt(c fiber.Ctx, proxyURL string) error {
 			return retry.Unrecoverable(proxyErr)
 		}
 
-		// Check if this is a retryable HTTP error (e.g., 503)
-		// These indicate the server responded but with an error status
+		// The server responded with an HTTP status code. Decide retry policy
+		// from the status: 5xx and 429 are retryable; other 4xx client
+		// errors fail fast instead of burning backoff retries.
+		// doProxyRequestWithTimeout already copied the status into c.Response().
 		if strings.Contains(proxyErr.Error(), "non-200 response") {
-			// Track as a failure for retryable HTTP errors
+			statusCode := c.Response().StatusCode()
+			shouldRetry, _ := isRetryableStatusCode(statusCode)
+			if !shouldRetry {
+				return retry.Unrecoverable(proxyErr)
+			}
+			// Track as a failure for retryable HTTP errors (5xx, 429)
 			if poolMgr != nil {
 				poolMgr.RecordConnectionFailure()
 			}
@@ -600,6 +607,12 @@ func performProxyRequestWithEnhancedRetries(c fiber.Ctx, proxyURL string, backen
 		}),
 		retry.LastErrorOnly(true),
 		retry.RetryIf(func(err error) bool {
+			// Unrecoverable errors (non-retryable 4xx, timeouts) must not be
+			// retried. retry-go's finite-attempt loop only consults RetryIf,
+			// so without this the default IsRecoverable gate is lost.
+			if !retry.IsRecoverable(err) {
+				return false
+			}
 			// Don't retry if context is cancelled or context is nil
 			if c == nil {
 				return false

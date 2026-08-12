@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -285,4 +286,61 @@ func (suite *Tests) Test_proxyTheRequestWithTimeouts() {
 			}
 		})
 	}
+}
+
+// Test_proxyRetryPolicyByStatusCode locks in the HTTP-status retry policy:
+// 4xx client errors must fail fast (no backoff retries), 5xx must be retried.
+func (suite *Tests) Test_proxyRetryPolicyByStatusCode() {
+	originalCoalescing := cfg.RequestCoalescing.Enable
+	originalCB := cfg.CircuitBreaker.Enable
+	cfg.RequestCoalescing.Enable = false
+	cfg.CircuitBreaker.Enable = false
+	defer func() {
+		cfg.RequestCoalescing.Enable = originalCoalescing
+		cfg.CircuitBreaker.Enable = originalCB
+	}()
+
+	doRequest := func(server *httptest.Server) error {
+		cfg.Server.HostGraphQL = server.URL
+		cfg.Client.ClientTimeout = 5
+		cfg.Client.FastProxyClient = createFasthttpClient(cfg)
+
+		reqCtx := &fasthttp.RequestCtx{}
+		reqCtx.Request.SetRequestURI("/graphql")
+		reqCtx.Request.Header.SetMethod("POST")
+		reqCtx.Request.Header.Set("Content-Type", "application/json")
+		reqCtx.Request.SetBody([]byte(`{"query":"query { test }"}`))
+
+		ctx := suite.app.AcquireCtx(reqCtx)
+		err := proxyTheRequest(ctx, cfg.Server.HostGraphQL)
+		suite.app.ReleaseCtx(ctx)
+		return err
+	}
+
+	suite.Run("client_error_4xx_not_retried", func() {
+		var hits atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"errors":[{"message":"bad request"}]}`))
+		}))
+		defer server.Close()
+
+		err := doRequest(server)
+		suite.Error(err, "4xx should surface an error")
+		suite.Equal(int32(1), hits.Load(), "4xx must be served without retries")
+	})
+
+	suite.Run("server_error_5xx_retried", func() {
+		var hits atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"errors":[{"message":"error"}]}`))
+		}))
+		defer server.Close()
+
+		_ = doRequest(server)
+		suite.Greater(hits.Load(), int32(1), "5xx should trigger retries")
+	})
 }
