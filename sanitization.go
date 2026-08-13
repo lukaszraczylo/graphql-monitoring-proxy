@@ -120,24 +120,78 @@ func sanitizeForLogging(body []byte, contentType string) string {
 }
 
 // sanitizeTruncatedBody redacts sensitive fields within the first
-// MaxLogBodySize bytes of a large body, then truncates on a UTF-8 rune
-// boundary, so a truncated log line is both masked and decodable.
+// MaxLogBodySize bytes of a large body, strips any dangling quoted value
+// left at the tail (a secret whose closing quote fell past the cut, so the
+// "field":"value" redaction regexes above could not match it), then
+// truncates on a UTF-8 rune boundary, so a truncated log line is both
+// masked and decodable.
+//
+// The rune-boundary trim runs on the raw body[:MaxLogBodySize] cut BEFORE
+// redaction, not only in the final truncateUTF8 safety-net call. Redaction
+// usually shrinks the prefix (a long value collapses to "[REDACTED]"), so on
+// the common path len(prefix) is already <= MaxLogBodySize by the time
+// truncateUTF8 runs at the end - its len-guard then makes it a no-op and it
+// can no longer back off a multi-byte rune split by the byte-oriented cut.
+// Trimming the raw cut up front is what actually guarantees the result ends
+// on a rune boundary; the final truncateUTF8 call stays as a safety net for
+// the rarer case where redaction grows the prefix back past MaxLogBodySize
+// (e.g. the XML-match branch in redactPatternInString appends a trailing
+// "field=[REDACTED]" marker).
 func sanitizeTruncatedBody(body []byte) string {
-	prefix := string(body[:MaxLogBodySize])
+	prefix := trimPartialTrailingRune(string(body[:MaxLogBodySize]))
 	for _, field := range sensitiveFieldPatterns {
 		prefix = redactPatternInString(prefix, field)
 	}
+	prefix = stripTrailingUnterminatedQuote(prefix)
 	return truncateUTF8(prefix, MaxLogBodySize) + TruncatedSuffix
 }
 
+// stripTrailingUnterminatedQuote drops a dangling, unterminated quoted value
+// left at the end of a byte-truncated prefix. redactPatternInString's
+// "field":"value" regexes require a closing quote to match, so a secret
+// whose closing quote falls past the truncation point is never redacted and
+// its leading bytes would otherwise leak. An odd count of a quote character
+// means the tail sits inside an unterminated span for that quote style, so
+// the dangling opening quote and everything after it are dropped.
+func stripTrailingUnterminatedQuote(s string) string {
+	if strings.Count(s, `"`)%2 == 1 {
+		if i := strings.LastIndexByte(s, '"'); i >= 0 {
+			s = s[:i]
+		}
+	}
+	if strings.Count(s, `'`)%2 == 1 {
+		if i := strings.LastIndexByte(s, '\''); i >= 0 {
+			s = s[:i]
+		}
+	}
+	return s
+}
+
 // truncateUTF8 truncates s to at most maxBytes on a UTF-8 rune boundary.
+// It only backs off a partial multi-byte rune split at the cut point (at
+// most utf8.UTFMax-1 bytes). A string that is already invalid UTF-8 for
+// reasons other than a split trailing rune is returned cut at maxBytes as
+// is, not stripped down to empty.
 func truncateUTF8(s string, maxBytes int) string {
 	if len(s) <= maxBytes {
 		return s
 	}
-	s = s[:maxBytes]
-	for len(s) > 0 && !utf8.ValidString(s) {
-		// Back off one byte at a time up to the lead of a partial rune.
+	return trimPartialTrailingRune(s[:maxBytes])
+}
+
+// trimPartialTrailingRune backs off at most utf8.UTFMax-1 bytes from the end
+// of s to remove a multi-byte UTF-8 rune split by a byte-oriented cut, so
+// the result ends on a rune boundary. Unlike truncateUTF8, it has no
+// len(s) <= maxBytes guard, because it is meant to run on a string that has
+// already been cut to its target length (e.g. body[:MaxLogBodySize]) - a
+// guarded call would see len(s) already at the target and no-op, leaving
+// the split rune's leading bytes in place.
+func trimPartialTrailingRune(s string) string {
+	for backedOff := 0; backedOff < utf8.UTFMax-1 && len(s) > 0; backedOff++ {
+		r, size := utf8.DecodeLastRuneInString(s)
+		if r != utf8.RuneError || size != 1 {
+			break
+		}
 		s = s[:len(s)-1]
 	}
 	return s

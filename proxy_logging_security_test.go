@@ -649,3 +649,138 @@ func (suite *ProxyLoggingSecurityTestSuite) TestTruncateUTF8RuneBoundary() {
 		suite.T().Fatalf("expected backoff to %d bytes, got %d", MaxLogBodySize-1, len(out))
 	}
 }
+
+// TestTruncateUTF8 covers the truncateUTF8 backoff logic directly: it must
+// never validate the whole string (that emptied any body with a single
+// invalid byte anywhere), and it must stay O(1) backoff bounded by
+// utf8.UTFMax-1, not O(n) whole-string re-validation per byte removed.
+func (suite *ProxyLoggingSecurityTestSuite) TestTruncateUTF8() {
+	const limit = 100
+
+	tests := []struct {
+		name      string
+		input     string
+		maxBytes  int
+		checkFunc func(t *testing.T, out string)
+	}{
+		{
+			name:     "multi-byte rune straddling the cut is backed off, not split",
+			input:    strings.Repeat("a", limit-1) + "界", // 界 is 3 bytes, starts at limit-1
+			maxBytes: limit,
+			checkFunc: func(t *testing.T, out string) {
+				if !utf8.ValidString(out) {
+					t.Fatalf("output is not valid UTF-8: %x", out)
+				}
+				if out != strings.Repeat("a", limit-1) {
+					t.Fatalf("expected the partial rune dropped entirely, got %q", out)
+				}
+			},
+		},
+		{
+			name:     "invalid byte early in the string cuts near the limit, not to empty",
+			input:    strings.Repeat("a", limit-1) + string([]byte{0x80}) + strings.Repeat("b", 500),
+			maxBytes: limit,
+			checkFunc: func(t *testing.T, out string) {
+				if out == "" {
+					t.Fatalf("truncateUTF8 emptied a string with a single stray invalid byte")
+				}
+				if len(out) < limit-utf8.UTFMax {
+					t.Fatalf("expected cut near the %d-byte limit, got %d bytes: %q", limit, len(out), out)
+				}
+			},
+		},
+		{
+			name:     "pure ASCII is cut exactly at maxBytes, unchanged behavior",
+			input:    strings.Repeat("x", 500),
+			maxBytes: limit,
+			checkFunc: func(t *testing.T, out string) {
+				if len(out) != limit {
+					t.Fatalf("expected exact cut at %d bytes, got %d", limit, len(out))
+				}
+				if out != strings.Repeat("x", limit) {
+					t.Fatalf("unexpected ASCII truncation result: %q", out)
+				}
+			},
+		},
+		{
+			name:     "string shorter than maxBytes is returned unchanged",
+			input:    "short string",
+			maxBytes: limit,
+			checkFunc: func(t *testing.T, out string) {
+				if out != "short string" {
+					t.Fatalf("expected input unchanged, got %q", out)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			out := truncateUTF8(tt.input, tt.maxBytes)
+			tt.checkFunc(suite.T(), out)
+		})
+	}
+}
+
+// TestTruncateUTF8NotQuadratic guards the O(n^2) regression: truncating a
+// body that is invalid UTF-8 overall (one stray byte, otherwise huge) must
+// stay fast and must not collapse the result to empty.
+func (suite *ProxyLoggingSecurityTestSuite) TestTruncateUTF8NotQuadratic() {
+	body := string([]byte{0x80}) + strings.Repeat("a", MaxLogBodySize*10)
+	out := truncateUTF8(body, MaxLogBodySize)
+	if len(out) == 0 {
+		suite.T().Fatalf("truncateUTF8 collapsed an otherwise-valid large body to empty")
+	}
+	if len(out) < MaxLogBodySize-utf8.UTFMax {
+		suite.T().Fatalf("expected cut near %d bytes, got %d", MaxLogBodySize, len(out))
+	}
+}
+
+// TestSanitizeTruncatedBodySecretStraddlingCutNotExposed verifies that a
+// sensitive field value whose closing quote falls past the MaxLogBodySize
+// cut point (so the "field":"value" redaction regex cannot match it) is
+// still not leaked in the truncated log line.
+func (suite *ProxyLoggingSecurityTestSuite) TestSanitizeTruncatedBodySecretStraddlingCutNotExposed() {
+	secret := "S3cretStraddle-" + strings.Repeat("Z", 100)
+	head := strings.Repeat("x", MaxLogBodySize-50)
+	body := head + `"password": "` + secret + `"}`
+	suite.Greater(len(body), MaxLogBodySize, "test body must exceed MaxLogBodySize to hit the truncation path")
+
+	// Sanity check: the opening quote of the secret value must land before
+	// the cut, and the closing quote after it, so the value straddles it.
+	openIdx := strings.Index(body, secret)
+	suite.Less(openIdx, MaxLogBodySize, "secret must start before the cut")
+	suite.Greater(openIdx+len(secret), MaxLogBodySize, "secret must extend past the cut")
+
+	result := sanitizeForLogging([]byte(body), "text/plain")
+
+	suite.NotContains(result, secret, "full secret leaked")
+	suite.NotContains(result, "S3cretStraddle", "partial secret prefix leaked")
+	suite.True(utf8.ValidString(result), "result must be valid UTF-8")
+	suite.True(strings.HasSuffix(result, TruncatedSuffix), "result must carry the truncated suffix")
+}
+
+// TestSanitizeTruncatedBodyTrimsPartialRuneOnPlainBody verifies the
+// rune-boundary trim in sanitizeTruncatedBody runs on the raw
+// body[:MaxLogBodySize] cut, not only in the final truncateUTF8 call. The
+// body here is plain non-JSON UTF-8 prose with no quotes and no sensitive
+// field names, so redactPatternInString/stripTrailingUnterminatedQuote
+// cannot match anything and cannot shrink the prefix: by the time the final
+// truncateUTF8 safety-net call runs, len(prefix) is already <=
+// MaxLogBodySize, so its len-guard makes it a no-op. Only trimming the raw
+// cut up front (before redaction) can remove the multi-byte rune straddling
+// byte MaxLogBodySize here.
+func (suite *ProxyLoggingSecurityTestSuite) TestSanitizeTruncatedBodyTrimsPartialRuneOnPlainBody() {
+	// "界" is 3 bytes and starts at byte MaxLogBodySize-1, so it straddles
+	// the cut point exactly like TestTruncateUTF8RuneBoundary's input, but
+	// driven through the full sanitizeForLogging -> sanitizeTruncatedBody
+	// path instead of calling truncateUTF8 directly.
+	body := strings.Repeat("a", MaxLogBodySize-1) + "界" + strings.Repeat("b", 200)
+	suite.Greater(len(body), MaxLogBodySize, "test body must exceed MaxLogBodySize to hit the truncation path")
+
+	result := sanitizeForLogging([]byte(body), "text/plain")
+
+	suite.True(utf8.ValidString(result), "result must be valid UTF-8")
+	suite.True(strings.HasSuffix(result, TruncatedSuffix), "result must carry the truncated suffix")
+	suite.NotContains(result, "界", "a split multi-byte rune must not survive truncation")
+}
