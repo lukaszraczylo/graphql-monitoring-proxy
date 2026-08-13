@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/gofrs/flock"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	"github.com/stretchr/testify/assert"
 )
@@ -261,4 +262,39 @@ func TestBannedUsersConcurrentModifyAndReload(t *testing.T) {
 	if _, ok := bannedUsersIDs.Load("kept-user"); !ok {
 		t.Fatal("kept-user ban was lost after concurrent modify + reload")
 	}
+}
+
+// TestLoadBannedUsersReleasesLockOnReadError is a regression test for the
+// file-lock leak: a read error inside loadBannedUsers (after the shared file
+// lock is taken) must still release the lock. Before the fix, the error
+// return at the os.ReadFile check skipped the unlock, so the flock's open fd
+// stayed shared-locked for the process lifetime, and every later
+// storeBannedUsers (which needs the exclusive lock) would block and fail.
+func TestLoadBannedUsersReleasesLockOnReadError(t *testing.T) {
+	dir := t.TempDir()
+	// A directory in place of the banned-users file makes os.Stat report the
+	// path exists (skipping the create-file branch) while os.ReadFile fails.
+	file := filepath.Join(dir, "banned.json")
+	if err := os.Mkdir(file, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	origCfg := cfg
+	cfg = &config{Logger: libpack_logger.New()}
+	cfg.Api.BannedUsersFile = file
+	defer func() { cfg = origCfg }()
+
+	loadBannedUsers() // must hit the os.ReadFile error path and return
+
+	// If the shared read lock leaked, a fresh non-blocking exclusive TryLock
+	// on the same lock file fails instead of succeeding immediately.
+	fileLock := flock.New(fmt.Sprintf("%s.lock", file))
+	locked, err := fileLock.TryLock()
+	if err != nil {
+		t.Fatalf("TryLock returned an error: %v", err)
+	}
+	if !locked {
+		t.Fatal("exclusive lock unavailable after loadBannedUsers read error - shared lock leaked")
+	}
+	_ = fileLock.Unlock()
 }

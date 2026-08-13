@@ -21,9 +21,11 @@ var bannedUsersIDs sync.Map // key: userID string, value: reason string
 
 // bannedUsersMu serializes in-memory banned-set mutations (admin Store/Delete)
 // against the periodic file reload's clear-then-rebuild, and keeps the file
-// write atomic with the map change. Lock ordering: always acquire
-// bannedUsersMu BEFORE the file lock; loadBannedUsers releases its file read
-// lock before applying the snapshot to honour that order and avoid deadlock.
+// read/write atomic with the map change. Lock ordering: always acquire
+// bannedUsersMu BEFORE the file lock. loadBannedUsers holds bannedUsersMu for
+// its whole read+replace, so a reload can never apply a stale snapshot over a
+// write that apiBanUser/apiUnbanUser made in between, and it matches the
+// mutex-then-file order those handlers use around storeBannedUsers.
 var bannedUsersMu sync.Mutex
 
 // authMiddleware provides API key authentication for admin endpoints
@@ -353,6 +355,22 @@ func loadBannedUsers() {
 		}
 	}
 
+	// Hold bannedUsersMu across the file read AND the in-memory replace below.
+	// apiBanUser/apiUnbanUser also acquire bannedUsersMu before their file
+	// write, so this keeps the documented mutex-before-file-lock order and
+	// stops a write landing between our read and our replace from being
+	// overwritten by this reload's now-stale snapshot.
+	//
+	// This holds bannedUsersMu across lockFileRead below, which can block for
+	// up to 30s under cross-process flock contention (see lockFileRead's own
+	// timeout). Because apiBanUser/apiUnbanUser take the same mutex, an admin
+	// ban/unban request can queue behind a reload for that long. This is an
+	// accepted trade: it buys atomicity between the in-memory map and the
+	// on-disk file, and reloads are infrequent enough that the worst case is
+	// rare in practice.
+	bannedUsersMu.Lock()
+	defer bannedUsersMu.Unlock()
+
 	fileLock := flock.New(fmt.Sprintf("%s.lock", cfg.Api.BannedUsersFile))
 	if err := lockFileRead(fileLock); err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
@@ -361,6 +379,15 @@ func loadBannedUsers() {
 		})
 		return
 	}
+	defer func() {
+		if err := fileLock.Unlock(); err != nil {
+			cfg.Logger.Error(&libpack_logger.LogMessage{
+				Message: "Failed to unlock file",
+				Pairs:   map[string]any{"error": err.Error()},
+			})
+		}
+	}()
+
 	data, err := os.ReadFile(cfg.Api.BannedUsersFile)
 	if err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
@@ -368,17 +395,6 @@ func loadBannedUsers() {
 			Pairs:   map[string]any{"error": err.Error()},
 		})
 		return
-	}
-
-	// Release the read lock BEFORE mutating the in-memory set. replaceBannedUsers
-	// takes bannedUsersMu; acquiring the file read lock and bannedUsersMu in the
-	// file->mutex order would invert the mutex->file order used by the admin
-	// write path (apiBanUser/apiUnbanUser) and could deadlock.
-	if err := fileLock.Unlock(); err != nil {
-		cfg.Logger.Error(&libpack_logger.LogMessage{
-			Message: "Failed to unlock file",
-			Pairs:   map[string]any{"error": err.Error()},
-		})
 	}
 
 	var newBannedUsers map[string]string
@@ -390,7 +406,7 @@ func loadBannedUsers() {
 		return
 	}
 
-	replaceBannedUsers(newBannedUsers)
+	replaceBannedUsersLocked(newBannedUsers)
 }
 
 // snapshotBannedUsers returns a plain map copy of the current banned users.
@@ -414,6 +430,12 @@ func replaceBannedUsers(newUsers map[string]string) {
 	// (apiBanUser/apiUnbanUser) or a reload can clobber a just-applied ban.
 	bannedUsersMu.Lock()
 	defer bannedUsersMu.Unlock()
+	replaceBannedUsersLocked(newUsers)
+}
+
+// replaceBannedUsersLocked does the work of replaceBannedUsers without
+// acquiring bannedUsersMu. Callers must already hold bannedUsersMu.
+func replaceBannedUsersLocked(newUsers map[string]string) {
 	bannedUsersIDs.Range(func(k, _ any) bool {
 		bannedUsersIDs.Delete(k)
 		return true
