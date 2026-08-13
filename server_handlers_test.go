@@ -575,20 +575,25 @@ func TestStartHTTPProxy_StartsAndShutdown(t *testing.T) {
 		errCh <- StartHTTPProxy()
 	}()
 
-	// Wait for server to bind
+	// Wait for the OnListen hook to publish httpProxyApp, i.e. for fiber to
+	// actually be serving. A bare TCP dial is not a reliable "serving" signal:
+	// the OS accepts connections into the listener's backlog as soon as it is
+	// bound, before fiber's Serve loop starts pulling them off, so dialling a
+	// freshly bound listener races server startup under -race.
 	deadline := time.Now().Add(3 * time.Second)
-	var conn net.Conn
+	var serving bool
 	for time.Now().Before(deadline) {
-		conn, err = net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 100*time.Millisecond)
-		if err == nil {
+		httpProxyMu.RLock()
+		serving = httpProxyApp != nil
+		httpProxyMu.RUnlock()
+		if serving {
 			break
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
-	if conn == nil {
-		t.Fatalf("server did not start on port %d within 3s", port)
+	if !serving {
+		t.Fatalf("server did not start serving on port %d within 3s", port)
 	}
-	_ = conn.Close()
 
 	// Send a health check to confirm it's serving
 	httpResp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/health?check_graphql=false&check_redis=false", port))
@@ -598,6 +603,23 @@ func TestStartHTTPProxy_StartsAndShutdown(t *testing.T) {
 	_ = httpResp.Body.Close()
 	if httpResp.StatusCode != 200 {
 		t.Errorf("want 200, got %d", httpResp.StatusCode)
+	}
+
+	// Shut down and confirm StartHTTPProxy's server.Listen returns instead of
+	// blocking forever, so in-flight requests get a chance to drain.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := shutdownHTTPProxy(shutdownCtx); err != nil {
+		t.Fatalf("shutdownHTTPProxy: %v", err)
+	}
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Errorf("StartHTTPProxy returned error after shutdown: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("StartHTTPProxy did not return after shutdownHTTPProxy")
 	}
 }
 
@@ -616,7 +638,12 @@ func (suite *Tests) Test_shutdownHTTPProxy() {
 		httpProxyApp = original
 		httpProxyMu.Unlock()
 	}()
-	suite.NoError(shutdownHTTPProxy(context.Background()))
+	// Bound the context: if a clear-signal regression made the retry loop
+	// spin forever, context.Background() would hang the whole package for
+	// its default 10m test timeout instead of failing fast here.
+	noopCtx, noopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer noopCancel()
+	suite.NoError(shutdownHTTPProxy(noopCtx))
 
 	// With a listening server assigned, shutdown must stop it.
 	app := fiber.New()
@@ -625,33 +652,48 @@ func (suite *Tests) Test_shutdownHTTPProxy() {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	suite.Require().NoError(err)
 
+	// Signal off fiber's OnListen hook rather than dialling the raw listener:
+	// the OS accepts connections into the listener's backlog as soon as it is
+	// bound, before fiber's Serve loop is actually running, so a bare TCP
+	// dial races server startup and makes shutdownHTTPProxy's no-op check
+	// (fasthttp's listener isn't set yet) flaky under -race.
+	serving := make(chan struct{})
+	app.Hooks().OnListen(func(fiber.ListenData) error {
+		close(serving)
+		return nil
+	})
+
 	listenDone := make(chan struct{})
 	go func() {
 		defer close(listenDone)
 		_ = app.Listener(ln)
+		// Mirror StartHTTPProxy's contract: clear httpProxyApp once Listener
+		// returns, so shutdownHTTPProxy's retry loop (which waits for that
+		// clear as proof the drain actually happened) can observe completion
+		// instead of retrying until its context expires.
+		httpProxyMu.Lock()
+		if httpProxyApp == app {
+			httpProxyApp = nil
+		}
+		httpProxyMu.Unlock()
 	}()
 
-	// Wait until the listener is actually serving (poll the port) before
-	// shutting down; otherwise Shutdown can race server startup and no-op.
-	addr := ln.Addr().String()
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		conn, err := net.Dial("tcp", addr)
-		if err == nil {
-			_ = conn.Close()
-			break
-		}
-		if time.Now().After(deadline) {
-			suite.Fail("proxy server never started listening on " + addr)
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
+	select {
+	case <-serving:
+	case <-time.After(3 * time.Second):
+		suite.Fail("proxy server never started serving on " + ln.Addr().String())
+		return
 	}
 
 	httpProxyMu.Lock()
 	httpProxyApp = app
 	httpProxyMu.Unlock()
-	suite.NoError(shutdownHTTPProxy(context.Background()))
+	// Bound the context: if a clear-signal regression made the retry loop
+	// spin forever, context.Background() would hang the whole package for
+	// its default 10m test timeout instead of failing fast here.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	suite.NoError(shutdownHTTPProxy(shutdownCtx))
 
 	select {
 	case <-listenDone:

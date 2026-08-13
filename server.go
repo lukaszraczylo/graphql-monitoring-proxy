@@ -50,14 +50,46 @@ var (
 // shutdownHTTPProxy gracefully stops the HTTP proxy server. It is invoked from
 // the ShutdownManager during shutdown so server.Listen returns and the proxy
 // can finish in-flight requests.
-func shutdownHTTPProxy(_ context.Context) error {
-	httpProxyMu.RLock()
-	app := httpProxyApp
-	httpProxyMu.RUnlock()
-	if app != nil {
-		return app.Shutdown()
+//
+// httpProxyApp is published by an OnListen hook just before fasthttp's
+// Serve() records its own listener, so a shutdown request arriving in that
+// narrow window would see no listener yet and ShutdownWithContext would
+// silently no-op instead of draining. Retry until StartHTTPProxy's Listen
+// call actually returns (httpProxyApp is cleared, proving the drain
+// happened) or ctx is done, so a shutdown racing server startup still stops
+// the server rather than letting it start serving after shutdown began.
+func shutdownHTTPProxy(ctx context.Context) error {
+	for {
+		httpProxyMu.RLock()
+		app := httpProxyApp
+		httpProxyMu.RUnlock()
+		// A shutdown landing before OnListen has published httpProxyApp (app
+		// is still nil here) is a no-op, same as "no server running" -
+		// there is no fasthttp listener yet to stop. This function does not
+		// close that window itself; main.go's ~1s wait after launching the
+		// StartHTTPProxy goroutine (giving OnListen time to fire before
+		// anything can call shutdown) is what closes it in practice.
+		if app == nil {
+			return nil
+		}
+
+		if err := app.ShutdownWithContext(ctx); err != nil {
+			return err
+		}
+
+		httpProxyMu.RLock()
+		stopped := httpProxyApp != app
+		httpProxyMu.RUnlock()
+		if stopped {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Millisecond):
+		}
 	}
-	return nil
 }
 
 func StartHTTPProxy() error {
@@ -75,9 +107,25 @@ func StartHTTPProxy() error {
 	}
 
 	server := fiber.New(serverConfig)
-	httpProxyMu.Lock()
-	httpProxyApp = server
-	httpProxyMu.Unlock()
+
+	// Publish httpProxyApp only once fiber has bound the listener and is about
+	// to serve, not at construction time. Publishing earlier lets
+	// shutdownHTTPProxy race server.Listen: fasthttp's ShutdownWithContext
+	// no-ops when its listener isn't set yet, silently skipping the drain and
+	// then letting Listen start serving after shutdown was requested.
+	server.Hooks().OnListen(func(fiber.ListenData) error {
+		httpProxyMu.Lock()
+		httpProxyApp = server
+		httpProxyMu.Unlock()
+		return nil
+	})
+	defer func() {
+		httpProxyMu.Lock()
+		if httpProxyApp == server {
+			httpProxyApp = nil
+		}
+		httpProxyMu.Unlock()
+	}()
 
 	server.Use(cors.New(cors.Config{
 		AllowOrigins: []string{"*"},
