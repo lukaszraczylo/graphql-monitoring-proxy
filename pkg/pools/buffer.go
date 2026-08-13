@@ -78,7 +78,12 @@ func PutGzipWriter(gz *gzip.Writer) {
 func GetGzipReader(r io.Reader) (*gzip.Reader, error) {
 	gr := gzipReaderPool.Get().(*gzip.Reader)
 	if err := gr.Reset(r); err != nil {
-		// If reset fails, create a new reader
+		// Reset failed (e.g. non-gzip data): return the pooled reader so it
+		// isn't leaked, and hand back a fresh one for this call. We must not
+		// call gr.Close() here — the decompressor is nil until a header
+		// parses, so Close would panic. The next GetGzipReader's Reset
+		// reinitialises it.
+		gzipReaderPool.Put(gr)
 		return gzip.NewReader(r)
 	}
 	return gr, nil

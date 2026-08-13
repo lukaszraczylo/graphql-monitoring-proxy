@@ -415,3 +415,31 @@ func BenchmarkWithoutPool(b *testing.B) {
 		}
 	})
 }
+
+// TestGetGzipReader_ResetErrorPath exercises the path where the pooled reader
+// fails to Reset (non-gzip input). The pooled reader must be returned to the
+// pool and a usable reader handed back; a subsequent valid gzip read must
+// still succeed so the pool is not left in a broken state.
+func (suite *BufferPoolTestSuite) TestGetGzipReader_ResetErrorPath() {
+	t := suite.T()
+	// Non-gzip input -> Reset fails -> fresh reader returned (with error).
+	gr1, err := GetGzipReader(strings.NewReader("not gzip data at all"))
+	assert.Error(t, err, "expected error decoding non-gzip data")
+	if gr1 != nil {
+		PutGzipReader(gr1)
+	}
+
+	// Valid gzip input afterwards must still work, proving the pool is usable.
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	_, werr := zw.Write([]byte("hello world"))
+	assert.NoError(t, werr)
+	assert.NoError(t, zw.Close())
+
+	gr2, err := GetGzipReader(bytes.NewReader(buf.Bytes()))
+	assert.NoError(t, err)
+	defer PutGzipReader(gr2)
+	decoded, rerr := io.ReadAll(gr2)
+	assert.NoError(t, rerr)
+	assert.Equal(t, "hello world", string(decoded))
+}
