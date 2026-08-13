@@ -26,6 +26,15 @@ type WebSocketProxy struct {
 	pongTimeout    time.Duration
 	maxMessageSize int64
 
+	// effectivePingInterval/effectivePongTimeout/keepaliveEnabled are the
+	// defaulted-and-clamped keepalive values, computed once in
+	// NewWebSocketProxy (see computeEffectiveKeepalive) and reused by every
+	// connection via effectiveKeepalive. Computing them once means any clamp
+	// warning is logged once per proxy instead of once per connection.
+	effectivePingInterval time.Duration
+	effectivePongTimeout  time.Duration
+	keepaliveEnabled      bool
+
 	// Statistics
 	activeConnections atomic.Int64
 	totalConnections  atomic.Int64
@@ -63,6 +72,9 @@ func NewWebSocketProxy(backendURL string, config WebSocketConfig, logger *libpac
 		pongTimeout:    config.PongTimeout,
 		maxMessageSize: config.MaxMessageSize,
 	}
+
+	wsp.effectivePingInterval, wsp.effectivePongTimeout, wsp.keepaliveEnabled =
+		computeEffectiveKeepalive(wsp.pingInterval, wsp.pongTimeout, logger)
 
 	if logger != nil && config.Enabled {
 		logger.Info(&libpack_logger.LogMessage{
@@ -118,6 +130,62 @@ func (wsp *WebSocketProxy) HandleWebSocket(c fiber.Ctx) error {
 		// The original request context expires after the upgrade
 		wsp.handleConnection(context.Background(), clientConn, headers)
 	}, config)(c)
+}
+
+// computeEffectiveKeepalive derives the ping period and pong read-deadline
+// timeout a WebSocket proxy should use, plus whether keepalive is enabled at
+// all, from the (already-defaulted) configured pingInterval/pongTimeout. It
+// runs once, from NewWebSocketProxy, and the result is stored on the proxy
+// so effectiveKeepalive can hand it to every connection without
+// recomputing - and without re-logging any clamp warning - per connection.
+//
+// Operators can opt out of keepalive entirely by configuring a NEGATIVE
+// PingInterval or PongTimeout (WEBSOCKET_PING_INTERVAL / _PONG_TIMEOUT) - no
+// ping goroutine runs and no read deadline is set, matching the
+// pre-keepalive behaviour of blocking on ReadMessage until the peer or
+// network closes the connection. A value of exactly zero does NOT disable
+// keepalive here: NewWebSocketProxy rewrites a zero PingInterval/PongTimeout
+// to the 30s/60s defaults before this function ever sees them (and main.go's
+// env parsing defaults PING_INTERVAL/PONG_TIMEOUT to 30/60 for the same
+// reason), so only a negative value can reach this function as a disable.
+//
+// When enabled, pongTimeout is clamped to at least 1x pingInterval. The
+// ping goroutine's ticker actually fires at pingInterval/2 (two ping
+// attempts per configured interval), so a peer already sees a ping well
+// before one full pingInterval elapses; requiring pongTimeout >= pingInterval
+// keeps that margin without forcing an operator who explicitly configures a
+// tighter timeout to accept the old 2x floor (explicit override wins).
+func computeEffectiveKeepalive(pingInterval, pongTimeout time.Duration, logger *libpack_logger.Logger) (effectivePingInterval, effectivePongTimeout time.Duration, enabled bool) {
+	if pingInterval <= 0 || pongTimeout <= 0 {
+		return 0, 0, false
+	}
+
+	if pongTimeout < pingInterval {
+		if logger != nil {
+			logger.Warn(&libpack_logger.LogMessage{
+				Message: "WebSocket pong_timeout too low for ping_interval; clamping to avoid reaping idle connections",
+				Pairs: map[string]any{
+					"configured_ping_interval": pingInterval,
+					"configured_pong_timeout":  pongTimeout,
+					"effective_pong_timeout":   pingInterval,
+				},
+			})
+		}
+		pongTimeout = pingInterval
+	}
+
+	return pingInterval, pongTimeout, true
+}
+
+// effectiveKeepalive returns the ping period and pong read-deadline timeout
+// this proxy should use, plus whether keepalive is enabled at all. It is the
+// single source of truth for these values: handleConnection calls it once
+// per connection and passes the result to both the initial deadline setup
+// and every deadline-refresh path, so they can never disagree. The values
+// themselves are computed once per proxy, in NewWebSocketProxy - see
+// computeEffectiveKeepalive for the opt-out and clamping rules.
+func (wsp *WebSocketProxy) effectiveKeepalive() (pingInterval, pongTimeout time.Duration, enabled bool) {
+	return wsp.effectivePingInterval, wsp.effectivePongTimeout, wsp.keepaliveEnabled
 }
 
 // handleConnection manages a single WebSocket connection
@@ -218,44 +286,55 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 	// ReadMessage forever. We ping both directions and enforce a read
 	// deadline on each side that is refreshed by real traffic or a pong, so
 	// an active connection is never closed while an idle one is cleaned up.
-	pingInterval := wsp.pingInterval
-	pongTimeout := wsp.pongTimeout
-	if pingInterval <= 0 {
-		pingInterval = 30 * time.Second
-	}
-	if pongTimeout <= 0 {
-		pongTimeout = 60 * time.Second
-	}
+	// See effectiveKeepalive for the opt-out and clamping rules; the values
+	// it returns are threaded through unchanged to every deadline-refresh
+	// path below so they can never disagree.
+	pingInterval, pongTimeout, keepaliveEnabled := wsp.effectiveKeepalive()
 
-	_ = clientConn.SetReadDeadline(time.Now().Add(pongTimeout))
-	clientConn.SetPongHandler(func(string) error {
-		return clientConn.SetReadDeadline(time.Now().Add(pongTimeout))
-	})
-	_ = backendConn.SetReadDeadline(time.Now().Add(pongTimeout))
-	backendConn.SetPongHandler(func(string) error {
-		return backendConn.SetReadDeadline(time.Now().Add(pongTimeout))
-	})
+	if keepaliveEnabled {
+		_ = clientConn.SetReadDeadline(time.Now().Add(pongTimeout))
+		clientConn.SetPongHandler(func(string) error {
+			return clientConn.SetReadDeadline(time.Now().Add(pongTimeout))
+		})
+		_ = backendConn.SetReadDeadline(time.Now().Add(pongTimeout))
+		backendConn.SetPongHandler(func(string) error {
+			return backendConn.SetReadDeadline(time.Now().Add(pongTimeout))
+		})
+	}
 
 	// Ping both peers periodically. WriteControl is safe to call concurrently
 	// with WriteMessage, so this goroutine does not contend with the two
 	// forwarding directions. Both libraries use the standard WebSocket
 	// opcode value for a ping (9).
+	//
+	// pingDone is closed when the goroutine returns. gofiber's contrib/v3
+	// websocket recycles clientConn into a sync.Pool (nilling its underlying
+	// conn) the instant this function returns, so the goroutine MUST be
+	// joined (cancelPing + <-pingDone below) before handleConnection
+	// returns - otherwise a still-running WriteControl call can nil-deref
+	// (crashing the process, since this goroutine has no recover) or write a
+	// stray ping onto an unrelated, newly-recycled connection.
 	pingCtx, cancelPing := context.WithCancel(ctx)
-	defer cancelPing()
-	go func() {
-		ticker := time.NewTicker(pingInterval / 2)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-pingCtx.Done():
-				return
-			case <-ticker.C:
-				writeDeadline := time.Now().Add(10 * time.Second)
-				_ = clientConn.WriteControl(gorillaws.PingMessage, nil, writeDeadline)
-				_ = backendConn.WriteControl(gorillaws.PingMessage, nil, writeDeadline)
+	pingDone := make(chan struct{})
+	if keepaliveEnabled {
+		go func() {
+			defer close(pingDone)
+			ticker := time.NewTicker(pingInterval / 2)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-pingCtx.Done():
+					return
+				case <-ticker.C:
+					writeDeadline := time.Now().Add(10 * time.Second)
+					_ = clientConn.WriteControl(gorillaws.PingMessage, nil, writeDeadline)
+					_ = backendConn.WriteControl(gorillaws.PingMessage, nil, writeDeadline)
+				}
 			}
-		}
-	}()
+		}()
+	} else {
+		close(pingDone)
+	}
 
 	// Set up bidirectional proxying
 	var wg sync.WaitGroup
@@ -268,7 +347,7 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 		// the backend so the reverse goroutine's blocked read returns instead
 		// of leaking the goroutine and holding the backend connection open.
 		defer func() { _ = backendConn.Close() }()
-		wsp.proxyClientToBackend(ctx, clientConn, backendConn, connectionID)
+		wsp.proxyClientToBackend(ctx, clientConn, backendConn, connectionID, pongTimeout)
 	}()
 
 	// Backend -> Client
@@ -277,11 +356,17 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 		// Symmetric teardown: when the backend side finishes, close the
 		// client so the client-direction goroutine isn't left blocked either.
 		defer func() { _ = clientConn.Close() }()
-		wsp.proxyBackendToClient(ctx, backendConn, clientConn, connectionID)
+		wsp.proxyBackendToClient(ctx, backendConn, clientConn, connectionID, pongTimeout)
 	}()
 
 	// Wait for both directions to complete
 	wg.Wait()
+
+	// Stop the ping goroutine and wait for it to actually exit before this
+	// handler returns - see the pingDone comment above for why this join is
+	// required, not optional.
+	cancelPing()
+	<-pingDone
 
 	duration := time.Since(startTime)
 
@@ -302,8 +387,11 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 	}
 }
 
-// proxyClientToBackend proxies messages from client to backend
-func (wsp *WebSocketProxy) proxyClientToBackend(ctx context.Context, client *websocket.Conn, backend *gorillaws.Conn, connectionID string) {
+// proxyClientToBackend proxies messages from client to backend. pongTimeout
+// is the effective (defaulted+clamped) value computed once by
+// handleConnection via effectiveKeepalive; a value of 0 means keepalive is
+// disabled and no read deadline is refreshed here.
+func (wsp *WebSocketProxy) proxyClientToBackend(ctx context.Context, client *websocket.Conn, backend *gorillaws.Conn, connectionID string, pongTimeout time.Duration) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -339,8 +427,8 @@ func (wsp *WebSocketProxy) proxyClientToBackend(ctx context.Context, client *web
 
 			// Refresh the read deadline on real client traffic so a client that
 			// sends data (even without pongs) is never reaped by the keepalive.
-			if wsp.pongTimeout > 0 {
-				_ = client.SetReadDeadline(time.Now().Add(wsp.pongTimeout))
+			if pongTimeout > 0 {
+				_ = client.SetReadDeadline(time.Now().Add(pongTimeout))
 			}
 
 			// Forward message to backend
@@ -372,8 +460,11 @@ func (wsp *WebSocketProxy) proxyClientToBackend(ctx context.Context, client *web
 	}
 }
 
-// proxyBackendToClient proxies messages from backend to client
-func (wsp *WebSocketProxy) proxyBackendToClient(ctx context.Context, backend *gorillaws.Conn, client *websocket.Conn, connectionID string) {
+// proxyBackendToClient proxies messages from backend to client. pongTimeout
+// is the effective (defaulted+clamped) value computed once by
+// handleConnection via effectiveKeepalive; a value of 0 means keepalive is
+// disabled and no read deadline is refreshed here.
+func (wsp *WebSocketProxy) proxyBackendToClient(ctx context.Context, backend *gorillaws.Conn, client *websocket.Conn, connectionID string, pongTimeout time.Duration) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -410,8 +501,8 @@ func (wsp *WebSocketProxy) proxyBackendToClient(ctx context.Context, backend *go
 			// Refresh the backend read deadline on real traffic too: a backend
 			// that streams data but does not answer control pings must not be
 			// reaped by the keepalive.
-			if wsp.pongTimeout > 0 {
-				_ = backend.SetReadDeadline(time.Now().Add(wsp.pongTimeout))
+			if pongTimeout > 0 {
+				_ = backend.SetReadDeadline(time.Now().Add(pongTimeout))
 			}
 
 			// Forward message to client
@@ -531,7 +622,10 @@ func (wsp *WebSocketProxy) dialBackend(ctx context.Context, headers http.Header)
 	return conn, nil
 }
 
-// GetStats returns WebSocket statistics
+// GetStats returns WebSocket statistics. ping_interval/pong_timeout report
+// the effective (defaulted-and-clamped) keepalive values actually in use -
+// see computeEffectiveKeepalive - not the raw configured fields, so callers
+// see what handleConnection really does with idle connections.
 func (wsp *WebSocketProxy) GetStats() map[string]any {
 	return map[string]any{
 		"enabled":            wsp.enabled,
@@ -540,8 +634,8 @@ func (wsp *WebSocketProxy) GetStats() map[string]any {
 		"messages_sent":      wsp.messagesSent.Load(),
 		"messages_received":  wsp.messagesReceived.Load(),
 		"errors":             wsp.errors.Load(),
-		"ping_interval":      wsp.pingInterval.String(),
-		"pong_timeout":       wsp.pongTimeout.String(),
+		"ping_interval":      wsp.effectivePingInterval.String(),
+		"pong_timeout":       wsp.effectivePongTimeout.String(),
 		"max_message_size":   wsp.maxMessageSize,
 	}
 }
