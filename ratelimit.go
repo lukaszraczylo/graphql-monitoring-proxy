@@ -23,10 +23,15 @@ type RateLimitConfig struct {
 
 // UnmarshalJSON implements custom JSON unmarshaling for RateLimitConfig
 func (r *RateLimitConfig) UnmarshalJSON(data []byte) error {
-	// Use a temporary struct to unmarshal the JSON data
+	// Use a temporary struct to unmarshal the JSON data.
+	// It must carry every configurable field: Burst (used by the burst
+	// allowance at the top of checkRateLimit) and Endpoints would otherwise be
+	// silently dropped from the loaded config and left at their zero values.
 	type RateLimitConfigTemp struct {
-		Interval any `json:"interval"`
-		Req      int `json:"req"`
+		Interval  any      `json:"interval"`
+		Burst     int      `json:"burst,omitempty"`
+		Endpoints []string `json:"endpoints,omitempty"`
+		Req       int      `json:"req"`
 	}
 
 	var temp RateLimitConfigTemp
@@ -34,8 +39,10 @@ func (r *RateLimitConfig) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	// Set the Req field directly
+	// Set the Req, Burst and Endpoints fields directly
 	r.Req = temp.Req
+	r.Burst = temp.Burst
+	r.Endpoints = temp.Endpoints
 
 	// Handle the Interval field based on its type
 	switch v := temp.Interval.(type) {

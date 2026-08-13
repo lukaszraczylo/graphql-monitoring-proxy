@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -610,5 +611,41 @@ func BenchmarkSanitizeHeaders(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		sanitizeHeaders(headers)
+	}
+}
+
+func (suite *ProxyLoggingSecurityTestSuite) TestSanitizeTruncatedBodyRedactsAndKeepsUTF8() {
+	// A large body whose JSON parse fails (malformed JSON) must still redact
+	// sensitive fields in the retained prefix, and the truncation must not
+	// cut a multi-byte UTF-8 codepoint.
+	secret := "hunter2-S3cret"
+	big := strings.Repeat("a", MaxLogBodySize+10)
+	// Unterminated string -> JSON decode fails -> falls through to truncation.
+	malformed := `{"password": "` + secret + `"` + big
+
+	result := sanitizeForLogging([]byte(malformed), "application/json")
+	if strings.Contains(result, secret) {
+		suite.T().Errorf("truncated body leaked secret: %q", result)
+	}
+	if !strings.Contains(result, RedactedPlaceholder) {
+		suite.T().Errorf("expected redaction placeholder in %q", result)
+	}
+	if !utf8.ValidString(result) {
+		suite.T().Errorf("result is not valid UTF-8: %q", result)
+	}
+	if !strings.HasSuffix(result, TruncatedSuffix) {
+		suite.T().Errorf("expected truncated suffix in %q", result)
+	}
+}
+
+func (suite *ProxyLoggingSecurityTestSuite) TestTruncateUTF8RuneBoundary() {
+	// A multi-byte rune straddling the byte cutoff must be backed off, not split.
+	orig := strings.Repeat("a", MaxLogBodySize-1) + "界"
+	out := truncateUTF8(orig, MaxLogBodySize)
+	if !utf8.ValidString(out) {
+		suite.T().Fatalf("truncateUTF8 produced invalid UTF-8: %x", out)
+	}
+	if len(out) != MaxLogBodySize-1 {
+		suite.T().Fatalf("expected backoff to %d bytes, got %d", MaxLogBodySize-1, len(out))
 	}
 }

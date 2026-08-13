@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"testing"
 	"time"
 
 	"github.com/goccy/go-json"
@@ -274,4 +275,27 @@ func (suite *Tests) Test_RateLimitConfig_UnmarshalJSON() {
 		suite.NoError(err)
 		suite.Equal(60*time.Second, config.Interval)
 	})
+}
+
+func TestRateLimitConfigUnmarshalKeepsBurstAndEndpoints(t *testing.T) {
+	// Regression: the custom UnmarshalJSON temp struct used to carry only
+	// interval/req, silently dropping the configured burst and endpoints
+	// fields. A config with "burst" or "endpoints" must keep them.
+	raw := `{"interval":"minute","req":100,"burst":250,"endpoints":["/v1/graphql"]}`
+	var rc RateLimitConfig
+	if err := json.Unmarshal([]byte(raw), &rc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if rc.Interval != time.Minute {
+		t.Errorf("interval = %v, want %v", rc.Interval, time.Minute)
+	}
+	if rc.Req != 100 {
+		t.Errorf("req = %d, want 100", rc.Req)
+	}
+	if rc.Burst != 250 {
+		t.Errorf("burst = %d, want 250", rc.Burst)
+	}
+	if len(rc.Endpoints) != 1 || rc.Endpoints[0] != "/v1/graphql" {
+		t.Errorf("endpoints = %v, want [\"/v1/graphql\"]", rc.Endpoints)
+	}
 }

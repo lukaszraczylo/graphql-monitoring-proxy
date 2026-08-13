@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/goccy/go-json"
 )
@@ -102,10 +103,12 @@ func sanitizeForLogging(body []byte, contentType string) string {
 		}
 	}
 
-	// For non-JSON or failed parsing, truncate to prevent logging large bodies
 	bodyStr := string(body)
-	if len(bodyStr) > MaxLogBodySize {
-		return bodyStr[:MaxLogBodySize] + TruncatedSuffix
+	if len(body) > MaxLogBodySize {
+		// Redact the retained prefix AND keep it on a UTF-8 rune boundary, so
+		// truncating a large (non-parsable) body never exposes an unredacted
+		// secret in the logged window nor cuts a multi-byte codepoint.
+		return sanitizeTruncatedBody(body)
 	}
 
 	// For small non-JSON bodies, do basic string replacement
@@ -114,6 +117,30 @@ func sanitizeForLogging(body []byte, contentType string) string {
 	}
 
 	return bodyStr
+}
+
+// sanitizeTruncatedBody redacts sensitive fields within the first
+// MaxLogBodySize bytes of a large body, then truncates on a UTF-8 rune
+// boundary, so a truncated log line is both masked and decodable.
+func sanitizeTruncatedBody(body []byte) string {
+	prefix := string(body[:MaxLogBodySize])
+	for _, field := range sensitiveFieldPatterns {
+		prefix = redactPatternInString(prefix, field)
+	}
+	return truncateUTF8(prefix, MaxLogBodySize) + TruncatedSuffix
+}
+
+// truncateUTF8 truncates s to at most maxBytes on a UTF-8 rune boundary.
+func truncateUTF8(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	s = s[:maxBytes]
+	for len(s) > 0 && !utf8.ValidString(s) {
+		// Back off one byte at a time up to the lead of a partial rune.
+		s = s[:len(s)-1]
+	}
+	return s
 }
 
 // redactSensitiveFields recursively redacts sensitive fields in a map
