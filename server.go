@@ -356,6 +356,10 @@ func handleCaching(c fiber.Ctx, parsedResult *parseGraphQLQueryResult, userID, u
 	// Calculate query hash for cache key - now includes user context for security
 	calculatedQueryHash := libpack_cache.CalculateHash(c, userID, userRole)
 
+	// Share the precomputed hash with the proxy path (request coalescing) so it
+	// is not hashed a second time per request (same c, userID, userRole).
+	c.Locals("query_cache_hash", calculatedQueryHash)
+
 	// Set cache time from header or default
 	if parsedResult.cacheTime == 0 {
 		if cacheQuery := c.Get("X-Cache-Graphql-Query"); cacheQuery != "" {

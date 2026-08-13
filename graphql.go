@@ -322,6 +322,17 @@ func parseGraphQLQuery(c fiber.Ctx) *parseGraphQLQueryResult {
 	res.shouldIgnore = false
 	res.operationName = "undefined"
 
+	// Index named fragments so FragmentSpread nodes can be resolved during the
+	// introspection check. A named spread (e.g. `...F`) only carries a name;
+	// its content lives in the matching top-level FragmentDefinition, which the
+	// OperationDefinition loop below otherwise skips.
+	fragments := make(map[string]*ast.FragmentDefinition)
+	for _, d := range p.Definitions {
+		if fd, ok := d.(*ast.FragmentDefinition); ok && fd.Name != nil {
+			fragments[fd.Name.Value] = fd
+		}
+	}
+
 	// Single pass over definitions: gather operation type, mutation flag,
 	// operation name, and process directives / introspection checks together.
 	// Mutations take priority for operationType regardless of order.
@@ -368,7 +379,7 @@ func parseGraphQLQuery(c fiber.Ctx) *parseGraphQLQueryResult {
 		processDirectives(oper, res)
 
 		// Check for introspection queries if they're blocked
-		if cfg.Security.BlockIntrospection && checkSelections(c, oper.GetSelectionSet().Selections) {
+		if cfg.Security.BlockIntrospection && checkSelections(c, oper.GetSelectionSet().Selections, fragments) {
 			_ = c.Status(403).SendString("Introspection queries are not allowed")
 			res.shouldBlock = true
 			return res
@@ -417,8 +428,10 @@ func processDirectives(oper *ast.OperationDefinition, res *parseGraphQLQueryResu
 	}
 }
 
-// checkSelections recursively checks if any selection is an introspection query that should be blocked
-func checkSelections(c fiber.Ctx, selections []ast.Selection) bool {
+// checkSelections recursively checks if any selection is an introspection query that should be blocked.
+// fragments indexes top-level named FragmentDefinition nodes so that a FragmentSpread (which only
+// carries a name) can be resolved to its actual selection set.
+func checkSelections(c fiber.Ctx, selections []ast.Selection, fragments map[string]*ast.FragmentDefinition) bool {
 	if len(selections) == 0 {
 		return false
 	}
@@ -450,7 +463,7 @@ func checkSelections(c fiber.Ctx, selections []ast.Selection) bool {
 
 			// Check nested selections if present
 			if sel.SelectionSet != nil && len(sel.GetSelectionSet().Selections) > 0 {
-				if checkSelections(c, sel.GetSelectionSet().Selections) {
+				if checkSelections(c, sel.GetSelectionSet().Selections, fragments) {
 					return true
 				}
 			}
@@ -458,8 +471,20 @@ func checkSelections(c fiber.Ctx, selections []ast.Selection) bool {
 		case *ast.InlineFragment:
 			// Check nested selections in fragments
 			if sel.SelectionSet != nil && len(sel.GetSelectionSet().Selections) > 0 {
-				if checkSelections(c, sel.GetSelectionSet().Selections) {
+				if checkSelections(c, sel.GetSelectionSet().Selections, fragments) {
 					return true
+				}
+			}
+
+		case *ast.FragmentSpread:
+			// A named fragment spread carries no selection set itself; resolve it
+			// to its top-level FragmentDefinition so introspection inside a named
+			// fragment (e.g. `...F` where F selects __schema) cannot bypass the block.
+			if sel.Name != nil {
+				if frag, ok := fragments[sel.Name.Value]; ok && frag.SelectionSet != nil {
+					if checkSelections(c, frag.SelectionSet.Selections, fragments) {
+						return true
+					}
 				}
 			}
 		}
@@ -500,11 +525,18 @@ func checkIfContainsIntrospection(c fiber.Ctx, query string) bool {
 	}
 
 	if p != nil {
+		// Index named fragments so FragmentSpread nodes resolve correctly.
+		fragments := make(map[string]*ast.FragmentDefinition)
+		for _, def := range p.Definitions {
+			if fd, ok := def.(*ast.FragmentDefinition); ok && fd.Name != nil {
+				fragments[fd.Name.Value] = fd
+			}
+		}
 		// It's a complete query, check all selections
 		for _, def := range p.Definitions {
 			if op, ok := def.(*ast.OperationDefinition); ok {
 				if op.SelectionSet != nil {
-					blocked = checkSelections(c, op.GetSelectionSet().Selections)
+					blocked = checkSelections(c, op.GetSelectionSet().Selections, fragments)
 					break
 				}
 			}

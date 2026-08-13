@@ -158,7 +158,12 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 		entry.MemorySize = int64(len(key) + len(entry.Value) + approxEntryOverhead)
 	}
 
-	// Check if this is a new entry or an update
+	// Check if this is a new entry or an update. The exists-check, counter
+	// update and store must be atomic together: without the lock, two
+	// concurrent Sets of the same brand-new key both observe it as absent and
+	// both increment entryCount/memoryUsage, leaving the counters inflated
+	// for a single stored entry.
+	c.Lock()
 	oldEntry, exists := c.entries.Load(key)
 	if exists {
 		// Update memory usage: subtract old entry size, add new entry size
@@ -172,6 +177,7 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 	// Add new entry's memory size to total
 	atomic.AddInt64(&c.memoryUsage, entry.MemorySize)
 	c.entries.Store(key, entry)
+	c.Unlock()
 }
 
 func (c *Cache) Get(key string) ([]byte, bool) {

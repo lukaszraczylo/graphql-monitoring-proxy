@@ -476,6 +476,30 @@ func (suite *Tests) Test_DeepIntrospectionQueries() {
 			allowed:  []string{},
 			expected: true,
 		},
+		{
+			name:     "named fragment spreading introspection is blocked",
+			query:    "query Q { ...IntroFields } fragment IntroFields on Query { __schema { queryType { name } } }",
+			allowed:  []string{},
+			expected: true,
+		},
+		{
+			name:     "named fragment spreading schema with allowlist is blocked",
+			query:    "query Q { ...IntroFields } fragment IntroFields on Query { __schema { queryType { name } } }",
+			allowed:  []string{"__typename"},
+			expected: true,
+		},
+		{
+			name:     "named fragment without introspection is allowed",
+			query:    "query Q { ...Fields } fragment Fields on User { id name }",
+			allowed:  []string{},
+			expected: false,
+		},
+		{
+			name:     "nested named fragment chain with introspection is blocked",
+			query:    "query Q { ...A } fragment A on Query { ...B } fragment B on Query { __schema { queryType { name } } }",
+			allowed:  []string{},
+			expected: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -592,9 +616,15 @@ func TestIntrospectionQueryHandling(t *testing.T) {
 
 			// Check selections
 			var blocked bool
+			fragments := make(map[string]*ast.FragmentDefinition)
+			for _, def := range p.Definitions {
+				if fd, ok := def.(*ast.FragmentDefinition); ok && fd.Name != nil {
+					fragments[fd.Name.Value] = fd
+				}
+			}
 			for _, def := range p.Definitions {
 				if op, ok := def.(*ast.OperationDefinition); ok {
-					blocked = checkSelections(ctx, op.GetSelectionSet().Selections)
+					blocked = checkSelections(ctx, op.GetSelectionSet().Selections, fragments)
 					break
 				}
 			}

@@ -118,3 +118,31 @@ func TestMemoryCacheConcurrentGetOnExpiredEntry_CountersConsistent(t *testing.T)
 		t.Fatalf("memoryUsage = %d after concurrent expired gets, want 0", got)
 	}
 }
+
+func TestMemoryCacheConcurrentSetSameNewKey_CounterNotDoubled(t *testing.T) {
+	// Regression: two (or more) concurrent Sets of the same brand-new key must
+	// not both take the "new entry" branch. Previously the exists-check and
+	// counter increment were separate atomic ops, so concurrent Sets of a new
+	// key each incremented entryCount, inflating it for a single stored entry.
+	cache := NewWithSize(DefaultTestExpiration, DefaultMaxMemorySize, DefaultMaxCacheSize)
+
+	const workers = 32
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cache.Set("same-key", []byte("value"), DefaultTestExpiration)
+		}()
+	}
+	wg.Wait()
+
+	if got := cache.CountQueries(); got != 1 {
+		t.Fatalf("entryCount = %d after %d concurrent Sets of one new key, want 1", got, workers)
+	}
+
+	// Sanity: the entry is actually stored and retrievable.
+	if _, ok := cache.Get("same-key"); !ok {
+		t.Fatal("key should be retrievable after Set")
+	}
+}

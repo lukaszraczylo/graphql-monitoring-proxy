@@ -370,12 +370,15 @@ func setupTracing(c fiber.Ctx) context.Context {
 
 // performProxyRequest executes the proxy request with retries, circuit breaker, and request coalescing
 func performProxyRequest(c fiber.Ctx, proxyURL string) error {
-	// Extract user context for cache key (needed for coalescing and circuit breaker fallback)
-	userID, userRole := extractUserInfo(c)
-
-	// Calculate cache key - includes user context for security
-	// This key is used for both request coalescing and cache fallback
-	cacheKey := libpack_cache.CalculateHash(c, userID, userRole)
+	// Reuse the cache key already computed by handleCaching (stored on the
+	// request context) to avoid a second MD5 of the full request body per
+	// proxied request. Fall back to computing it when this function is
+	// reached without going through handleCaching (direct callers).
+	cacheKey, _ := c.Locals("query_cache_hash").(string)
+	if cacheKey == "" {
+		userID, userRole := extractUserInfo(c)
+		cacheKey = libpack_cache.CalculateHash(c, userID, userRole)
+	}
 
 	// Check if request coalescing is enabled
 	rc := GetRequestCoalescer()
