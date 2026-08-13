@@ -442,3 +442,101 @@ func TestRequestCoalescer_PanicSafety(t *testing.T) {
 		t.Fatal("coalescer key still blocked after primary fn() panic")
 	}
 }
+
+// TestRequestCoalescer_PanicSafety_WaitersGetError verifies that when the
+// primary (in-flight owner) request panics, coalesced waiters receive a
+// non-nil error instead of (nil, nil). A silent (nil, nil) response lets the
+// consumer fall through to a blank HTTP 200 for every waiter instead of
+// surfacing the failure. It also verifies the panic still propagates to the
+// primary caller unchanged.
+func TestRequestCoalescer_PanicSafety_WaitersGetError(t *testing.T) {
+	rc := NewRequestCoalescer(true, nil, nil)
+
+	const numWaiters = 5
+	const panicKey = "panic-key"
+
+	primaryStarted := make(chan struct{})
+	var primaryStartedOnce sync.Once
+	releasePrimary := make(chan struct{})
+
+	// close(primaryStarted) must be idempotent: if a waiter is scheduled so
+	// late that it misses the coalescing window below (e.g. after the
+	// primary's panic-recovery defer has already deleted the inflight map
+	// entry for panicKey), rc.Do treats it as a brand-new primary and
+	// re-invokes fn. Without sync.Once, that second invocation would call
+	// close on an already-closed channel and panic unrecovered in that
+	// waiter's goroutine, killing the whole test binary. The deterministic
+	// gate below is what actually prevents that scenario; this is a
+	// belt-and-braces guard against it.
+	fn := func() (*CoalescedResponse, error) {
+		primaryStartedOnce.Do(func() { close(primaryStarted) })
+		<-releasePrimary
+		panic("boom")
+	}
+
+	// Launch the primary request first so subsequent calls coalesce onto it.
+	primaryPanicked := make(chan any, 1)
+	primaryDone := make(chan struct{})
+	go func() {
+		defer close(primaryDone)
+		defer func() {
+			primaryPanicked <- recover()
+		}()
+		_, _ = rc.Do(panicKey, fn)
+	}()
+	<-primaryStarted
+
+	// Launch waiters that coalesce onto the in-flight (panicking) primary.
+	var wg sync.WaitGroup
+	wg.Add(numWaiters)
+	responses := make([]*CoalescedResponse, numWaiters)
+	errs := make([]error, numWaiters)
+	for i := 0; i < numWaiters; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			responses[idx], errs[idx] = rc.Do(panicKey, fn)
+		}(i)
+	}
+
+	// Deterministically wait until every waiter has coalesced onto the
+	// primary's inflightRequest before releasing the panic, instead of a
+	// fixed sleep. rc.Do increments the shared inflightRequest.waiters
+	// counter synchronously, before it blocks on wg.Wait(), so observing
+	// numWaiters+1 (the primary plus every coalesced waiter) proves each
+	// waiter goroutine has already registered against this exact in-flight
+	// entry - even if the entry is deleted from rc.inflight moments later,
+	// the waiters already hold a reference to it. A fixed sleep cannot make
+	// that guarantee: a waiter scheduled late enough would miss the window,
+	// see no in-flight entry, and become a new primary that re-runs fn.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		existing, ok := rc.inflight.Load(panicKey)
+		if ok && existing.(*inflightRequest).waiters.Load() >= int32(numWaiters+1) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("waiters did not coalesce onto the primary within deadline")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	close(releasePrimary)
+
+	wg.Wait()
+	<-primaryDone
+
+	// The primary caller's own panic semantics are unchanged: the panic
+	// propagates out of rc.Do rather than being swallowed.
+	recovered := <-primaryPanicked
+	assert.NotNil(t, recovered, "panic must propagate to the primary caller")
+	assert.Equal(t, "boom", recovered)
+
+	// Every coalesced waiter must observe a non-nil error, never the silent
+	// (nil, nil) that would cause a blank HTTP 200 downstream.
+	for i := 0; i < numWaiters; i++ {
+		assert.NoError(t, errs[i], "rc.Do itself must not return an error")
+		if assert.NotNil(t, responses[i], "waiter %d must receive a non-nil response", i) {
+			assert.Error(t, responses[i].Err, "waiter %d must receive a non-nil error", i)
+			assert.Contains(t, responses[i].Err.Error(), "boom")
+		}
+	}
+}

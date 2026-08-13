@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -142,7 +143,26 @@ func (rc *RequestCoalescer) Do(key string, fn func() (*CoalescedResponse, error)
 	// Without this, a panicking fn() leaves the key in the inflight map and
 	// the WaitGroup counter positive, so every coalesced waiter for that key
 	// blocks on wg.Wait() forever (permanent deadlock + leak).
+	//
+	// A panic also never reaches the "store the result" block below, which
+	// would otherwise leave inflight.response nil: waiters would then read
+	// (nil, nil) instead of an error. Recover here, record an error response
+	// for the waiters, release them, then re-panic so the primary caller's
+	// own panic semantics are unchanged.
 	defer func() {
+		if r := recover(); r != nil {
+			inflight.mu.Lock()
+			inflight.response = &CoalescedResponse{
+				Err: fmt.Errorf("coalesced request panicked: %v", r),
+			}
+			inflight.mu.Unlock()
+
+			rc.inflight.Delete(key)
+			inflight.wg.Done()
+
+			panic(r)
+		}
+
 		rc.inflight.Delete(key)
 		inflight.wg.Done()
 	}()
