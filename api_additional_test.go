@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
+	"testing"
 
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	"github.com/stretchr/testify/assert"
@@ -208,4 +210,55 @@ func (suite *Tests) Test_LoadUnloadBannedUsers() {
 		assert.Equal(suite.T(), "reason4", reason4)
 		assert.False(suite.T(), user1Exists)
 	})
+}
+
+func TestBannedUsersConcurrentModifyAndReload(t *testing.T) {
+	// Regression for the banned-users race: an admin ban (bannedUsersIDs.Store
+	// + storeBannedUsers) must be atomic against periodic reloads
+	// (loadBannedUsers -> replaceBannedUsers). Concurrent modify+reload must
+	// not lose a persisted ban and must be memory-race free (-race).
+	dir := t.TempDir()
+	file := filepath.Join(dir, "banned.json")
+
+	origCfg := cfg
+	cfg = &config{Logger: libpack_logger.New()}
+	cfg.Api.BannedUsersFile = file
+	defer func() { cfg = origCfg }()
+
+	bannedUsersIDs = sync.Map{}
+	if err := os.WriteFile(file, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	// Admin-like writers: ban kept-user and persist, under bannedUsersMu.
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 50 {
+				bannedUsersMu.Lock()
+				bannedUsersIDs.Store("kept-user", "reason")
+				_ = storeBannedUsers()
+				bannedUsersMu.Unlock()
+			}
+		}()
+	}
+	// Reloading goroutines.
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 50 {
+				loadBannedUsers()
+			}
+		}()
+	}
+	wg.Wait()
+
+	// A final reload must reflect the persisted (still-banned) user.
+	loadBannedUsers()
+	if _, ok := bannedUsersIDs.Load("kept-user"); !ok {
+		t.Fatal("kept-user ban was lost after concurrent modify + reload")
+	}
 }

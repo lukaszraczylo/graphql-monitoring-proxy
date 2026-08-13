@@ -19,6 +19,13 @@ import (
 
 var bannedUsersIDs sync.Map // key: userID string, value: reason string
 
+// bannedUsersMu serializes in-memory banned-set mutations (admin Store/Delete)
+// against the periodic file reload's clear-then-rebuild, and keeps the file
+// write atomic with the map change. Lock ordering: always acquire
+// bannedUsersMu BEFORE the file lock; loadBannedUsers releases its file read
+// lock before applying the snapshot to honour that order and avoid deadlock.
+var bannedUsersMu sync.Mutex
+
 // authMiddleware provides API key authentication for admin endpoints
 func authMiddleware(c fiber.Ctx) error {
 	apiKey := c.Get("X-API-Key")
@@ -245,6 +252,10 @@ func apiBanUser(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString("user_id and reason are required")
 	}
 
+	// Hold bannedUsersMu over both the map update AND the file write so a
+	// concurrent reload (replaceBannedUsers) cannot clear the just-added user
+	// before storeBannedUsers persists it.
+	bannedUsersMu.Lock()
 	bannedUsersIDs.Store(req.UserID, req.Reason)
 
 	cfg.Logger.Info(&libpack_logger.LogMessage{
@@ -252,7 +263,9 @@ func apiBanUser(c fiber.Ctx) error {
 		Pairs:   map[string]any{"user_id": req.UserID, "reason": req.Reason},
 	})
 
-	if err := storeBannedUsers(); err != nil {
+	err := storeBannedUsers()
+	bannedUsersMu.Unlock()
+	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to store banned users")
 	}
 
@@ -273,6 +286,7 @@ func apiUnbanUser(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).SendString("user_id is required")
 	}
 
+	bannedUsersMu.Lock()
 	bannedUsersIDs.Delete(req.UserID)
 
 	cfg.Logger.Info(&libpack_logger.LogMessage{
@@ -280,7 +294,9 @@ func apiUnbanUser(c fiber.Ctx) error {
 		Pairs:   map[string]any{"user_id": req.UserID},
 	})
 
-	if err := storeBannedUsers(); err != nil {
+	err := storeBannedUsers()
+	bannedUsersMu.Unlock()
+	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).SendString("Failed to store banned users")
 	}
 
@@ -345,15 +361,6 @@ func loadBannedUsers() {
 		})
 		return
 	}
-	defer func() {
-		if err := fileLock.Unlock(); err != nil {
-			cfg.Logger.Error(&libpack_logger.LogMessage{
-				Message: "Failed to unlock file",
-				Pairs:   map[string]any{"error": err.Error()},
-			})
-		}
-	}()
-
 	data, err := os.ReadFile(cfg.Api.BannedUsersFile)
 	if err != nil {
 		cfg.Logger.Error(&libpack_logger.LogMessage{
@@ -361,6 +368,17 @@ func loadBannedUsers() {
 			Pairs:   map[string]any{"error": err.Error()},
 		})
 		return
+	}
+
+	// Release the read lock BEFORE mutating the in-memory set. replaceBannedUsers
+	// takes bannedUsersMu; acquiring the file read lock and bannedUsersMu in the
+	// file->mutex order would invert the mutex->file order used by the admin
+	// write path (apiBanUser/apiUnbanUser) and could deadlock.
+	if err := fileLock.Unlock(); err != nil {
+		cfg.Logger.Error(&libpack_logger.LogMessage{
+			Message: "Failed to unlock file",
+			Pairs:   map[string]any{"error": err.Error()},
+		})
 	}
 
 	var newBannedUsers map[string]string
@@ -392,6 +410,10 @@ func snapshotBannedUsers() map[string]string {
 // replaceBannedUsers swaps the banned users set with the provided map.
 // Existing entries are removed before inserting the new ones.
 func replaceBannedUsers(newUsers map[string]string) {
+	// Clear-then-rebuild must be atomic against admin Store/Delete
+	// (apiBanUser/apiUnbanUser) or a reload can clobber a just-applied ban.
+	bannedUsersMu.Lock()
+	defer bannedUsersMu.Unlock()
 	bannedUsersIDs.Range(func(k, _ any) bool {
 		bannedUsersIDs.Delete(k)
 		return true
@@ -508,7 +530,7 @@ func apiConnectionPoolHealth(c fiber.Ctx) error {
 	}
 
 	stats := poolMgr.GetConnectionStats()
-	connectionFailures := stats["connection_failures"].(int64)
+	connectionFailures, _ := stats["connection_failures"].(int64)
 
 	var status string
 	var httpStatus int
