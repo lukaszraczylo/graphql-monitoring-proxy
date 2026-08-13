@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -433,4 +434,114 @@ func TestStartCacheMemoryMonitoring_NoPanicWithMinimalSetup(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Fatal("startCacheMemoryMonitoring did not exit within 1s")
 	}
+}
+
+// TestWebSocketProxy_TeardownOnClientDisconnect verifies that when the client
+// side of the WebSocket proxy closes (logs off / drops), the backend
+// connection is torn down too. Previously the backend-direction goroutine
+// stayed blocked on backend.ReadMessage, so the goroutine and the backend
+// socket leaked until the backend independently closed or sent a message.
+func TestWebSocketProxy_TeardownOnClientDisconnect(t *testing.T) {
+	backendClosed := make(chan struct{})
+
+	// Backend WS server that stays open until the proxy disconnects it.
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := (&gorillaws.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		// Block reading; if the proxy closes the connection (the fix), this
+		// returns and we signal teardown.
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				close(backendClosed)
+				return
+			}
+		}
+	}))
+	defer backend.Close()
+
+	wsp := NewWebSocketProxy(backend.URL, WebSocketConfig{
+		Enabled: true, MaxMessageSize: 64 * 1024,
+	}, libpack_logger.New(), nil)
+
+	app := fiber.New()
+	app.Get("/ws", websocket.New(func(c *websocket.Conn) {
+		wsp.handleConnection(context.Background(), c, http.Header{})
+	}))
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	go func() { _ = app.Listener(ln) }()
+	t.Cleanup(func() { _ = app.Shutdown() })
+
+	client, _, err := gorillaws.DefaultDialer.Dial("ws://"+ln.Addr().String()+"/ws", nil)
+	require.NoError(t, err)
+
+	// Trigger backend dial + first-message forward.
+	err = client.WriteMessage(gorillaws.TextMessage, []byte(`{"type":"connection_init","payload":{}}`))
+	require.NoError(t, err)
+	// Give the proxy a moment to connect to the backend before we drop the client.
+	time.Sleep(200 * time.Millisecond)
+
+	// Client logs off.
+	_ = client.Close()
+
+	select {
+	case <-backendClosed:
+		// Backend was torn down — no leak.
+	case <-time.After(3 * time.Second):
+		t.Fatal("backend connection was not closed after client disconnect (goroutine / socket leak)")
+	}
+}
+
+// TestWebSocketProxy_BackendReadLimit verifies that messages received from the
+// backend are bounded by MaxMessageSize (previously only the client-side read
+// was bounded), so an oversized backend frame closes the connection instead of
+// being forwarded to the client unbounded.
+func TestWebSocketProxy_BackendReadLimit(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := (&gorillaws.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		// Send a 16KB frame; the proxy's read limit is set far below this.
+		payload := strings.Repeat("x", 16*1024)
+		for {
+			if err := conn.WriteMessage(gorillaws.TextMessage, []byte(payload)); err != nil {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}))
+	defer backend.Close()
+
+	wsp := NewWebSocketProxy(backend.URL, WebSocketConfig{
+		Enabled: true, MaxMessageSize: 1024, // tiny limit
+	}, libpack_logger.New(), nil)
+
+	app := fiber.New()
+	app.Get("/ws", websocket.New(func(c *websocket.Conn) {
+		wsp.handleConnection(context.Background(), c, http.Header{})
+	}))
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	go func() { _ = app.Listener(ln) }()
+	t.Cleanup(func() { _ = app.Shutdown() })
+
+	client, _, err := gorillaws.DefaultDialer.Dial("ws://"+ln.Addr().String()+"/ws", nil)
+	require.NoError(t, err)
+	defer func() { _ = client.Close() }()
+
+	err = client.WriteMessage(gorillaws.TextMessage, []byte(`{"type":"connection_init","payload":{}}`))
+	require.NoError(t, err)
+
+	// Backend pushes frames that exceed the read limit; the proxy must tear
+	// the connection down rather than forwarding unbounded frames.
+	client.SetReadDeadline(time.Now().Add(3 * time.Second)) //nolint:errcheck
+	_, _, readErr := client.ReadMessage()
+	require.Error(t, readErr, "expected connection to be closed after backend exceeded read limit")
 }

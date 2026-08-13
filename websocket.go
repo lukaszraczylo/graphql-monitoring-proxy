@@ -207,6 +207,11 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 		})
 	}
 
+	// Bound messages read from the backend as well, so a large or
+	// misbehaving backend cannot force us to forward an unbounded frame to the
+	// client (the client-side limit only bounds what the client can send us).
+	backendConn.SetReadLimit(wsp.maxMessageSize)
+
 	// Set up bidirectional proxying
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -214,12 +219,19 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 	// Client -> Backend
 	go func() {
 		defer wg.Done()
+		// When the client side finishes (e.g. the client disconnected), close
+		// the backend so the reverse goroutine's blocked read returns instead
+		// of leaking the goroutine and holding the backend connection open.
+		defer func() { _ = backendConn.Close() }()
 		wsp.proxyClientToBackend(ctx, clientConn, backendConn, connectionID)
 	}()
 
 	// Backend -> Client
 	go func() {
 		defer wg.Done()
+		// Symmetric teardown: when the backend side finishes, close the
+		// client so the client-direction goroutine isn't left blocked either.
+		defer func() { _ = clientConn.Close() }()
 		wsp.proxyBackendToClient(ctx, backendConn, clientConn, connectionID)
 	}()
 
