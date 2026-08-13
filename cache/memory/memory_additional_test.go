@@ -1,6 +1,7 @@
 package libpack_cache_memory
 
 import (
+	"fmt"
 	"io"
 	"sync"
 	"testing"
@@ -145,6 +146,95 @@ func TestMemoryCacheConcurrentSetSameNewKey_CounterNotDoubled(t *testing.T) {
 	// Sanity: the entry is actually stored and retrievable.
 	if _, ok := cache.Get("same-key"); !ok {
 		t.Fatal("key should be retrievable after Set")
+	}
+}
+
+func TestMemoryCacheConcurrentSetDeleteEvict_CountersMatchActualState(t *testing.T) {
+	// Regression for M4 (evictToFreeMemory pre-allocation sized from live
+	// entryCount, not configured maxCacheSize) and S2 (lock-free Set via
+	// sync.Map.Swap, so Set no longer double-accounts when it races with
+	// Delete/evictOldest/evictToFreeMemory/CleanExpiredEntries on the same
+	// key).
+	//
+	// The specific key each goroutine touches, and which operation wins a
+	// given race, is inherently nondeterministic. What must always hold,
+	// deterministically, once every goroutine has joined, is the invariant
+	// that entryCount/memoryUsage are derived state: they must exactly match
+	// the cache's real final contents. Recomputing "expected" from the
+	// actual final map (the known final key set) and diffing against the
+	// atomic counters catches any lost or double-counted update.
+	const (
+		numKeys    = 50
+		numWorkers = 16
+		numOpsEach = 300
+	)
+
+	// Small maxCacheSize so Set's own eviction path (evictOldest) also fires
+	// under the concurrent load, in addition to the evictors driven directly
+	// below.
+	cache := NewWithSize(DefaultTestExpiration, DefaultMaxMemorySize, 40)
+	defer cache.Shutdown()
+
+	keyFor := func(i int) string { return fmt.Sprintf("hammer-key-%d", i) }
+
+	// Pre-seed so evictors have entries to act on from the start.
+	for i := range numKeys {
+		cache.Set(keyFor(i), []byte("seed-value"), DefaultTestExpiration)
+	}
+
+	var wg sync.WaitGroup
+	for w := range numWorkers {
+		wg.Add(1)
+		go func(worker int) {
+			defer wg.Done()
+			for op := range numOpsEach {
+				k := keyFor((worker + op) % numKeys)
+				switch op % 3 {
+				case 0:
+					cache.Set(k, []byte("value"), DefaultTestExpiration)
+				case 1:
+					cache.Delete(k)
+				case 2:
+					cache.evictOldest(2)
+				}
+			}
+		}(w)
+	}
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for range 100 {
+			cache.evictToFreeMemory(128)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for range 100 {
+			cache.CleanExpiredEntries()
+		}
+	}()
+
+	wg.Wait()
+
+	// Stop the background cleanup goroutine before recomputing expected
+	// state, so it cannot race with the Range below (nothing has expired
+	// yet - DefaultTestExpiration is 5s - but this removes any doubt).
+	cache.Shutdown()
+
+	var wantCount, wantMemory int64
+	cache.entries.Range(func(_, v any) bool {
+		entry := v.(CacheEntry)
+		wantCount++
+		wantMemory += entry.MemorySize
+		return true
+	})
+
+	if got := cache.CountQueries(); got != wantCount {
+		t.Fatalf("entryCount = %d, want %d (actual live entries after join)", got, wantCount)
+	}
+	if got := cache.GetMemoryUsage(); got != wantMemory {
+		t.Fatalf("memoryUsage = %d, want %d (sum of live entries' MemorySize after join)", got, wantMemory)
 	}
 }
 

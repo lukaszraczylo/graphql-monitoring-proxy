@@ -46,7 +46,6 @@ type Cache struct {
 	memoryUsage    int64
 	maxMemorySize  int64
 	maxCacheSize   int64
-	sync.RWMutex
 }
 
 func New(globalTTL time.Duration) *Cache {
@@ -167,26 +166,21 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 		entry.MemorySize = int64(len(key) + len(entry.Value) + approxEntryOverhead)
 	}
 
-	// Check if this is a new entry or an update. The exists-check, counter
-	// update and store must be atomic together: without the lock, two
-	// concurrent Sets of the same brand-new key both observe it as absent and
-	// both increment entryCount/memoryUsage, leaving the counters inflated
-	// for a single stored entry.
-	c.Lock()
-	oldEntry, exists := c.entries.Load(key)
-	if exists {
-		// Update memory usage: subtract old entry size, add new entry size
-		oldCacheEntry := oldEntry.(CacheEntry)
-		atomic.AddInt64(&c.memoryUsage, -oldCacheEntry.MemorySize)
+	// Swap is a single atomic operation on the sync.Map: it stores the new
+	// entry and reports the previous value (if any) in one step, so the
+	// entryCount/memoryUsage deltas below always match what actually
+	// happened to the map, even when Set races with Delete/evict on the same
+	// key. This keeps Set lock-free instead of serializing every write.
+	prev, loaded := c.entries.Swap(key, entry)
+	if loaded {
+		// Existing entry replaced: subtract its memory size.
+		prevEntry := prev.(CacheEntry)
+		atomic.AddInt64(&c.memoryUsage, -prevEntry.MemorySize)
 	} else {
-		// New entry
+		// New entry.
 		atomic.AddInt64(&c.entryCount, 1)
 	}
-
-	// Add new entry's memory size to total
 	atomic.AddInt64(&c.memoryUsage, entry.MemorySize)
-	c.entries.Store(key, entry)
-	c.Unlock()
 }
 
 func (c *Cache) Get(key string) ([]byte, bool) {
@@ -282,9 +276,14 @@ func (c *Cache) CleanExpiredEntries() {
 	c.entries.Range(func(key, value any) bool {
 		entry := value.(CacheEntry)
 		if entry.ExpiresAt.Before(now) {
-			if _, exists := c.entries.LoadAndDelete(key); exists {
+			// Subtract the MemorySize of the value LoadAndDelete actually
+			// removed, not the Range snapshot: a concurrent Set of the same
+			// key between the Range read and the delete would otherwise
+			// account for the wrong entry's size.
+			if removed, exists := c.entries.LoadAndDelete(key); exists {
+				removedEntry := removed.(CacheEntry)
 				atomic.AddInt64(&c.entryCount, -1)
-				atomic.AddInt64(&c.memoryUsage, -entry.MemorySize)
+				atomic.AddInt64(&c.memoryUsage, -removedEntry.MemorySize)
 			}
 		}
 		return true
@@ -342,7 +341,16 @@ func (c *Cache) evictToFreeMemory(bytesToFree int64) {
 	// previous code capped the candidate set at maxCacheSize/5 and stopped at
 	// the end of that subset, so a large write could leave the cache over its
 	// memory limit.
-	entries := make([]keyMemorySize, 0, int(c.maxCacheSize))
+	//
+	// Size the slice from the live entry count, not the configured
+	// maxCacheSize: with a large configured limit (e.g. millions of entries)
+	// and a near-empty cache, pre-allocating by maxCacheSize would allocate
+	// far more memory than the cache actually holds.
+	liveEntries := atomic.LoadInt64(&c.entryCount)
+	if liveEntries < 0 {
+		liveEntries = 0
+	}
+	entries := make([]keyMemorySize, 0, liveEntries)
 	c.entries.Range(func(k, v any) bool {
 		key := k.(string)
 		entry := v.(CacheEntry)
