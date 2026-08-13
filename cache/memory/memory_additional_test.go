@@ -1,6 +1,7 @@
 package libpack_cache_memory
 
 import (
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -144,5 +145,32 @@ func TestMemoryCacheConcurrentSetSameNewKey_CounterNotDoubled(t *testing.T) {
 	// Sanity: the entry is actually stored and retrievable.
 	if _, ok := cache.Get("same-key"); !ok {
 		t.Fatal("key should be retrievable after Set")
+	}
+}
+
+func TestMemoryCacheClose_IdempotentAndStillUsable(t *testing.T) {
+	// Compile-time guard: the memory backend must satisfy io.Closer so
+	// cache.Shutdown() can stop its cleanup goroutine (it otherwise leaks
+	// the background timer until process exit), matching the Redis backend.
+	var _ io.Closer = (*Cache)(nil)
+
+	cache := New(DefaultTestExpiration)
+	cache.Set("key", []byte("value"), DefaultTestExpiration)
+
+	// Close is idempotent: it only cancels the background cleaner.
+	if err := cache.Close(); err != nil {
+		t.Fatalf("first Close: %v", err)
+	}
+	if err := cache.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+
+	// Stopping the cleaner must not render the cache unusable.
+	if _, ok := cache.Get("key"); !ok {
+		t.Fatal("entry should survive Close; Close only stops the background cleaner")
+	}
+	cache.Set("key2", []byte("v2"), DefaultTestExpiration)
+	if _, ok := cache.Get("key2"); !ok {
+		t.Fatal("cache should remain writable after Close")
 	}
 }

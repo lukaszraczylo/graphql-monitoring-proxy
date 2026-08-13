@@ -108,6 +108,15 @@ func (c *Cache) Shutdown() {
 	}
 }
 
+// Close implements io.Closer so the cache layer (cache.Shutdown) can stop the
+// cleanup goroutine for the in-memory backend, matching the Redis backend
+// which closes its connection pool. Idempotent: cancelling the context does
+// not render the cache unusable, it only stops the background cleaner.
+func (c *Cache) Close() error {
+	c.Shutdown()
+	return nil
+}
+
 func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 	// Calculate the memory size of this entry
 	entrySize := int64(len(key) + len(value) + approxEntryOverhead)

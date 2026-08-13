@@ -169,7 +169,7 @@ func EnableCache(cfg *CacheConfig) {
 }
 
 // Shutdown closes the underlying cache client if it owns external resources
-// (the Redis connection pool). No-op for in-memory caches.
+// (the Redis connection pool, or the in-memory cleanup goroutine).
 func Shutdown() {
 	if config != nil && config.Client != nil {
 		if closer, ok := config.Client.(io.Closer); ok {
