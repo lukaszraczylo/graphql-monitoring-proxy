@@ -77,8 +77,27 @@ func (c *RedisConfig) Delete(key string) error {
 	return c.client.Del(c.ctx, c.prependKeyName(key)).Err()
 }
 
+// Clear removes only the keys owned by this cache (those under the configured
+// prefix). Unlike FlushDB it does not wipe unrelated keys that may share the
+// selected Redis DB when the database is not exclusively owned by this proxy.
 func (c *RedisConfig) Clear() error {
-	return c.client.FlushDB(c.ctx).Err()
+	var cursor uint64
+	for {
+		keys, next, err := c.client.Scan(c.ctx, cursor, c.prependKeyName("*"), 100).Result()
+		if err != nil {
+			return err
+		}
+		if len(keys) > 0 {
+			if err := c.client.Del(c.ctx, keys...).Err(); err != nil {
+				return err
+			}
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+	return nil
 }
 
 func (c *RedisConfig) CountQueries() (int64, error) {
@@ -97,21 +116,11 @@ func (c *RedisConfig) CountQueriesWithPattern(pattern string) (int, error) {
 	return len(keys), nil
 }
 
-// GetMemoryUsage returns an approximation of memory usage for Redis
-// For Redis, this is not as accurate as the memory cache implementation
-// as actual memory is managed by Redis server
+// GetMemoryUsage returns an approximation of memory usage for Redis.
+// Actual memory is managed by the Redis server, so the proxy reports 0 here.
+// Avoid an Info() round-trip: its result was always discarded, and it could
+// stall the dashboard stats endpoint when Redis is slow or unreachable.
 func (c *RedisConfig) GetMemoryUsage() int64 {
-	// We could attempt to get memory usage from Redis info
-	// but for now, we'll just return 0 since Redis manages its own memory
-	// and this information would require parsing the INFO command output
-	_, err := c.client.Info(c.ctx, "memory").Result()
-	if err != nil {
-		return 0
-	}
-
-	// Just return 0 as a placeholder since Redis manages its own memory
-	// In a production environment, you could parse the Redis INFO command result
-	// to extract actual "used_memory" value
 	return 0
 }
 
