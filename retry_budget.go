@@ -17,6 +17,7 @@ type RetryBudget struct {
 	currentTokens   atomic.Int64
 	lastRefill      atomic.Int64 // Unix timestamp in nanoseconds
 	enabled         bool
+	configMu        sync.RWMutex // guards tokensPerSecond, maxTokens, enabled (UpdateConfig vs refill/AllowRetry)
 	logger          *libpack_logger.Logger
 	ctx             context.Context
 	cancel          context.CancelFunc
@@ -67,7 +68,11 @@ func NewRetryBudgetWithContext(ctx context.Context, config RetryBudgetConfig, lo
 func (rb *RetryBudget) AllowRetry() bool {
 	rb.totalAttempts.Add(1)
 
-	if !rb.enabled {
+	rb.configMu.RLock()
+	enabled := rb.enabled
+	rb.configMu.RUnlock()
+
+	if !enabled {
 		rb.allowedRetries.Add(1)
 		return true
 	}
@@ -120,6 +125,11 @@ func (rb *RetryBudget) Shutdown() {
 
 // refill adds tokens to the bucket based on elapsed time
 func (rb *RetryBudget) refill() {
+	rb.configMu.RLock()
+	tokensPerSecond := rb.tokensPerSecond
+	maxTokens := rb.maxTokens
+	rb.configMu.RUnlock()
+
 	now := time.Now().UnixNano()
 	last := rb.lastRefill.Load()
 
@@ -127,7 +137,7 @@ func (rb *RetryBudget) refill() {
 	elapsed := float64(now-last) / float64(time.Second)
 
 	// Calculate tokens to add
-	tokensToAdd := int64(elapsed * rb.tokensPerSecond)
+	tokensToAdd := int64(elapsed * tokensPerSecond)
 
 	if tokensToAdd > 0 {
 		// Update last refill time
@@ -136,8 +146,8 @@ func (rb *RetryBudget) refill() {
 			for {
 				current := rb.currentTokens.Load()
 				newValue := current + tokensToAdd
-				if newValue > rb.maxTokens {
-					newValue = rb.maxTokens
+				if newValue > maxTokens {
+					newValue = maxTokens
 				}
 
 				if rb.currentTokens.CompareAndSwap(current, newValue) {
@@ -154,16 +164,22 @@ func (rb *RetryBudget) GetStats() map[string]any {
 	allowedRetries := rb.allowedRetries.Load()
 	deniedRetries := rb.deniedRetries.Load()
 
+	rb.configMu.RLock()
+	enabled := rb.enabled
+	maxTokens := rb.maxTokens
+	tokensPerSecond := rb.tokensPerSecond
+	rb.configMu.RUnlock()
+
 	var denialRate float64
 	if totalAttempts > 0 {
 		denialRate = float64(deniedRetries) / float64(totalAttempts) * 100
 	}
 
 	return map[string]any{
-		"enabled":         rb.enabled,
+		"enabled":         enabled,
 		"current_tokens":  rb.currentTokens.Load(),
-		"max_tokens":      rb.maxTokens,
-		"tokens_per_sec":  rb.tokensPerSecond,
+		"max_tokens":      maxTokens,
+		"tokens_per_sec":  tokensPerSecond,
 		"total_attempts":  totalAttempts,
 		"allowed_retries": allowedRetries,
 		"denied_retries":  deniedRetries,
@@ -173,20 +189,26 @@ func (rb *RetryBudget) GetStats() map[string]any {
 
 // Reset resets the retry budget statistics
 func (rb *RetryBudget) Reset() {
+	rb.configMu.RLock()
+	maxTokens := rb.maxTokens
+	rb.configMu.RUnlock()
+
 	rb.totalAttempts.Store(0)
 	rb.allowedRetries.Store(0)
 	rb.deniedRetries.Store(0)
-	rb.currentTokens.Store(rb.maxTokens)
+	rb.currentTokens.Store(maxTokens)
 }
 
 // UpdateConfig updates the retry budget configuration
 func (rb *RetryBudget) UpdateConfig(config RetryBudgetConfig) {
+	rb.configMu.Lock()
 	rb.tokensPerSecond = config.TokensPerSecond
 	rb.maxTokens = int64(config.MaxTokens)
 	rb.enabled = config.Enabled
 
 	// Reset to full capacity
 	rb.currentTokens.Store(rb.maxTokens)
+	rb.configMu.Unlock()
 
 	if rb.logger != nil {
 		rb.logger.Info(&libpack_logger.LogMessage{

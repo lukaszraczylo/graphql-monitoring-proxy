@@ -234,10 +234,3 @@ func InitializeRequestCoalescer(enabled bool, logger *libpack_logger.Logger, mon
 func GetRequestCoalescer() *RequestCoalescer {
 	return requestCoalescer
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

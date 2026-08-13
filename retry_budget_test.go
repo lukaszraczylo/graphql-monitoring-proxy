@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -309,4 +310,53 @@ func TestRetryBudget_GlobalInstance(t *testing.T) {
 	// Should return the same instance
 	rb2 := GetRetryBudget()
 	assert.Equal(t, rb, rb2)
+}
+
+// TestRetryBudget_ConcurrentUpdateConfig exercises UpdateConfig racing with
+// AllowRetry/refill readers. Run with -race to detect the data race on the
+// mutable config fields.
+func TestRetryBudget_ConcurrentUpdateConfig(t *testing.T) {
+	rb := NewRetryBudget(RetryBudgetConfig{TokensPerSecond: 100.0, MaxTokens: 1000, Enabled: true}, nil)
+	rb.cancel() // stop the refill goroutine so it doesn't advance tokens
+	rb.currentTokens.Store(1000)
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+
+	// Concurrent writers calling UpdateConfig
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					rb.UpdateConfig(RetryBudgetConfig{TokensPerSecond: float64(n), MaxTokens: n, Enabled: true})
+				}
+			}
+		}(i)
+	}
+
+	// Concurrent readers calling AllowRetry and GetStats
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					rb.AllowRetry()
+					rb.GetStats()
+				}
+			}
+		}()
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	close(stop)
+	wg.Wait()
 }
