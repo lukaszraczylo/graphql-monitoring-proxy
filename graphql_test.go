@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/goccy/go-json"
 	fiber "github.com/gofiber/fiber/v3"
@@ -526,6 +527,87 @@ func (suite *Tests) Test_DeepIntrospectionQueries() {
 	}
 }
 
+// Test_FragmentCycleDoesNotHang guards against a stack-overflow DoS: graphql-go's
+// parser.Parse does not reject fragment spread cycles (cycle detection lives only
+// in the unused validator), so a self-referential or mutually-recursive named
+// fragment must be caught by checkSelections' visited set instead of recursing
+// until the process aborts.
+func (suite *Tests) Test_FragmentCycleDoesNotHang() {
+	tests := []struct {
+		name  string
+		query string
+	}{
+		{
+			name:  "self-referential fragment",
+			query: "query Q { ...A } fragment A on Query { ...A }",
+		},
+		{
+			name:  "mutually recursive fragments A -> B -> A",
+			query: "query Q { ...A } fragment A on Query { ...B } fragment B on Query { ...A }",
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			cfg.Security.BlockIntrospection = true
+			cfg.Security.IntrospectionAllowed = nil
+			introspectionAllowedQueries = make(map[string]struct{})
+
+			body := map[string]any{"query": tt.query}
+			bodyBytes, _ := json.Marshal(body)
+			ctx := fiber.New().AcquireCtx(&fasthttp.RequestCtx{})
+			ctx.Request().SetBody(bodyBytes)
+
+			done := make(chan struct{})
+			go func() {
+				parseGraphQLQuery(ctx)
+				close(done)
+			}()
+
+			select {
+			case <-done:
+				// Neither cycle ever reaches an introspection field, so the
+				// request must complete and must not be blocked.
+				suite.Equal(200, ctx.Response().StatusCode())
+			case <-time.After(2 * time.Second):
+				suite.FailNow("checkSelections did not return promptly for a cyclic fragment spread")
+			}
+		})
+	}
+}
+
+// Test_DeepAcyclicFragmentChainDetectsIntrospection verifies the visited-set fix
+// for fragment cycles does not break detection of introspection buried at the
+// end of a long, legitimate (acyclic) chain of distinct named fragments.
+func (suite *Tests) Test_DeepAcyclicFragmentChainDetectsIntrospection() {
+	const chainLength = 50
+
+	var b strings.Builder
+	b.WriteString("query Q { ...F0 }")
+	for i := 0; i < chainLength; i++ {
+		fmt.Fprintf(&b, " fragment F%d on Query { ", i)
+		if i == chainLength-1 {
+			b.WriteString("__schema { queryType { name } }")
+		} else {
+			fmt.Fprintf(&b, "...F%d", i+1)
+		}
+		b.WriteString(" }")
+	}
+
+	cfg.Security.BlockIntrospection = true
+	cfg.Security.IntrospectionAllowed = nil
+	introspectionAllowedQueries = make(map[string]struct{})
+
+	body := map[string]any{"query": b.String()}
+	bodyBytes, _ := json.Marshal(body)
+	ctx := fiber.New().AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().SetBody(bodyBytes)
+
+	parseGraphQLQuery(ctx)
+
+	suite.Equal(403, ctx.Response().StatusCode(), "introspection at the end of a 50-fragment acyclic chain must still be detected")
+}
+
 func TestIntrospectionQueryHandling(t *testing.T) {
 	tests := []struct {
 		name               string
@@ -624,7 +706,7 @@ func TestIntrospectionQueryHandling(t *testing.T) {
 			}
 			for _, def := range p.Definitions {
 				if op, ok := def.(*ast.OperationDefinition); ok {
-					blocked = checkSelections(ctx, op.GetSelectionSet().Selections, fragments)
+					blocked = checkSelections(ctx, op.GetSelectionSet().Selections, fragments, make(map[string]bool))
 					break
 				}
 			}

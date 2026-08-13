@@ -379,7 +379,7 @@ func parseGraphQLQuery(c fiber.Ctx) *parseGraphQLQueryResult {
 		processDirectives(oper, res)
 
 		// Check for introspection queries if they're blocked
-		if cfg.Security.BlockIntrospection && checkSelections(c, oper.GetSelectionSet().Selections, fragments) {
+		if cfg.Security.BlockIntrospection && checkSelections(c, oper.GetSelectionSet().Selections, fragments, make(map[string]bool)) {
 			_ = c.Status(403).SendString("Introspection queries are not allowed")
 			res.shouldBlock = true
 			return res
@@ -430,8 +430,17 @@ func processDirectives(oper *ast.OperationDefinition, res *parseGraphQLQueryResu
 
 // checkSelections recursively checks if any selection is an introspection query that should be blocked.
 // fragments indexes top-level named FragmentDefinition nodes so that a FragmentSpread (which only
-// carries a name) can be resolved to its actual selection set.
-func checkSelections(c fiber.Ctx, selections []ast.Selection, fragments map[string]*ast.FragmentDefinition) bool {
+// carries a name) can be resolved to its actual selection set. visited tracks fragment names already
+// entered anywhere in this top-level call's traversal so a fragment that spreads itself (directly or via
+// a cycle, e.g. A -> B -> A) cannot recurse forever; graphql-go's parser does not reject fragment cycles,
+// only its (unused) validator does. Skipping an already-visited fragment is safe in both situations the
+// visited map covers. For a true cycle, the fragment is already being checked higher up the call stack,
+// so re-entering it cannot discover anything new. For a diamond (DAG) reuse - the same fragment spread
+// from two separate, non-nested branches, with no cycle involved - the fragment was already fully
+// checked earlier in this traversal; since visited only ever grows (it is never cleared within a call),
+// a later traversal of that same fragment could only re-walk a subset of what the earlier, complete
+// traversal already covered, so skipping it loses nothing.
+func checkSelections(c fiber.Ctx, selections []ast.Selection, fragments map[string]*ast.FragmentDefinition, visited map[string]bool) bool {
 	if len(selections) == 0 {
 		return false
 	}
@@ -463,7 +472,7 @@ func checkSelections(c fiber.Ctx, selections []ast.Selection, fragments map[stri
 
 			// Check nested selections if present
 			if sel.SelectionSet != nil && len(sel.GetSelectionSet().Selections) > 0 {
-				if checkSelections(c, sel.GetSelectionSet().Selections, fragments) {
+				if checkSelections(c, sel.GetSelectionSet().Selections, fragments, visited) {
 					return true
 				}
 			}
@@ -471,7 +480,7 @@ func checkSelections(c fiber.Ctx, selections []ast.Selection, fragments map[stri
 		case *ast.InlineFragment:
 			// Check nested selections in fragments
 			if sel.SelectionSet != nil && len(sel.GetSelectionSet().Selections) > 0 {
-				if checkSelections(c, sel.GetSelectionSet().Selections, fragments) {
+				if checkSelections(c, sel.GetSelectionSet().Selections, fragments, visited) {
 					return true
 				}
 			}
@@ -480,9 +489,13 @@ func checkSelections(c fiber.Ctx, selections []ast.Selection, fragments map[stri
 			// A named fragment spread carries no selection set itself; resolve it
 			// to its top-level FragmentDefinition so introspection inside a named
 			// fragment (e.g. `...F` where F selects __schema) cannot bypass the block.
-			if sel.Name != nil {
+			// Skip a name already visited to break self- and mutually-recursive
+			// fragment cycles (e.g. `fragment A on Query { ...A }`), which the
+			// parser does not reject.
+			if sel.Name != nil && !visited[sel.Name.Value] {
 				if frag, ok := fragments[sel.Name.Value]; ok && frag.SelectionSet != nil {
-					if checkSelections(c, frag.SelectionSet.Selections, fragments) {
+					visited[sel.Name.Value] = true
+					if checkSelections(c, frag.SelectionSet.Selections, fragments, visited) {
 						return true
 					}
 				}
@@ -536,7 +549,7 @@ func checkIfContainsIntrospection(c fiber.Ctx, query string) bool {
 		for _, def := range p.Definitions {
 			if op, ok := def.(*ast.OperationDefinition); ok {
 				if op.SelectionSet != nil {
-					blocked = checkSelections(c, op.GetSelectionSet().Selections, fragments)
+					blocked = checkSelections(c, op.GetSelectionSet().Selections, fragments, make(map[string]bool))
 					break
 				}
 			}
