@@ -405,3 +405,40 @@ func TestMin(t *testing.T) {
 		assert.Equal(t, tt.expected, result)
 	}
 }
+
+// TestRequestCoalescer_PanicSafety verifies that when the primary fn() panics,
+// the coalescer still releases waiters and clears the inflight key instead of
+// permanently deadlocking that key (waiters hang on wg.Wait and the entry
+// leaks).
+func TestRequestCoalescer_PanicSafety(t *testing.T) {
+	rc := NewRequestCoalescer(true, nil, nil)
+
+	// First call's fn() panics. Recover in a goroutine to emulate the
+	// caller catching/handling the panic.
+	panicDone := make(chan struct{})
+	go func() {
+		defer close(panicDone)
+		defer func() { _ = recover() }()
+		_, _ = rc.Do("key", func() (*CoalescedResponse, error) {
+			panic("boom")
+		})
+	}()
+	<-panicDone
+
+	// A subsequent call for the same key must complete (not hang), proving the
+	// key was released and the entry dropped.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		resp, err := rc.Do("key", func() (*CoalescedResponse, error) {
+			return &CoalescedResponse{StatusCode: 200}, nil
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, 200, resp.StatusCode)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("coalescer key still blocked after primary fn() panic")
+	}
+}

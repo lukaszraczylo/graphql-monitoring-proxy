@@ -138,6 +138,15 @@ func (rc *RequestCoalescer) Do(key string, fn func() (*CoalescedResponse, error)
 	rc.inflightCount.Add(1)
 	defer rc.inflightCount.Add(-1)
 
+	// Always release waiters and clear the map entry, even if fn() panics.
+	// Without this, a panicking fn() leaves the key in the inflight map and
+	// the WaitGroup counter positive, so every coalesced waiter for that key
+	// blocks on wg.Wait() forever (permanent deadlock + leak).
+	defer func() {
+		rc.inflight.Delete(key)
+		inflight.wg.Done()
+	}()
+
 	// Execute the request
 	response, err := fn()
 
@@ -151,10 +160,6 @@ func (rc *RequestCoalescer) Do(key string, fn func() (*CoalescedResponse, error)
 		inflight.response = response
 	}
 	inflight.mu.Unlock()
-
-	// Clean up and notify waiters
-	rc.inflight.Delete(key)
-	inflight.wg.Done()
 
 	// Log statistics
 	waiters := inflight.waiters.Load()
