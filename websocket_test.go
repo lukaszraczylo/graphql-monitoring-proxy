@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	gorillaws "github.com/gorilla/websocket"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 	"github.com/stretchr/testify/assert"
@@ -305,6 +308,58 @@ func TestWebSocketProxy_ConfigValidation(t *testing.T) {
 		wsp := NewWebSocketProxy("http://localhost:8080", config, libpack_logger.New(), nil)
 		assert.Equal(t, int64(512*1024), wsp.maxMessageSize)
 	})
+}
+
+func TestWebSocketProxy_ReapsSilentBackend_Keepalive(t *testing.T) {
+	config := WebSocketConfig{
+		Enabled:      true,
+		PingInterval: 30 * time.Second,
+		PongTimeout:  150 * time.Millisecond,
+	}
+	wsp := NewWebSocketProxy("ws://placeholder", config, libpack_logger.New(), nil)
+
+	// Real backend that completes the WebSocket upgrade then stays silent (TCP
+	// open, no frames) - simulates a half-open peer whose connection the
+	// keepalive read deadline must reap instead of hanging forever.
+	serverRelease := make(chan struct{})
+	upgrader := gorillaws.Upgrader{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		<-serverRelease
+		_ = conn.Close()
+	}))
+	defer srv.Close()
+	defer close(serverRelease)
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
+	backend, _, err := gorillaws.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial backend: %v", err)
+	}
+	defer backend.Close()
+
+	// Mirror handleConnection's keepalive: refresh the read deadline on the
+	// configured pong timeout so an idle backend is reaped.
+	backend.SetReadDeadline(time.Now().Add(config.PongTimeout))
+
+	done := make(chan struct{})
+	go func() {
+		// client conn is nil and safe here: the silent backend sends no
+		// message, so proxyBackendToClient returns on the read deadline
+		// before any client.WriteMessage call.
+		wsp.proxyBackendToClient(context.Background(), backend, nil, "test-conn")
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Reaped via the keepalive read deadline rather than blocking forever.
+	case <-time.After(2 * time.Second):
+		t.Fatal("proxyBackendToClient hung; keepalive read deadline did not reap silent backend")
+	}
 }
 
 func TestWebSocketProxy_StatsStructure(t *testing.T) {

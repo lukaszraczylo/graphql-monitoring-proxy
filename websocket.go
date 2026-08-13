@@ -212,6 +212,51 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 	// client (the client-side limit only bounds what the client can send us).
 	backendConn.SetReadLimit(wsp.maxMessageSize)
 
+	// Keepalive: wire the configured (previously unused) PingInterval /
+	// PongTimeout so a half-open peer (TCP still open but silent) is reaped
+	// instead of leaving both proxy goroutines (and this handler) blocked in
+	// ReadMessage forever. We ping both directions and enforce a read
+	// deadline on each side that is refreshed by real traffic or a pong, so
+	// an active connection is never closed while an idle one is cleaned up.
+	pingInterval := wsp.pingInterval
+	pongTimeout := wsp.pongTimeout
+	if pingInterval <= 0 {
+		pingInterval = 30 * time.Second
+	}
+	if pongTimeout <= 0 {
+		pongTimeout = 60 * time.Second
+	}
+
+	_ = clientConn.SetReadDeadline(time.Now().Add(pongTimeout))
+	clientConn.SetPongHandler(func(string) error {
+		return clientConn.SetReadDeadline(time.Now().Add(pongTimeout))
+	})
+	_ = backendConn.SetReadDeadline(time.Now().Add(pongTimeout))
+	backendConn.SetPongHandler(func(string) error {
+		return backendConn.SetReadDeadline(time.Now().Add(pongTimeout))
+	})
+
+	// Ping both peers periodically. WriteControl is safe to call concurrently
+	// with WriteMessage, so this goroutine does not contend with the two
+	// forwarding directions. Both libraries use the standard WebSocket
+	// opcode value for a ping (9).
+	pingCtx, cancelPing := context.WithCancel(ctx)
+	defer cancelPing()
+	go func() {
+		ticker := time.NewTicker(pingInterval / 2)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-pingCtx.Done():
+				return
+			case <-ticker.C:
+				writeDeadline := time.Now().Add(10 * time.Second)
+				_ = clientConn.WriteControl(gorillaws.PingMessage, nil, writeDeadline)
+				_ = backendConn.WriteControl(gorillaws.PingMessage, nil, writeDeadline)
+			}
+		}
+	}()
+
 	// Set up bidirectional proxying
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -292,6 +337,12 @@ func (wsp *WebSocketProxy) proxyClientToBackend(ctx context.Context, client *web
 
 			wsp.messagesSent.Add(1)
 
+			// Refresh the read deadline on real client traffic so a client that
+			// sends data (even without pongs) is never reaped by the keepalive.
+			if wsp.pongTimeout > 0 {
+				_ = client.SetReadDeadline(time.Now().Add(wsp.pongTimeout))
+			}
+
 			// Forward message to backend
 			if err := backend.WriteMessage(messageType, message); err != nil {
 				wsp.errors.Add(1)
@@ -355,6 +406,13 @@ func (wsp *WebSocketProxy) proxyBackendToClient(ctx context.Context, backend *go
 			}
 
 			wsp.messagesReceived.Add(1)
+
+			// Refresh the backend read deadline on real traffic too: a backend
+			// that streams data but does not answer control pings must not be
+			// reaped by the keepalive.
+			if wsp.pongTimeout > 0 {
+				_ = backend.SetReadDeadline(time.Now().Add(wsp.pongTimeout))
+			}
 
 			// Forward message to client
 			if err := client.WriteMessage(messageType, message); err != nil {
