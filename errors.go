@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -121,7 +122,8 @@ func IsRetryable(err error) bool {
 		return false
 	}
 
-	if proxyErr, ok := err.(*ProxyError); ok {
+	var proxyErr *ProxyError
+	if errors.As(err, &proxyErr) {
 		return proxyErr.Retryable
 	}
 
@@ -134,7 +136,8 @@ func GetStatusCode(err error) int {
 		return 200
 	}
 
-	if proxyErr, ok := err.(*ProxyError); ok {
+	var proxyErr *ProxyError
+	if errors.As(err, &proxyErr) {
 		return proxyErr.StatusCode
 	}
 

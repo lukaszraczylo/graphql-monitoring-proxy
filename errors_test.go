@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -240,4 +241,22 @@ func TestProxyError_Retryable(t *testing.T) {
 			assert.Equal(t, tt.retryable, err.Retryable)
 		})
 	}
+}
+
+// Test_IsRetryable_GetStatusCode_Wrapped verifies that retryability and status
+// are correctly recovered from a ProxyError that has been wrapped (e.g. via
+// %w), using errors.As rather than a direct type assertion.
+func Test_IsRetryable_GetStatusCode_Wrapped(t *testing.T) {
+	base := NewProxyError(ErrCodeBackendError, "boom", 503, true)
+	wrapped := fmt.Errorf("request failed: %w", base)
+	assert.True(t, IsRetryable(wrapped), "retryable flag must survive wrapping")
+	assert.Equal(t, 503, GetStatusCode(wrapped), "status code must survive wrapping")
+
+	nonRetryable := NewProxyError(ErrCodeInvalidRequest, "bad", 400, false)
+	wrapped2 := fmt.Errorf("wrapped: %w", nonRetryable)
+	assert.False(t, IsRetryable(wrapped2))
+	assert.Equal(t, 400, GetStatusCode(wrapped2))
+
+	assert.False(t, IsRetryable(nil))
+	assert.Equal(t, 200, GetStatusCode(nil))
 }
