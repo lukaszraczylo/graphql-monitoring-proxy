@@ -1,6 +1,7 @@
 package libpack_cache_memory
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -87,4 +88,33 @@ func TestMemoryCacheCleanExpiredEntries(t *testing.T) {
 
 	// Count should be 1 now (only the non-expired entry)
 	assert.Equal(t, int64(1), cache.CountQueries(), "Expected count to be 1 after cleaning expired entries")
+}
+
+func TestMemoryCacheConcurrentGetOnExpiredEntry_CountersConsistent(t *testing.T) {
+	// Regression: concurrent Gets on the same expired entry must decrement
+	// entryCount exactly once. Previously Get used an unconditional Delete +
+	// decrement, so N concurrent Gets drove entryCount negative.
+	cache := NewWithSize(DefaultTestExpiration, DefaultMaxMemorySize, DefaultMaxCacheSize)
+
+	cache.Set("k", []byte("v"), 10*time.Millisecond)
+	time.Sleep(50 * time.Millisecond) // let it expire
+
+	var wg sync.WaitGroup
+	for range 32 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, ok := cache.Get("k"); ok {
+				t.Error("expired entry should not be returned")
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := cache.CountQueries(); got != 0 {
+		t.Fatalf("entryCount = %d after concurrent expired gets, want 0", got)
+	}
+	if got := cache.GetMemoryUsage(); got != 0 {
+		t.Fatalf("memoryUsage = %d after concurrent expired gets, want 0", got)
+	}
 }

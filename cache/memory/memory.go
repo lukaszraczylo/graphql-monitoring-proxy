@@ -181,9 +181,14 @@ func (c *Cache) Get(key string) ([]byte, bool) {
 
 	cacheEntry := entry.(CacheEntry)
 	if cacheEntry.ExpiresAt.Before(time.Now()) {
-		c.entries.Delete(key)
-		atomic.AddInt64(&c.entryCount, -1)
-		atomic.AddInt64(&c.memoryUsage, -cacheEntry.MemorySize)
+		// Guard the counter decrements with LoadAndDelete so concurrent Gets on
+		// the same expired entry don't each decrement entryCount/memoryUsage
+		// (the unconditional Delete here previously double-counted).
+		if removed, ok := c.entries.LoadAndDelete(key); ok {
+			removedEntry := removed.(CacheEntry)
+			atomic.AddInt64(&c.entryCount, -1)
+			atomic.AddInt64(&c.memoryUsage, -removedEntry.MemorySize)
+		}
 		return nil, false
 	}
 

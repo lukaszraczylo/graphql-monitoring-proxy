@@ -262,6 +262,38 @@ func (suite *ConnectionPoolTestSuite) TestRaceConditions() {
 	wg.Wait()
 }
 
+func (suite *ConnectionPoolTestSuite) TestGetConnectionStatsRace() {
+	// GetConnectionStats must be safe to call concurrently with the recovery
+	// task, which writes lastRecoveryAttempt under recoveryMutex. Regression
+	// test for the data race between GetConnectionStats reading
+	// lastRecoveryAttempt and checkAndRecover writing it.
+	client := &fasthttp.Client{MaxConnsPerHost: 100}
+	cpm := NewConnectionPoolManager(client)
+	defer cpm.Shutdown()
+
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 200 {
+				_ = cpm.GetConnectionStats()
+			}
+		}()
+	}
+	// Writer mirrors checkAndRecover's locked write of lastRecoveryAttempt.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for range 200 {
+			cpm.recoveryMutex.Lock()
+			cpm.lastRecoveryAttempt = time.Now()
+			cpm.recoveryMutex.Unlock()
+		}
+	}()
+	wg.Wait()
+}
+
 func (suite *ConnectionPoolTestSuite) TestCleanupWithNilLogger() {
 	// Test cleanup when cfg or logger is nil
 	origCfg := cfg

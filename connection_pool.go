@@ -259,11 +259,17 @@ func (cpm *ConnectionPoolManager) RecordConnectionFailure() {
 
 // GetConnectionStats returns current connection statistics
 func (cpm *ConnectionPoolManager) GetConnectionStats() map[string]any {
+	// lastRecoveryAttempt is written by checkAndRecover under recoveryMutex
+	// (time.Time is not atomic), so snapshot it under the same lock.
+	cpm.recoveryMutex.Lock()
+	lastRecovery := cpm.lastRecoveryAttempt
+	cpm.recoveryMutex.Unlock()
+
 	return map[string]any{
 		"active_connections":    cpm.activeConnections.Load(),
 		"total_connections":     cpm.totalConnections.Load(),
 		"connection_failures":   cpm.connectionFailures.Load(),
-		"last_recovery_attempt": cpm.lastRecoveryAttempt,
+		"last_recovery_attempt": lastRecovery,
 	}
 }
 
