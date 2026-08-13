@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -597,5 +598,65 @@ func TestStartHTTPProxy_StartsAndShutdown(t *testing.T) {
 	_ = httpResp.Body.Close()
 	if httpResp.StatusCode != 200 {
 		t.Errorf("want 200, got %d", httpResp.StatusCode)
+	}
+}
+
+// Test_shutdownHTTPProxy verifies the graceful-shutdown helper: it is a no-op
+// when no server is running, and it stops a listening proxy server so that
+// server.Listen returns (enabling a clean in-flight-request drain instead of
+// process-exit cutoff).
+func (suite *Tests) Test_shutdownHTTPProxy() {
+	// No server running: must be a safe no-op.
+	httpProxyMu.Lock()
+	original := httpProxyApp
+	httpProxyApp = nil
+	httpProxyMu.Unlock()
+	defer func() {
+		httpProxyMu.Lock()
+		httpProxyApp = original
+		httpProxyMu.Unlock()
+	}()
+	suite.NoError(shutdownHTTPProxy(context.Background()))
+
+	// With a listening server assigned, shutdown must stop it.
+	app := fiber.New()
+	app.Get("/ping", func(c fiber.Ctx) error { return c.SendStatus(200) })
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	suite.Require().NoError(err)
+
+	listenDone := make(chan struct{})
+	go func() {
+		defer close(listenDone)
+		_ = app.Listener(ln)
+	}()
+
+	// Wait until the listener is actually serving (poll the port) before
+	// shutting down; otherwise Shutdown can race server startup and no-op.
+	addr := ln.Addr().String()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		conn, err := net.Dial("tcp", addr)
+		if err == nil {
+			_ = conn.Close()
+			break
+		}
+		if time.Now().After(deadline) {
+			suite.Fail("proxy server never started listening on " + addr)
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	httpProxyMu.Lock()
+	httpProxyApp = app
+	httpProxyMu.Unlock()
+	suite.NoError(shutdownHTTPProxy(context.Background()))
+
+	select {
+	case <-listenDone:
+		// Listen returned because we called Shutdown.
+	case <-time.After(3 * time.Second):
+		suite.Fail("proxy server did not shut down; in-flight requests would be cut off")
 	}
 }

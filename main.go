@@ -612,6 +612,10 @@ func main() {
 		return nil
 	})
 
+	// Register HTTP proxy so in-flight requests drain gracefully on shutdown
+	// instead of being cut off when the process exits.
+	shutdownManager.RegisterComponent("http-proxy", shutdownHTTPProxy)
+
 	// Cache shutdown is handled internally by the cache implementation
 
 	// Start monitoring server

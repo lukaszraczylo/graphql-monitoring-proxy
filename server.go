@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/goccy/go-json"
@@ -36,6 +38,28 @@ type DependencyStatus struct {
 }
 
 // StartHTTPProxy initializes and starts the HTTP proxy server.
+// httpProxyServer holds the live proxy Fiber app so the shutdown sequence can
+// call Shutdown() on it, letting in-flight requests drain instead of being
+// cut off by process exit. It is written by the StartHTTPProxy goroutine and
+// read by the shutdown component, hence guarding with a mutex.
+var (
+	httpProxyMu  sync.RWMutex
+	httpProxyApp *fiber.App
+)
+
+// shutdownHTTPProxy gracefully stops the HTTP proxy server. It is invoked from
+// the ShutdownManager during shutdown so server.Listen returns and the proxy
+// can finish in-flight requests.
+func shutdownHTTPProxy(_ context.Context) error {
+	httpProxyMu.RLock()
+	app := httpProxyApp
+	httpProxyMu.RUnlock()
+	if app != nil {
+		return app.Shutdown()
+	}
+	return nil
+}
+
 func StartHTTPProxy() error {
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Starting the HTTP proxy",
@@ -51,6 +75,9 @@ func StartHTTPProxy() error {
 	}
 
 	server := fiber.New(serverConfig)
+	httpProxyMu.Lock()
+	httpProxyApp = server
+	httpProxyMu.Unlock()
 
 	server.Use(cors.New(cors.Config{
 		AllowOrigins: []string{"*"},
