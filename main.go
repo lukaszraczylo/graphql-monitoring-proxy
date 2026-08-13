@@ -632,7 +632,12 @@ func main() {
 	// instead of being cut off when the process exits.
 	shutdownManager.RegisterComponent("http-proxy", shutdownHTTPProxy)
 
-	// Cache shutdown is handled internally by the cache implementation
+	// Close the Redis cache client's connection pool at shutdown (in-memory
+	// caches are no-ops).
+	shutdownManager.RegisterComponent("cache", func(context.Context) error {
+		libpack_cache.Shutdown()
+		return nil
+	})
 
 	// Start monitoring server
 	cfg.Logger.Info(&libpack_logging.LogMessage{

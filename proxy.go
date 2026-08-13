@@ -229,10 +229,18 @@ func createFasthttpClient(clientConfig *config) *fasthttp.Client {
 		clientTimeout = 30 * time.Second // Default timeout of 30 seconds
 	}
 
-	// For timeout behavior, use the client timeout for all timeout settings
-	// to ensure consistent behavior
-	readTimeout := clientTimeout
-	writeTimeout := clientTimeout
+	// Honour the per-side read/write timeouts (CLIENT_READ_TIMEOUT /
+	// CLIENT_WRITE_TIMEOUT); they fall back to the client timeout when not
+	// explicitly configured, so behaviour is unchanged for operators who only
+	// set CLIENT_TIMEOUT.
+	readTimeout := time.Duration(clientConfig.Client.ReadTimeout) * time.Second
+	if readTimeout <= 0 {
+		readTimeout = clientTimeout
+	}
+	writeTimeout := time.Duration(clientConfig.Client.WriteTimeout) * time.Second
+	if writeTimeout <= 0 {
+		writeTimeout = clientTimeout
+	}
 
 	// Create a custom dialer with timeout
 	dialer := &fasthttp.TCPDialer{

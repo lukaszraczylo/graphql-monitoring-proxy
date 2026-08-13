@@ -168,6 +168,16 @@ func EnableCache(cfg *CacheConfig) {
 	config = cfg
 }
 
+// Shutdown closes the underlying cache client if it owns external resources
+// (the Redis connection pool). No-op for in-memory caches.
+func Shutdown() {
+	if config != nil && config.Client != nil {
+		if closer, ok := config.Client.(io.Closer); ok {
+			_ = closer.Close()
+		}
+	}
+}
+
 func CacheLookup(hash string) []byte {
 	if !IsCacheInitialized() {
 		return nil

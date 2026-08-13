@@ -8,6 +8,7 @@ import (
 	"compress/gzip"
 	"context"
 	"io"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -322,32 +323,29 @@ func (c *Cache) evictToFreeMemory(bytesToFree int64) {
 		memorySize int64
 	}
 
-	// Collect entries to consider for eviction
-	entries := make([]keyMemorySize, 0, int(c.maxCacheSize/5))
+	// Collect ALL entries so eviction can actually reach the target. The
+	// previous code capped the candidate set at maxCacheSize/5 and stopped at
+	// the end of that subset, so a large write could leave the cache over its
+	// memory limit.
+	entries := make([]keyMemorySize, 0, int(c.maxCacheSize))
 	c.entries.Range(func(k, v any) bool {
 		key := k.(string)
 		entry := v.(CacheEntry)
 		entries = append(entries, keyMemorySize{entry.ExpiresAt, key, entry.MemorySize})
-		return len(entries) < cap(entries)
+		return true
 	})
 
-	// Sort entries by expiry time (oldest first)
-	// Simple selection sort since we only need to find the oldest entries
-	var freedBytes int64
-	for i := 0; i < len(entries) && freedBytes < bytesToFree; i++ {
-		oldest := i
-		for j := i + 1; j < len(entries); j++ {
-			if entries[j].expiresAt.Before(entries[oldest].expiresAt) {
-				oldest = j
-			}
-		}
-		// Swap
-		if oldest != i {
-			entries[i], entries[oldest] = entries[oldest], entries[i]
-		}
+	// Sort by expiry time (oldest first)
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].expiresAt.Before(entries[j].expiresAt)
+	})
 
-		// Delete this entry
-		if entry, exists := c.entries.LoadAndDelete(entries[i].key); exists {
+	var freedBytes int64
+	for _, e := range entries {
+		if freedBytes >= bytesToFree {
+			break
+		}
+		if entry, exists := c.entries.LoadAndDelete(e.key); exists {
 			cacheEntry := entry.(CacheEntry)
 			atomic.AddInt64(&c.entryCount, -1)
 			atomic.AddInt64(&c.memoryUsage, -cacheEntry.MemorySize)

@@ -19,6 +19,16 @@ type RedisConfig struct {
 	prefix      string
 }
 
+// Close releases the underlying Redis connection pool. Called at process
+// shutdown so the pooled connections and go-redis background goroutines are
+// terminated instead of relying on process exit.
+func (c *RedisConfig) Close() error {
+	if c == nil || c.client == nil {
+		return nil
+	}
+	return c.client.Close()
+}
+
 func (c *RedisConfig) prependKeyName(key string) string {
 	builder := c.builderPool.Get().(*strings.Builder)
 	defer c.builderPool.Put(builder)

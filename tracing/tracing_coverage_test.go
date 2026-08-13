@@ -21,9 +21,7 @@ func TestNewTracing_NilContext_ReturnsError(t *testing.T) {
 }
 
 // TestNewTracing_InvalidEndpointFormats covers endpoint validation branches.
-// Note: fmt.Sscanf("%s:%d") treats %s as greedy so any "host:port" string hits
-// the format error (n!=2). The port-range branch (port>65535) requires n==2
-// which Sscanf never produces for "host:port" strings — that's a source quirk.
+// validateEndpoint rejects missing/host-only endpoints and out-of-range ports.
 func TestNewTracing_InvalidEndpointFormats_ReturnsError(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -117,4 +115,33 @@ func TestExtractSpanContext_ValidTraceparent_ReturnsValid(t *testing.T) {
 	spanCtx, err := ts.ExtractSpanContext(spanInfo)
 	require.NoError(t, err)
 	assert.True(t, spanCtx.IsValid())
+}
+
+// TestValidateEndpoint checks the extracted endpoint validator. Regression for
+// the old fmt.Sscanf("%s:%d") which rejected every valid "host:port"
+// endpoint (crushing tracing into permanent no-op).
+func TestValidateEndpoint(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		endpoint string
+		wantErr  bool
+	}{
+		{name: "valid host:port", endpoint: "localhost:4317", wantErr: false},
+		{name: "valid fqdn:port", endpoint: "otel.example.com:4317", wantErr: false},
+		{name: "valid high port", endpoint: "collector:65535", wantErr: false},
+		{name: "missing port", endpoint: "localhost", wantErr: true},
+		{name: "port too high", endpoint: "localhost:999999", wantErr: true},
+		{name: "non-numeric port", endpoint: "localhost:abc", wantErr: true},
+		{name: "bare number", endpoint: "12345", wantErr: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateEndpoint(tt.endpoint)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "invalid endpoint format")
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }

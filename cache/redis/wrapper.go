@@ -102,3 +102,12 @@ func (w *CacheWrapper) GetMemoryUsage() int64 {
 func (w *CacheWrapper) GetMaxMemorySize() int64 {
 	return 0
 }
+
+// Close releases the underlying Redis client's connection pool at shutdown.
+// Makes CacheWrapper satisfy io.Closer so the cache layer can close it.
+func (w *CacheWrapper) Close() error {
+	if w == nil || w.redis == nil {
+		return nil
+	}
+	return w.redis.Close()
+}

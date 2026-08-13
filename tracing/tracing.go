@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -37,6 +39,21 @@ type TraceSpanInfo struct {
 	TraceParent string `json:"traceparent"`
 }
 
+// validateEndpoint checks that endpoint is a hostname:port pair with a port in
+// [0, 65535]. Extracted from NewTracing so it can be unit-tested without
+// needing a live collector.
+func validateEndpoint(endpoint string) error {
+	_, portStr, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return fmt.Errorf("invalid endpoint format: must be 'hostname:port'")
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port < 0 || port > 65535 {
+		return fmt.Errorf("invalid endpoint format: port must be between 0 and 65535")
+	}
+	return nil
+}
+
 // NewTracing creates a new tracing setup with OTLP exporter
 func NewTracing(ctx context.Context, endpoint string) (*TracingSetup, error) {
 	if ctx == nil {
@@ -46,16 +63,11 @@ func NewTracing(ctx context.Context, endpoint string) (*TracingSetup, error) {
 		return nil, fmt.Errorf("endpoint cannot be empty")
 	}
 
-	// Validate endpoint format
-	// A simple validation to check if the endpoint has a reasonable format
-	// We're looking for hostname:port where port is a valid port number (0-65535)
-	var host string
-	var port int
-	if n, err := fmt.Sscanf(endpoint, "%s:%d", &host, &port); err != nil || n != 2 {
-		return nil, fmt.Errorf("invalid endpoint format: must be 'hostname:port'")
-	}
-	if port < 0 || port > 65535 {
-		return nil, fmt.Errorf("invalid port number: must be between 0 and 65535")
+	// Validate endpoint format: a hostname:port pair with a valid port.
+	// (Previous code used fmt.Sscanf("%s:%d") which treats %s as greedy and
+	// rejected every valid "host:port" string, silently disabling tracing.)
+	if err := validateEndpoint(endpoint); err != nil {
+		return nil, err
 	}
 
 	// Create the exporter directly with the endpoint

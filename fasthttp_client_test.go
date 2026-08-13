@@ -72,6 +72,28 @@ func (suite *Tests) TestFasthttpClientConfiguration() {
 			// with the configured timeouts by testing requests
 			assert.NotNil(suite.T(), client, "Client should be created")
 
+			// The read/write timeouts must honour the per-side config
+			// (CLIENT_READ_TIMEOUT / CLIENT_WRITE_TIMEOUT), falling back to the
+			// client timeout.
+			want := time.Duration(tc.readTimeout) * time.Second
+			if tc.readTimeout <= 0 {
+				want = time.Duration(tc.clientTimeout) * time.Second
+				if want <= 0 {
+					want = 30 * time.Second
+				}
+			}
+			assert.Equal(suite.T(), want, client.ReadTimeout,
+				"client read timeout should honour CLIENT_READ_TIMEOUT")
+			want = time.Duration(tc.writeTimeout) * time.Second
+			if tc.writeTimeout <= 0 {
+				want = time.Duration(tc.clientTimeout) * time.Second
+				if want <= 0 {
+					want = 30 * time.Second
+				}
+			}
+			assert.Equal(suite.T(), want, client.WriteTimeout,
+				"client write timeout should honour CLIENT_WRITE_TIMEOUT")
+
 			// For non-zero configuration values, we can at least verify they were applied
 			// by checking the client isn't nil
 			assert.NotNil(suite.T(), client.TLSConfig, "TLS config should be created")

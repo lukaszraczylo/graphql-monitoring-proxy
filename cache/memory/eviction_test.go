@@ -183,3 +183,32 @@ func TestSetMaxMemorySize(t *testing.T) {
 func generateKey(index int) string {
 	return "test-key-" + fmt.Sprintf("%d", index)
 }
+
+// TestEvictToFreeMemoryWithSmallMaxEntriesReachesTarget is a regression for
+// under-eviction: evictToFreeMemory used to cap its candidate set at
+// maxCacheSize/5 and stop at the end of that subset. With a small
+// maxCacheSize the cap (maxCacheSize/5) could be lower than the number of
+// entries needed to satisfy bytesToFree, so the cache stayed over its
+// memory limit.
+func TestEvictToFreeMemoryWithSmallMaxEntriesReachesTarget(t *testing.T) {
+	// maxCacheSize=10 -> old candidate cap was maxCacheSize/5 = 2 entries.
+	cache := NewWithSize(5*time.Second, DefaultMaxMemorySize, 10)
+	val := make([]byte, 1024) // ~1KB + overhead each
+	const count = 8
+	for i := 0; i < count; i++ {
+		cache.Set(fmt.Sprintf("e%d", i), val, time.Second)
+	}
+	before := cache.GetMemoryUsage()
+	// Request freeing an amount equal to ~half the entries (well beyond the
+	// old 2-entry cap).
+	need := (count / 2) * (int64(len(val)) + approxEntryOverhead)
+	cache.evictToFreeMemory(need)
+	after := cache.GetMemoryUsage()
+	assert.LessOrEqual(t, after, before-need,
+		"evictToFreeMemory must free at least the requested bytes even across more than maxCacheSize/5 entries")
+
+	// Requesting more than the total must drain the cache.
+	cache.evictToFreeMemory(1 << 30)
+	assert.Equal(t, int64(0), cache.GetMemoryUsage(),
+		"an oversized request should evict every entry")
+}
