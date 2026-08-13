@@ -265,3 +265,21 @@ func (suite *ConnectionResilienceTestSuite) TestRetryLogic() {
 func TestConnectionResilienceSuite(t *testing.T) {
 	suite.Run(t, new(ConnectionResilienceTestSuite))
 }
+
+// TestHealthChecksStartAfterStartupTimeout verifies that when the startup
+// readiness probe times out, readinessChan is still released so the
+// health-check goroutine (started by StartHealthChecking) proceeds and begins
+// periodic checking — otherwise the backend could never be marked healthy
+// again even after it recovers.
+func (suite *ConnectionResilienceTestSuite) TestHealthChecksStartAfterStartupTimeout() {
+	bhm := NewBackendHealthManager(cfg.Client.FastProxyClient, "http://invalid-url:99999", cfg.Logger)
+	err := bhm.WaitForBackendReady(200 * time.Millisecond)
+	suite.Error(err, "expected timeout for unreachable backend")
+
+	select {
+	case <-bhm.readinessChan:
+		// Released -> periodic health checks will begin.
+	case <-time.After(1 * time.Second):
+		suite.Fail("readinessChan not closed after startup timeout; health checks would never begin")
+	}
+}

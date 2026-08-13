@@ -28,6 +28,7 @@ type BackendHealthManager struct {
 	consecutiveFails atomic.Int32
 	isHealthy        atomic.Bool
 	startupProbe     bool
+	readyOnce        sync.Once
 }
 
 // NewBackendHealthManager creates a new backend health manager
@@ -75,7 +76,7 @@ func (bhm *BackendHealthManager) WaitForBackendReady(timeout time.Duration) erro
 					"time_taken":  time.Since(deadline.Add(-timeout)).String(),
 				},
 			})
-			close(bhm.readinessChan)
+			bhm.readyOnce.Do(func() { close(bhm.readinessChan) })
 			return nil
 		}
 
@@ -98,6 +99,11 @@ func (bhm *BackendHealthManager) WaitForBackendReady(timeout time.Duration) erro
 		}
 	}
 
+	// Startup probe timed out. Main continues and starts the proxy anyway, and
+	// StartHealthChecking's goroutine is blocked on readinessChan — so release
+	// it here too, otherwise periodic health checks never begin and the
+	// backend can never be marked healthy again even after it recovers.
+	bhm.readyOnce.Do(func() { close(bhm.readinessChan) })
 	return fmt.Errorf("GraphQL backend did not become ready within %v", timeout)
 }
 
