@@ -154,6 +154,8 @@ func (suite *Tests) Test_getDetailsFromEnv() {
 		{"default", "envValue", "string value", "TEST_STRING", "envValue"},
 		{0, 123, "int value", "TEST_INT", "123"},
 		{false, true, "bool value", "TEST_BOOL", "true"},
+		{0.5, 0.25, "float value", "TEST_FLOAT", "0.25"},
+		{0.5, 0.5, "float default on malformed value", "TEST_FLOAT_BAD", "not-a-number"},
 		{"default", "default", "default value", "NON_EXISTENT", ""},
 	}
 

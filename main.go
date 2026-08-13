@@ -71,6 +71,22 @@ func getDetailsFromEnv[T any](key string, defaultValue T) T {
 			return any(boolVal).(T)
 		}
 		return any(envutil.GetBool(key, v)).(T)
+	case float64:
+		// envutil has no GetFloat; handle the GMP_ prefixed and plain keys
+		// directly. Previously float64 env values (CIRCUIT_FAILURE_RATIO,
+		// CIRCUIT_BACKOFF_MULTIPLIER, RETRY_BUDGET_TOKENS_PER_SEC) fell into
+		// default and were silently impossible to configure.
+		if val, ok := os.LookupEnv(prefixedKey); ok {
+			if f, err := strconv.ParseFloat(val, 64); err == nil {
+				return any(f).(T)
+			}
+		}
+		if val, ok := os.LookupEnv(key); ok {
+			if f, err := strconv.ParseFloat(val, 64); err == nil {
+				return any(f).(T)
+			}
+		}
+		return defaultValue
 	default:
 		return defaultValue
 	}
