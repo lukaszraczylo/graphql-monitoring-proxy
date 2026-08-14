@@ -45,6 +45,11 @@ var (
 	once            sync.Once
 	tracer          *libpack_tracing.TracingSetup
 	shutdownManager *ShutdownManager
+	// pprofServer is the optional debug pprof HTTP server started by
+	// parseConfig when PPROF_PORT is set. It is stored here (rather than
+	// discarded) so main can register it with shutdownManager and Shutdown
+	// it cleanly instead of leaking the goroutine (see L2).
+	pprofServer *http.Server
 )
 
 // Shutdown phases for components registered on shutdownManager.
@@ -83,36 +88,122 @@ func getDetailsFromEnv[T any](key string, defaultValue T) T {
 		}
 		return any(envutil.Getenv(key, v)).(T)
 	case int:
-		if val, ok := os.LookupEnv(prefixedKey); ok {
-			if intVal, err := strconv.Atoi(val); err == nil {
+		// An explicitly-empty value (VAR="") is treated as unset -- fall
+		// through to the next source instead of warning, since there is
+		// nothing invalid to parse, only a deliberately blank override.
+		if val, ok := os.LookupEnv(prefixedKey); ok && val != "" {
+			if intVal, err := strconv.Atoi(strings.TrimSpace(val)); err == nil {
 				return any(intVal).(T)
 			}
+			// C3: the prefixed var is set but unparsable - use the coded
+			// default. Do NOT fall through to the unprefixed name, or a
+			// stale/unrelated unprefixed value could silently win.
+			warnInvalidEnv(prefixedKey, val, v)
+			return any(v).(T)
 		}
-		return any(envutil.GetInt(key, v)).(T)
+		if val, ok := os.LookupEnv(key); ok && val != "" {
+			if intVal, err := strconv.Atoi(strings.TrimSpace(val)); err == nil {
+				return any(intVal).(T)
+			}
+			// C2: envutil.GetInt silently returns 0 (not the default) when
+			// the value is present but non-numeric, because it discards the
+			// parse error. Parse it ourselves so we can warn and keep the
+			// coded default instead of silently accepting 0.
+			warnInvalidEnv(key, val, v)
+			return any(v).(T)
+		}
+		return any(v).(T)
 	case bool:
-		if val, ok := os.LookupEnv(prefixedKey); ok {
-			boolVal := strings.ToLower(val) == "true" || val == "1"
-			return any(boolVal).(T)
+		// An explicitly-empty value (VAR="") is treated as unset -- fall
+		// through to the next source instead of warning, since there is
+		// nothing invalid to parse, only a deliberately blank override.
+		if val, ok := os.LookupEnv(prefixedKey); ok && val != "" {
+			if b, valid := parseBoolEnv(val); valid {
+				return any(b).(T)
+			}
+			// C13: the prefixed and unprefixed bool parsers must agree on
+			// the same truthy/falsy token sets (true/1/on/yes,
+			// false/0/off/no). On anything else, warn and use the default
+			// rather than silently disagreeing with the unprefixed path.
+			warnInvalidEnv(prefixedKey, val, v)
+			return any(v).(T)
 		}
-		return any(envutil.GetBool(key, v)).(T)
+		if val, ok := os.LookupEnv(key); ok && val != "" {
+			if b, valid := parseBoolEnv(val); valid {
+				return any(b).(T)
+			}
+			warnInvalidEnv(key, val, v)
+			return any(v).(T)
+		}
+		return any(v).(T)
 	case float64:
 		// envutil has no GetFloat; handle the GMP_ prefixed and plain keys
 		// directly. Previously float64 env values (CIRCUIT_FAILURE_RATIO,
 		// CIRCUIT_BACKOFF_MULTIPLIER, RETRY_BUDGET_TOKENS_PER_SEC) fell into
 		// default and were silently impossible to configure.
-		if val, ok := os.LookupEnv(prefixedKey); ok {
-			if f, err := strconv.ParseFloat(val, 64); err == nil {
+		// An explicitly-empty value (VAR="") is treated as unset -- fall
+		// through to the next source instead of warning, since there is
+		// nothing invalid to parse, only a deliberately blank override.
+		if val, ok := os.LookupEnv(prefixedKey); ok && val != "" {
+			if f, err := strconv.ParseFloat(strings.TrimSpace(val), 64); err == nil {
 				return any(f).(T)
 			}
+			// C3: prefixed var set but unparsable - use the default, do not
+			// fall through to the unprefixed name.
+			warnInvalidEnv(prefixedKey, val, v)
+			return any(v).(T)
 		}
-		if val, ok := os.LookupEnv(key); ok {
-			if f, err := strconv.ParseFloat(val, 64); err == nil {
+		if val, ok := os.LookupEnv(key); ok && val != "" {
+			if f, err := strconv.ParseFloat(strings.TrimSpace(val), 64); err == nil {
 				return any(f).(T)
 			}
+			// C2: unprefixed var set but unparsable - warn and use default.
+			warnInvalidEnv(key, val, v)
+			return any(v).(T)
 		}
 		return defaultValue
 	default:
 		return defaultValue
+	}
+}
+
+// warnInvalidEnv logs that an environment variable's value could not be
+// parsed as its expected type and that the coded default is used instead.
+// getDetailsFromEnv runs for many fields before cfg (and its Logger) exists,
+// so this prefers cfg.Logger once available and falls back to a throwaway
+// libpack_logging.Logger otherwise.
+func warnInvalidEnv(varName, rawValue string, defaultValue any) {
+	msg := &libpack_logging.LogMessage{
+		Message: "Invalid value for environment variable, using default",
+		Pairs:   map[string]any{"var": varName, "value": rawValue, "default": defaultValue},
+	}
+
+	cfgMutex.RLock()
+	var logger *libpack_logging.Logger
+	if cfg != nil {
+		logger = cfg.Logger
+	}
+	cfgMutex.RUnlock()
+
+	if logger == nil {
+		logger = libpack_logging.New()
+	}
+	logger.Warning(msg)
+}
+
+// parseBoolEnv parses val using the same truthy/falsy token set gookit's
+// envutil.GetBool accepts (true/1/on/yes and false/0/off/no), so the
+// GMP_-prefixed and unprefixed bool paths in getDetailsFromEnv agree on the
+// same input instead of the prefixed path only accepting "true"/"1" (C13).
+// ok is false when val matches neither set.
+func parseBoolEnv(val string) (parsed bool, ok bool) {
+	switch strings.ToLower(strings.TrimSpace(val)) {
+	case "true", "1", "on", "yes":
+		return true, true
+	case "false", "0", "off", "no":
+		return false, true
+	default:
+		return false, false
 	}
 }
 
@@ -162,6 +253,10 @@ func parseConfig() {
 	// Server configurations
 	c.Server.PortGraphQL = getDetailsFromEnv("PORT_GRAPHQL", 8080)
 	c.Server.PortMonitoring = getDetailsFromEnv("MONITORING_PORT", 9393)
+	// S6: bind address for the GraphQL proxy / admin API / monitoring
+	// listeners. Empty default preserves today's "bind all interfaces"
+	// behavior (":port"); consumers format as "<BindAddress>:<port>".
+	c.Server.BindAddress = getDetailsFromEnv("BIND_ADDRESS", "")
 	c.Server.HostGraphQL = getDetailsFromEnv("HOST_GRAPHQL", "http://localhost/")
 	c.Server.HostGraphQLReadOnly = getDetailsFromEnv("HOST_GRAPHQL_READONLY", "")
 	// Client configurations
@@ -228,6 +323,17 @@ func parseConfig() {
 	// Logger setup
 	c.Logger = libpack_logging.New().SetMinLogLevel(libpack_logging.GetLogLevel(c.LogLevel)).
 		SetFieldName("timestamp", "ts").SetFieldName("message", "msg").SetShowCaller(false)
+
+	// C1: a non-positive CACHE_TTL crashes the cache cleanup ticker
+	// (time.NewTicker panics on d <= 0). Clamp to the coded default before
+	// this value ever reaches cache init.
+	if c.Cache.CacheTTL <= 0 {
+		c.Logger.Warning(&libpack_logging.LogMessage{
+			Message: "Invalid CACHE_TTL (must be positive), using default",
+			Pairs:   map[string]any{"requested": c.Cache.CacheTTL, "default": 60},
+		})
+		c.Cache.CacheTTL = 60
+	}
 	// Health check
 	c.Server.HealthcheckGraphQL = getDetailsFromEnv("HEALTHCHECK_GRAPHQL_URL", "")
 	c.Client.GQLClient = graphql.NewConnection()
@@ -345,12 +451,21 @@ func parseConfig() {
 	c.CircuitBreaker.TripOn4xx = getDetailsFromEnv("CIRCUIT_TRIP_ON_4XX", false)               // 4xx are usually client errors
 	c.CircuitBreaker.BackoffMultiplier = getDetailsFromEnv("CIRCUIT_BACKOFF_MULTIPLIER", 1.0)  // No backoff by default
 	c.CircuitBreaker.MaxBackoffTimeout = getDetailsFromEnv("CIRCUIT_MAX_BACKOFF_TIMEOUT", 300) // 5 minutes max
-	// Initialize endpoint configs map
-	c.CircuitBreaker.EndpointConfigs = make(map[string]*EndpointCBConfig)
 
 	// Retry budget configuration
 	c.RetryBudget.Enable = getDetailsFromEnv("RETRY_BUDGET_ENABLE", true)
 	c.RetryBudget.TokensPerSecond = getDetailsFromEnv("RETRY_BUDGET_TOKENS_PER_SEC", 10.0)
+	// C14: a non-positive refill rate means the token bucket never refills,
+	// permanently locking out retries once the initial burst is spent.
+	// Clamp to the coded default (10.0/s, consistent with the default above
+	// and with RETRY_BUDGET_MAX_TOKENS's coded default of 100 below).
+	if c.RetryBudget.TokensPerSecond <= 0 {
+		c.Logger.Warning(&libpack_logging.LogMessage{
+			Message: "Invalid RETRY_BUDGET_TOKENS_PER_SEC (must be positive), using default",
+			Pairs:   map[string]any{"requested": c.RetryBudget.TokensPerSecond, "default": 10.0},
+		})
+		c.RetryBudget.TokensPerSecond = 10.0
+	}
 	c.RetryBudget.MaxTokens = getDetailsFromEnv("RETRY_BUDGET_MAX_TOKENS", 100)
 
 	// Request coalescing configuration
@@ -374,16 +489,20 @@ func parseConfig() {
 			c.Logger.Info(&libpack_logging.LogMessage{
 				Message: "pprof endpoint listening on " + addr,
 			})
+			// L2: keep the server so it can be registered with
+			// shutdownManager and Shutdown cleanly instead of leaking the
+			// goroutine for the life of the process.
+			srv := &http.Server{
+				Addr:              addr,
+				Handler:           nil,
+				ReadHeaderTimeout: 5 * time.Second,
+				ReadTimeout:       30 * time.Second,
+				WriteTimeout:      120 * time.Second,
+				IdleTimeout:       120 * time.Second,
+			}
+			pprofServer = srv
 			go func(listenAddr string) {
-				srv := &http.Server{
-					Addr:              listenAddr,
-					Handler:           nil,
-					ReadHeaderTimeout: 5 * time.Second,
-					ReadTimeout:       30 * time.Second,
-					WriteTimeout:      120 * time.Second,
-					IdleTimeout:       120 * time.Second,
-				}
-				if err := srv.ListenAndServe(); err != nil {
+				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 					c.Logger.Error(&libpack_logging.LogMessage{
 						Message: "pprof endpoint failed",
 						Pairs:   map[string]any{"error": err.Error(), "addr": listenAddr},
@@ -662,6 +781,14 @@ func main() {
 	// instead of being cut off when the process exits. This runs in the
 	// traffic-drain phase, before any of the backends above are closed.
 	shutdownManager.RegisterComponentWithPhase("http-proxy", shutdownPhaseDrainTraffic, shutdownHTTPProxy)
+
+	// L2: register the optional pprof debug server (if PPROF_PORT was set)
+	// so it stops cleanly instead of leaking its listener goroutine forever.
+	if pprofServer != nil {
+		shutdownManager.RegisterComponent("pprof-server", func(ctx context.Context) error {
+			return pprofServer.Shutdown(ctx)
+		})
+	}
 
 	// Close the Redis cache client's connection pool at shutdown (in-memory
 	// caches are no-ops). Runs after the traffic drain so in-flight

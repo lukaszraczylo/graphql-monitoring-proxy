@@ -7,14 +7,6 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// EndpointCBConfig holds per-endpoint circuit breaker configuration
-type EndpointCBConfig struct {
-	MaxFailures  int     // Override max failures for this endpoint
-	FailureRatio float64 // Override failure ratio for this endpoint
-	Timeout      int     // Override timeout for this endpoint
-	Disabled     bool    // Disable circuit breaker for this endpoint
-}
-
 // config is a struct that holds the configuration of the application.
 // It includes settings for logging, monitoring, client connections, security, and server behavior.
 type config struct {
@@ -69,6 +61,12 @@ type config struct {
 		HostGraphQLReadOnly string
 		HealthcheckGraphQL  string
 		AllowURLs           []string // List of allowed URL paths for access control
+		// BindAddress is the host portion of every listener's bind address
+		// (GraphQL proxy, admin API, monitoring). Empty (the default)
+		// preserves the existing ":port" behavior of binding all
+		// interfaces; set it (e.g. "127.0.0.1") to restrict listeners to a
+		// single interface. See S6.
+		BindAddress string
 
 		PortGraphQL    int
 		PortMonitoring int
@@ -80,7 +78,6 @@ type config struct {
 		PurgeOnCrawl   bool
 	}
 	CircuitBreaker struct {
-		EndpointConfigs       map[string]*EndpointCBConfig // Per-endpoint circuit breaker configurations
 		ExcludedStatusCodes   []int
 		MaxFailures           int
 		FailureRatio          float64

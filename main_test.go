@@ -291,3 +291,206 @@ func (suite *Tests) TestIntrospectionEnvironmentConfig() {
 		})
 	}
 }
+
+// TestGetDetailsFromEnv_InvalidValues covers C2 (an unparsable env value must
+// fall back to the coded default, never a silent 0/false) and C13 (the
+// GMP_-prefixed and unprefixed bool parsers must accept the same
+// true/1/on/yes and false/0/off/no tokens, and agree on the same input).
+// Uses t.Setenv so each subtest's environment is reset automatically.
+func TestGetDetailsFromEnv_InvalidValues(t *testing.T) {
+	tests := []struct {
+		defaultValue any
+		expected     any
+		name         string
+		key          string
+		envKey       string
+		envValue     string
+	}{
+		// C2: unprefixed int/float, garbage value falls back to the coded
+		// default instead of envutil.GetInt's silent 0.
+		{name: "unprefixed int garbage falls back to default, not 0", key: "TEST_C2_INT", envKey: "TEST_C2_INT", envValue: "not-a-number", defaultValue: 42, expected: 42},
+		{name: "unprefixed float garbage falls back to default", key: "TEST_C2_FLOAT", envKey: "TEST_C2_FLOAT", envValue: "not-a-number", defaultValue: 2.5, expected: 2.5},
+		// Sanity: a valid unprefixed value still parses (default-preserving).
+		{name: "unprefixed int valid value still parses", key: "TEST_C2_INT_OK", envKey: "TEST_C2_INT_OK", envValue: "7", defaultValue: 42, expected: 7},
+
+		// C13: unprefixed bool accepts on/yes/off/no (baseline gookit
+		// behavior, pinned here so a future change cannot silently regress
+		// the parity the prefixed path is fixed to match).
+		{name: "unprefixed bool on", key: "TEST_C13_BOOL_ON", envKey: "TEST_C13_BOOL_ON", envValue: "on", defaultValue: false, expected: true},
+		{name: "unprefixed bool off", key: "TEST_C13_BOOL_OFF", envKey: "TEST_C13_BOOL_OFF", envValue: "off", defaultValue: true, expected: false},
+		{name: "unprefixed bool yes", key: "TEST_C13_BOOL_YES", envKey: "TEST_C13_BOOL_YES", envValue: "yes", defaultValue: false, expected: true},
+		{name: "unprefixed bool no", key: "TEST_C13_BOOL_NO", envKey: "TEST_C13_BOOL_NO", envValue: "no", defaultValue: true, expected: false},
+
+		// C13: the prefixed path now accepts the same tokens (previously
+		// only "true"/"1" were accepted, diverging from the unprefixed
+		// path - security-relevant for e.g. GMP_BLOCK_SCHEMA_INTROSPECTION).
+		{name: "prefixed bool on", key: "TEST_C13_PFX_ON", envKey: "GMP_TEST_C13_PFX_ON", envValue: "on", defaultValue: false, expected: true},
+		{name: "prefixed bool off", key: "TEST_C13_PFX_OFF", envKey: "GMP_TEST_C13_PFX_OFF", envValue: "off", defaultValue: true, expected: false},
+		{name: "prefixed bool yes", key: "TEST_C13_PFX_YES", envKey: "GMP_TEST_C13_PFX_YES", envValue: "yes", defaultValue: false, expected: true},
+		{name: "prefixed bool no", key: "TEST_C13_PFX_NO", envKey: "GMP_TEST_C13_PFX_NO", envValue: "no", defaultValue: true, expected: false},
+
+		// C13/C2: a garbage bool value on either side falls back to the
+		// coded default instead of silently becoming false.
+		{name: "prefixed bool garbage falls back to default", key: "TEST_C13_PFX_BAD", envKey: "GMP_TEST_C13_PFX_BAD", envValue: "maybe", defaultValue: true, expected: true},
+		{name: "unprefixed bool garbage falls back to default", key: "TEST_C13_BAD", envKey: "TEST_C13_BAD", envValue: "maybe", defaultValue: true, expected: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(tt.envKey, tt.envValue)
+
+			var result any
+			switch def := tt.defaultValue.(type) {
+			case int:
+				result = getDetailsFromEnv(tt.key, def)
+			case float64:
+				result = getDetailsFromEnv(tt.key, def)
+			case bool:
+				result = getDetailsFromEnv(tt.key, def)
+			default:
+				t.Fatalf("unsupported default value type %T", tt.defaultValue)
+			}
+
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestGetDetailsFromEnv_PrefixedInvalidDoesNotFallThrough covers C3: when
+// the GMP_-prefixed var is set but fails to parse, getDetailsFromEnv must
+// use the coded default and must NOT fall through to a stale/unrelated
+// unprefixed value of the same base key.
+func TestGetDetailsFromEnv_PrefixedInvalidDoesNotFallThrough(t *testing.T) {
+	t.Run("int: prefixed invalid ignores stale unprefixed value", func(t *testing.T) {
+		t.Setenv("TEST_C3_INT", "999")              // stale unprefixed value, must not win
+		t.Setenv("GMP_TEST_C3_INT", "not-a-number") // prefixed set but unparsable
+		result := getDetailsFromEnv("TEST_C3_INT", 42)
+		assert.Equal(t, 42, result)
+	})
+
+	t.Run("float64: prefixed invalid ignores stale unprefixed value", func(t *testing.T) {
+		t.Setenv("TEST_C3_FLOAT", "999.0")            // stale unprefixed value, must not win
+		t.Setenv("GMP_TEST_C3_FLOAT", "not-a-number") // prefixed set but unparsable
+		result := getDetailsFromEnv("TEST_C3_FLOAT", 4.2)
+		assert.Equal(t, 4.2, result)
+	})
+}
+
+// TestGetDetailsFromEnv_EmptyValueTreatedAsUnset covers the polish fix: an
+// explicitly-empty env var (VAR="") must fall back to the coded default,
+// the same as an unset var, without emitting an invalid-value warning --
+// there is nothing invalid to parse, only a deliberately blank override.
+// Uses t.Setenv so each subtest's environment is reset automatically.
+func TestGetDetailsFromEnv_EmptyValueTreatedAsUnset(t *testing.T) {
+	t.Run("int: empty prefixed value falls back to default", func(t *testing.T) {
+		t.Setenv("GMP_TEST_EMPTY_INT", "")
+		result := getDetailsFromEnv("TEST_EMPTY_INT", 42)
+		assert.Equal(t, 42, result)
+	})
+
+	t.Run("int: empty unprefixed value falls back to default", func(t *testing.T) {
+		t.Setenv("TEST_EMPTY_INT_UNPFX", "")
+		result := getDetailsFromEnv("TEST_EMPTY_INT_UNPFX", 42)
+		assert.Equal(t, 42, result)
+	})
+
+	t.Run("float64: empty prefixed value falls back to default", func(t *testing.T) {
+		t.Setenv("GMP_TEST_EMPTY_FLOAT", "")
+		result := getDetailsFromEnv("TEST_EMPTY_FLOAT", 2.5)
+		assert.Equal(t, 2.5, result)
+	})
+
+	t.Run("bool: empty prefixed value falls back to default", func(t *testing.T) {
+		t.Setenv("GMP_TEST_EMPTY_BOOL", "")
+		result := getDetailsFromEnv("TEST_EMPTY_BOOL", true)
+		assert.Equal(t, true, result)
+	})
+
+	t.Run("int: empty prefixed value still falls through to a valid unprefixed value", func(t *testing.T) {
+		t.Setenv("GMP_TEST_EMPTY_FALLTHROUGH", "")
+		t.Setenv("TEST_EMPTY_FALLTHROUGH", "7")
+		result := getDetailsFromEnv("TEST_EMPTY_FALLTHROUGH", 42)
+		assert.Equal(t, 7, result)
+	})
+}
+
+// TestGetDetailsFromEnv_FloatTrimSpace covers the polish fix: the float64
+// path was missing the strings.TrimSpace that the int and bool paths
+// already had, so a value like " 1.5 " failed to parse and silently fell
+// back to the coded default instead of parsing to 1.5.
+func TestGetDetailsFromEnv_FloatTrimSpace(t *testing.T) {
+	t.Run("prefixed float with surrounding whitespace parses", func(t *testing.T) {
+		t.Setenv("GMP_TEST_FLOAT_TRIM", " 1.5 ")
+		result := getDetailsFromEnv("TEST_FLOAT_TRIM", 2.5)
+		assert.Equal(t, 1.5, result)
+	})
+
+	t.Run("unprefixed float with surrounding whitespace parses", func(t *testing.T) {
+		t.Setenv("TEST_FLOAT_TRIM_UNPFX", " 1.5 ")
+		result := getDetailsFromEnv("TEST_FLOAT_TRIM_UNPFX", 2.5)
+		assert.Equal(t, 1.5, result)
+	})
+}
+
+// TestParseConfig_ClampsInvalidNumericEnv covers C1 (CACHE_TTL) and C14
+// (RETRY_BUDGET_TOKENS_PER_SEC): a non-positive value must clamp to the
+// coded default instead of crashing the cache cleanup ticker (C1) or
+// permanently locking out retry-budget token refills (C14).
+func TestParseConfig_ClampsInvalidNumericEnv(t *testing.T) {
+	tests := []struct {
+		checkResult func(t *testing.T, c *config)
+		name        string
+		envKey      string
+		envValue    string
+	}{
+		{
+			name:     "CACHE_TTL zero clamps to 60s default",
+			envKey:   "CACHE_TTL",
+			envValue: "0",
+			checkResult: func(t *testing.T, c *config) {
+				assert.Equal(t, 60, c.Cache.CacheTTL)
+			},
+		},
+		{
+			name:     "CACHE_TTL negative clamps to 60s default",
+			envKey:   "CACHE_TTL",
+			envValue: "-5",
+			checkResult: func(t *testing.T, c *config) {
+				assert.Equal(t, 60, c.Cache.CacheTTL)
+			},
+		},
+		{
+			name:     "RETRY_BUDGET_TOKENS_PER_SEC zero clamps to 10/s default",
+			envKey:   "RETRY_BUDGET_TOKENS_PER_SEC",
+			envValue: "0",
+			checkResult: func(t *testing.T, c *config) {
+				assert.Equal(t, 10.0, c.RetryBudget.TokensPerSecond)
+			},
+		},
+		{
+			name:     "RETRY_BUDGET_TOKENS_PER_SEC negative clamps to 10/s default",
+			envKey:   "RETRY_BUDGET_TOKENS_PER_SEC",
+			envValue: "-1.5",
+			checkResult: func(t *testing.T, c *config) {
+				assert.Equal(t, 10.0, c.RetryBudget.TokensPerSecond)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(tt.envKey, tt.envValue)
+
+			cfgMutex.Lock()
+			cfg = nil
+			cfgMutex.Unlock()
+			parseConfig()
+
+			cfgMutex.RLock()
+			c := cfg
+			cfgMutex.RUnlock()
+
+			tt.checkResult(t, c)
+		})
+	}
+}
