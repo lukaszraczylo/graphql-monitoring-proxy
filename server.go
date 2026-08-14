@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -104,6 +105,7 @@ func StartHTTPProxy() error {
 		WriteTimeout: time.Duration(cfg.Client.ClientTimeout) * time.Second,
 		JSONEncoder:  json.Marshal,
 		JSONDecoder:  json.Unmarshal,
+		ErrorHandler: proxyErrorHandler,
 	}
 
 	server := fiber.New(serverConfig)
@@ -145,15 +147,7 @@ func StartHTTPProxy() error {
 
 	// WebSocket support - must be registered before catch-all routes
 	if cfg.WebSocket.Enable {
-		server.Get("/v1/graphql", func(c fiber.Ctx) error {
-			if IsWebSocketRequest(c) {
-				wsp := GetWebSocketProxy()
-				if wsp != nil {
-					return wsp.HandleWebSocket(c)
-				}
-			}
-			return proxyTheRequestToDefault(c)
-		})
+		server.Get("/v1/graphql", handleWebSocketOrDefault)
 	}
 
 	server.Post("/*", processGraphQLRequest)
@@ -164,7 +158,7 @@ func StartHTTPProxy() error {
 		Pairs:   map[string]any{"port": cfg.Server.PortGraphQL},
 	})
 
-	if err := server.Listen(fmt.Sprintf(":%d", cfg.Server.PortGraphQL), fiber.ListenConfig{DisableStartupMessage: true}); err != nil {
+	if err := server.Listen(fmt.Sprintf("%s:%d", cfg.Server.BindAddress, cfg.Server.PortGraphQL), fiber.ListenConfig{DisableStartupMessage: true}); err != nil {
 		return fmt.Errorf("failed to start HTTP proxy server on port %d: %w",
 			cfg.Server.PortGraphQL, err)
 	}
@@ -172,9 +166,61 @@ func StartHTTPProxy() error {
 	return nil
 }
 
+// proxyErrorHandler maps a handler-returned error to the HTTP status code the
+// client should see and writes a plain-text body, replacing fiber's
+// DefaultErrorHandler (which has no notion of the proxy's error types).
+//
+// A *fiber.Error (returned by fiber itself, e.g. route/body-parsing errors,
+// or explicitly by a handler via fiber.NewError) keeps its own Code, exactly
+// like DefaultErrorHandler does. Any other error - notably a circuit-open
+// sentinel or a *ProxyError - is mapped via StatusCodeForError, so
+// circuit-open surfaces as 503 instead of the generic 500 fiber would
+// otherwise return.
+func proxyErrorHandler(c fiber.Ctx, err error) error {
+	code := fiber.StatusInternalServerError
+
+	var fiberErr *fiber.Error
+	if errors.As(err, &fiberErr) {
+		code = fiberErr.Code
+	} else {
+		code = StatusCodeForError(err)
+	}
+
+	c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+	return c.Status(code).SendString(err.Error())
+}
+
 // proxyTheRequestToDefault proxies the request to the default GraphQL endpoint.
 func proxyTheRequestToDefault(c fiber.Ctx) error {
 	return proxyTheRequest(c, cfg.Server.HostGraphQL)
+}
+
+// handleWebSocketOrDefault is the handler registered on GET /v1/graphql when
+// WebSocket support is enabled. For an actual upgrade request it applies the
+// SAME ban and rate-limit checks processGraphQLRequest runs for the HTTP
+// path, before proxying the connection - previously a banned or
+// rate-limited user could bypass both simply by using the WebSocket upgrade
+// path instead of a normal POST. Only a user who passes both checks reaches
+// wsp.HandleWebSocket; behaviour for allowed users, and for non-upgrade
+// requests (proxied via proxyTheRequestToDefault), is unchanged.
+func handleWebSocketOrDefault(c fiber.Ctx) error {
+	if IsWebSocketRequest(c) {
+		wsp := GetWebSocketProxy()
+		if wsp != nil {
+			extractedUserID, extractedRoleName := extractUserInfo(c)
+
+			if checkIfUserIsBanned(c, extractedUserID) {
+				return c.Status(fiber.StatusForbidden).SendString("User is banned")
+			}
+
+			if cfg.Client.RoleRateLimit && !rateLimitedRequest(extractedUserID, extractedRoleName) {
+				return c.Status(fiber.StatusTooManyRequests).SendString("Rate limit exceeded, try again later")
+			}
+
+			return wsp.HandleWebSocket(c)
+		}
+	}
+	return proxyTheRequestToDefault(c)
 }
 
 // AddRequestUUID adds a unique request UUID to the context.
@@ -428,7 +474,7 @@ func handleCaching(c fiber.Ctx, parsedResult *parseGraphQLQueryResult, userID, u
 		// No caching, just proxy the request
 		if err := proxyTheRequest(c, parsedResult.activeEndpoint); err != nil {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
-			return false, c.Status(fiber.StatusInternalServerError).SendString("Can't proxy the request - try again later")
+			return false, c.Status(StatusCodeForError(err)).SendString("Can't proxy the request - try again later")
 		}
 		return false, nil
 	}
@@ -465,7 +511,7 @@ func proxyAndCacheTheRequest(c fiber.Ctx, queryCacheHash string, cacheTime int, 
 			Pairs:   map[string]any{"error": err.Error()},
 		})
 		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
-		return c.Status(fiber.StatusInternalServerError).SendString("Can't proxy the request - try again later")
+		return c.Status(StatusCodeForError(err)).SendString("Can't proxy the request - try again later")
 	}
 
 	libpack_cache.CacheStoreWithTTL(queryCacheHash, c.Response().Body(), time.Duration(cacheTime)*time.Second)

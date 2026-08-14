@@ -11,6 +11,7 @@ import (
 
 	fiber "github.com/gofiber/fiber/v3"
 	gorillaws "github.com/gorilla/websocket"
+	goratecounter "github.com/lukaszraczylo/go-ratecounter"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 	"github.com/stretchr/testify/assert"
@@ -576,5 +577,136 @@ func TestWebSocketProxy_HandleConnection_PingGoroutineJoinsBeforeReturn(t *testi
 		assert.Eventually(t, func() bool {
 			return wsp.activeConnections.Load() == 0
 		}, 2*time.Second, time.Millisecond, "iteration %d: handleConnection did not tear down", i)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// handleWebSocketOrDefault (S3 - the WS route must run the same ban and
+// rate-limit checks the HTTP path runs in processGraphQLRequest, instead of
+// bypassing them by going straight to wsp.HandleWebSocket)
+// ---------------------------------------------------------------------------
+
+// setTestWebSocketProxy overrides the package-global WebSocket proxy
+// singleton for the duration of a test, restoring the previous value via
+// t.Cleanup. handleWebSocketOrDefault resolves the proxy through
+// GetWebSocketProxy(), and InitializeWebSocketProxy's sync.Once means only
+// the first caller in the whole test binary can set it that way - assigning
+// the global directly here keeps these tests deterministic regardless of
+// what other tests in this package already initialized.
+func setTestWebSocketProxy(t *testing.T, wsp *WebSocketProxy) {
+	t.Helper()
+	prev := webSocketProxy
+	webSocketProxy = wsp
+	t.Cleanup(func() { webSocketProxy = prev })
+}
+
+// newWSUpgradeRequest builds a GET request carrying the minimum headers
+// IsWebSocketRequest recognises as an upgrade attempt.
+func newWSUpgradeRequest() *http.Request {
+	req := httptest.NewRequest("GET", "/v1/graphql", nil)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	return req
+}
+
+func TestHandleWebSocketOrDefault_BannedUserRejected(t *testing.T) {
+	parseConfig()
+
+	replaceBannedUsers(map[string]string{defaultValue: "testing"})
+	t.Cleanup(func() { replaceBannedUsers(map[string]string{}) })
+
+	setTestWebSocketProxy(t, NewWebSocketProxy("http://127.0.0.1:1", WebSocketConfig{Enabled: true}, cfg.Logger, nil))
+
+	app := fiber.New()
+	app.Get("/v1/graphql", handleWebSocketOrDefault)
+
+	resp, err := app.Test(newWSUpgradeRequest(), fiber.TestConfig{Timeout: 5000 * time.Millisecond})
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Same status processGraphQLRequest returns for a banned user.
+	if resp.StatusCode != fiber.StatusForbidden {
+		t.Fatalf("want %d (banned, same as HTTP path), got %d", fiber.StatusForbidden, resp.StatusCode)
+	}
+}
+
+func TestHandleWebSocketOrDefault_RateLimitedUserRejected(t *testing.T) {
+	parseConfig()
+
+	replaceBannedUsers(map[string]string{})
+
+	cfgMutex.Lock()
+	cfg.Client.RoleRateLimit = true
+	cfgMutex.Unlock()
+	t.Cleanup(func() {
+		cfgMutex.Lock()
+		cfg.Client.RoleRateLimit = false
+		cfgMutex.Unlock()
+	})
+
+	// Req: 0 denies the request outright - after the first Incr the ticker's
+	// rate is already > 0, so this role is denied deterministically on the
+	// very first call, no warm-up requests needed.
+	rateLimitMu.Lock()
+	rateLimits = map[string]RateLimitConfig{
+		defaultValue: {
+			RateCounterTicker: goratecounter.NewRateCounter().WithConfig(goratecounter.RateCounterConfig{
+				Interval: 1 * time.Second,
+			}),
+			Interval: 1 * time.Second,
+			Req:      0,
+		},
+	}
+	rateLimitConfigAtomic.Store(rateLimits)
+	rateLimitMu.Unlock()
+
+	setTestWebSocketProxy(t, NewWebSocketProxy("http://127.0.0.1:1", WebSocketConfig{Enabled: true}, cfg.Logger, nil))
+
+	app := fiber.New()
+	app.Get("/v1/graphql", handleWebSocketOrDefault)
+
+	resp, err := app.Test(newWSUpgradeRequest(), fiber.TestConfig{Timeout: 5000 * time.Millisecond})
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Same status processGraphQLRequest returns for a rate-limited user.
+	if resp.StatusCode != fiber.StatusTooManyRequests {
+		t.Fatalf("want %d (rate limited, same as HTTP path), got %d", fiber.StatusTooManyRequests, resp.StatusCode)
+	}
+}
+
+// TestHandleWebSocketOrDefault_AllowedUserProceedsToHandleWebSocket verifies
+// an allowed user (not banned, not rate-limited) is not blocked before
+// reaching wsp.HandleWebSocket. wsp.enabled=false is used as a cheap,
+// deterministic probe: HandleWebSocket then returns a distinct 501 (see
+// WebSocketProxy.HandleWebSocket), a status neither the ban (403) nor
+// rate-limit (429) rejection, nor a plain proxied request, would produce -
+// so seeing 501 proves control reached HandleWebSocket.
+func TestHandleWebSocketOrDefault_AllowedUserProceedsToHandleWebSocket(t *testing.T) {
+	parseConfig()
+
+	replaceBannedUsers(map[string]string{})
+
+	cfgMutex.Lock()
+	cfg.Client.RoleRateLimit = false
+	cfgMutex.Unlock()
+
+	setTestWebSocketProxy(t, NewWebSocketProxy("http://127.0.0.1:1", WebSocketConfig{Enabled: false}, cfg.Logger, nil))
+
+	app := fiber.New()
+	app.Get("/v1/graphql", handleWebSocketOrDefault)
+
+	resp, err := app.Test(newWSUpgradeRequest(), fiber.TestConfig{Timeout: 5000 * time.Millisecond})
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != fiber.StatusNotImplemented {
+		t.Fatalf("want %d (proves control reached wsp.HandleWebSocket), got %d", fiber.StatusNotImplemented, resp.StatusCode)
 	}
 }

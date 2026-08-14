@@ -105,7 +105,7 @@ func enableApi(ctx context.Context) error {
 	// Start server in a goroutine and handle shutdown
 	errCh := make(chan error, 1)
 	go func() {
-		if err := apiserver.Listen(fmt.Sprintf(":%d", cfg.Server.ApiPort), fiber.ListenConfig{DisableStartupMessage: true}); err != nil {
+		if err := apiserver.Listen(fmt.Sprintf("%s:%d", cfg.Server.BindAddress, cfg.Server.ApiPort), fiber.ListenConfig{DisableStartupMessage: true}); err != nil {
 			errCh <- err
 		}
 	}()

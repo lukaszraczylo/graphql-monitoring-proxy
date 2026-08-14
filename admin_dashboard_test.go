@@ -161,7 +161,6 @@ func TestAdminDashboard_GetCircuitBreakerStatus(t *testing.T) {
 	cfg = &config{
 		Logger: logger,
 		CircuitBreaker: struct {
-			EndpointConfigs       map[string]*EndpointCBConfig
 			ExcludedStatusCodes   []int
 			MaxFailures           int
 			FailureRatio          float64

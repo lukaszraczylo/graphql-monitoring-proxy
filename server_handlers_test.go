@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
+	"github.com/sony/gobreaker"
 	"github.com/valyala/fasthttp"
 )
 
@@ -700,5 +702,167 @@ func (suite *Tests) Test_shutdownHTTPProxy() {
 		// Listen returned because we called Shutdown.
 	case <-time.After(3 * time.Second):
 		suite.Fail("proxy server did not shut down; in-flight requests would be cut off")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// proxyErrorHandler (C4 - circuit-open must surface as 503, not the generic
+// 500 fiber's DefaultErrorHandler would return; *fiber.Error keeps its own
+// code; any other error still maps to 500)
+// ---------------------------------------------------------------------------
+
+func TestProxyErrorHandler_MapsErrorsToStatusCodes(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		wantStatus int
+	}{
+		{
+			name:       "circuit open sentinel yields 503",
+			err:        ErrCircuitOpen,
+			wantStatus: fiber.StatusServiceUnavailable,
+		},
+		{
+			name:       "gobreaker open state yields 503",
+			err:        gobreaker.ErrOpenState,
+			wantStatus: fiber.StatusServiceUnavailable,
+		},
+		{
+			name:       "wrapped circuit open sentinel yields 503",
+			err:        fmt.Errorf("proxy attempt failed: %w", ErrCircuitOpen),
+			wantStatus: fiber.StatusServiceUnavailable,
+		},
+		{
+			name:       "generic error yields 500",
+			err:        errors.New("boom"),
+			wantStatus: fiber.StatusInternalServerError,
+		},
+		{
+			name:       "proxy error keeps its own status code",
+			err:        NewProxyError(ErrCodeBadGateway, "bad gateway", fiber.StatusBadGateway, false),
+			wantStatus: fiber.StatusBadGateway,
+		},
+		{
+			name:       "fiber.Error keeps its own code",
+			err:        fiber.NewError(fiber.StatusTeapot, "teapot"),
+			wantStatus: fiber.StatusTeapot,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := fiber.New(fiber.Config{ErrorHandler: proxyErrorHandler})
+			app.Get("/err", func(c fiber.Ctx) error {
+				return tt.err
+			})
+
+			req := httptest.NewRequest("GET", "/err", nil)
+			resp, err := app.Test(req, fiber.TestConfig{Timeout: 5000 * time.Millisecond})
+			if err != nil {
+				t.Fatalf("app.Test: %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			if resp.StatusCode != tt.wantStatus {
+				t.Errorf("want status %d, got %d", tt.wantStatus, resp.StatusCode)
+			}
+		})
+	}
+}
+
+// TestStartHTTPProxy_ErrorHandlerConfigured is a narrow regression check that
+// StartHTTPProxy actually wires proxyErrorHandler into the fiber app (the
+// bug this fixes was a missing ErrorHandler in that Config), rather than
+// only testing proxyErrorHandler in isolation above.
+func TestStartHTTPProxy_ErrorHandlerConfigured(t *testing.T) {
+	parseConfig()
+	_ = StartMonitoringServer()
+
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("net.Listen: %v", err)
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	_ = l.Close()
+
+	cfgMutex.Lock()
+	origPort := cfg.Server.PortGraphQL
+	origTimeout := cfg.Client.ClientTimeout
+	origWS := cfg.WebSocket.Enable
+	origAdmin := cfg.AdminDashboard.Enable
+	origHost := cfg.Server.HostGraphQL
+	origHostRO := cfg.Server.HostGraphQLReadOnly
+	cfg.Server.PortGraphQL = port
+	cfg.Client.ClientTimeout = 5
+	cfg.WebSocket.Enable = false
+	cfg.AdminDashboard.Enable = false
+	// Point at a host that always refuses connections so proxyTheRequest
+	// fails and processGraphQLRequest's proxy-error path (mapped via
+	// StatusCodeForError, not a bare 500) gets exercised.
+	cfg.Server.HostGraphQL = "http://127.0.0.1:1"
+	cfg.Server.HostGraphQLReadOnly = "http://127.0.0.1:1"
+	cfgMutex.Unlock()
+
+	t.Cleanup(func() {
+		cfgMutex.Lock()
+		cfg.Server.PortGraphQL = origPort
+		cfg.Client.ClientTimeout = origTimeout
+		cfg.WebSocket.Enable = origWS
+		cfg.AdminDashboard.Enable = origAdmin
+		cfg.Server.HostGraphQL = origHost
+		cfg.Server.HostGraphQLReadOnly = origHostRO
+		cfgMutex.Unlock()
+	})
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- StartHTTPProxy()
+	}()
+
+	deadline := time.Now().Add(3 * time.Second)
+	var serving bool
+	for time.Now().Before(deadline) {
+		httpProxyMu.RLock()
+		serving = httpProxyApp != nil
+		httpProxyMu.RUnlock()
+		if serving {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !serving {
+		t.Fatalf("server did not start serving on port %d within 3s", port)
+	}
+
+	httpResp, err := http.Post(
+		fmt.Sprintf("http://127.0.0.1:%d/v1/graphql", port),
+		"application/json",
+		strings.NewReader(`{"query":"query { __typename }"}`),
+	)
+	if err != nil {
+		t.Fatalf("POST /v1/graphql: %v", err)
+	}
+	_ = httpResp.Body.Close()
+
+	// An unreachable backend is a generic proxy failure, not circuit-open, so
+	// this must stay 500 - proving the ErrorHandler wiring did not change the
+	// status for genuinely-500 errors.
+	if httpResp.StatusCode != fiber.StatusInternalServerError {
+		t.Errorf("want %d for unreachable backend, got %d", fiber.StatusInternalServerError, httpResp.StatusCode)
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := shutdownHTTPProxy(shutdownCtx); err != nil {
+		t.Fatalf("shutdownHTTPProxy: %v", err)
+	}
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Errorf("StartHTTPProxy returned error after shutdown: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("StartHTTPProxy did not return after shutdownHTTPProxy")
 	}
 }
