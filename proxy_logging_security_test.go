@@ -507,7 +507,11 @@ func (suite *ProxyLoggingSecurityTestSuite) TestRedactPatternInString() {
 	}
 }
 
-// TestSanitizationPerformance tests performance of sanitization functions
+// TestSanitizationPerformance tests performance of sanitization functions.
+// The redacted JSON for 1000 users is far larger than MaxLogBodySize, so the
+// size-cap fix (Defect A) truncates it - the result is no longer guaranteed
+// to be complete, parseable JSON. This asserts the bounded-output contract
+// instead of unmarshaling the whole thing.
 func (suite *ProxyLoggingSecurityTestSuite) TestSanitizationPerformance() {
 	// Create a large JSON structure with sensitive data
 	largeData := make(map[string]any)
@@ -526,16 +530,20 @@ func (suite *ProxyLoggingSecurityTestSuite) TestSanitizationPerformance() {
 	// Test that sanitization completes in reasonable time
 	result := sanitizeForLogging(largeJSON, "application/json")
 
-	// Verify the result is valid JSON
-	var sanitized map[string]any
-	err = json.Unmarshal([]byte(result), &sanitized)
-	suite.NoError(err)
+	// Output must be bounded and carry the truncation marker.
+	suite.LessOrEqual(len(result), MaxLogBodySize+len(TruncatedSuffix),
+		"sanitized large JSON output must be bounded by MaxLogBodySize")
+	suite.True(strings.HasSuffix(result, TruncatedSuffix),
+		"sanitized large JSON output must carry the truncation marker")
+	suite.True(utf8.ValidString(result), "sanitized large JSON output must be valid UTF-8")
 
-	// Verify sensitive data was redacted (spot check)
-	user0 := sanitized["user_0"].(map[string]any)
-	suite.Equal("[REDACTED]", user0["password"])
-	suite.Equal("[REDACTED]", user0["email"])
-	suite.Equal("User0", user0["name"])
+	// Verify sensitive data was redacted (spot check): redaction runs on the
+	// parsed structure before re-marshaling and truncating, so no plaintext
+	// secret value can appear in the retained window regardless of where the
+	// cut lands.
+	suite.NotContains(result, "secret0", "plaintext password must not leak")
+	suite.NotContains(result, "user0@example.com", "plaintext email must not leak")
+	suite.Contains(result, RedactedPlaceholder, "retained window should show redaction")
 }
 
 // TestEdgeCases tests edge cases and error conditions
@@ -760,6 +768,161 @@ func (suite *ProxyLoggingSecurityTestSuite) TestSanitizeTruncatedBodySecretStrad
 	suite.True(strings.HasSuffix(result, TruncatedSuffix), "result must carry the truncated suffix")
 }
 
+// TestSanitizeForLoggingJSONBoundary covers the JSON path's size cap
+// (Defect A): a redacted-then-remarshaled JSON body larger than
+// MaxLogBodySize must be bounded and carry the truncation marker, exactly
+// like the non-JSON path, while a body under the cap is unaffected.
+func (suite *ProxyLoggingSecurityTestSuite) TestSanitizeForLoggingJSONBoundary() {
+	tests := []struct {
+		name      string
+		build     func() []byte
+		checkFunc func(t *testing.T, result string)
+	}{
+		{
+			name: "JSON body over MaxLogBodySize is bounded and redacted",
+			build: func() []byte {
+				input := map[string]any{
+					"password": "JsonSecretOverCap-DoNotLeak",
+					"padding":  strings.Repeat("p", MaxLogBodySize*2),
+				}
+				b, err := json.Marshal(input)
+				suite.Require().NoError(err)
+				suite.Require().Greater(len(b), MaxLogBodySize, "test body must exceed MaxLogBodySize")
+				return b
+			},
+			checkFunc: func(t *testing.T, result string) {
+				if len(result) > MaxLogBodySize+len(TruncatedSuffix) {
+					t.Fatalf("result not bounded: got %d bytes", len(result))
+				}
+				if !strings.HasSuffix(result, TruncatedSuffix) {
+					t.Fatalf("expected truncation marker, got %q", result)
+				}
+				if !utf8.ValidString(result) {
+					t.Fatalf("result is not valid UTF-8: %q", result)
+				}
+				if strings.Contains(result, "JsonSecretOverCap") {
+					t.Fatalf("secret leaked in truncated JSON output: %q", result)
+				}
+			},
+		},
+		{
+			name: "JSON body under MaxLogBodySize is unchanged behavior",
+			build: func() []byte {
+				input := map[string]any{
+					"password": "shortsecret",
+					"name":     "ok",
+				}
+				b, err := json.Marshal(input)
+				suite.Require().NoError(err)
+				suite.Require().Less(len(b), MaxLogBodySize, "test body must stay under MaxLogBodySize")
+				return b
+			},
+			checkFunc: func(t *testing.T, result string) {
+				if strings.HasSuffix(result, TruncatedSuffix) {
+					t.Fatalf("small JSON body should not be truncated, got %q", result)
+				}
+				var sanitized map[string]any
+				if err := json.Unmarshal([]byte(result), &sanitized); err != nil {
+					t.Fatalf("result should be valid JSON: %v", err)
+				}
+				if sanitized["password"] != RedactedPlaceholder {
+					t.Fatalf("expected password redacted, got %v", sanitized["password"])
+				}
+				if sanitized["name"] != "ok" {
+					t.Fatalf("expected non-sensitive field preserved, got %v", sanitized["name"])
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			body := tt.build()
+			result := sanitizeForLogging(body, "application/json")
+			tt.checkFunc(suite.T(), result)
+		})
+	}
+}
+
+// TestSanitizeTruncatedBodyXMLTagBoundary covers Defect B: a sensitive XML
+// open tag whose closing tag falls past the MaxLogBodySize cut must be
+// stripped from the truncated output (the closing-tag-requiring XML
+// redaction pattern otherwise cannot match it), a sensitive tag that is
+// fully closed before the cut must still be redacted as before, and a
+// non-sensitive tag straddling the cut must be left untouched.
+func (suite *ProxyLoggingSecurityTestSuite) TestSanitizeTruncatedBodyXMLTagBoundary() {
+	tests := []struct {
+		name      string
+		build     func() string
+		checkFunc func(t *testing.T, result string)
+	}{
+		{
+			name: "sensitive XML tag straddling the cut is stripped",
+			build: func() string {
+				head := strings.Repeat("x", 900)
+				secret := "S3cretXmlStraddle_" + strings.Repeat("Z", 200)
+				body := head + "<password>" + secret + "</password>"
+				suite.Require().Greater(len(body), MaxLogBodySize, "test body must exceed MaxLogBodySize")
+				return body
+			},
+			checkFunc: func(t *testing.T, result string) {
+				if strings.Contains(result, "S3cretXmlStraddle") {
+					t.Fatalf("leading secret bytes leaked in truncated output: %q", result)
+				}
+				if !strings.HasSuffix(result, TruncatedSuffix) {
+					t.Fatalf("expected truncation marker, got %q", result)
+				}
+				if !utf8.ValidString(result) {
+					t.Fatalf("result is not valid UTF-8: %q", result)
+				}
+			},
+		},
+		{
+			name: "sensitive XML tag fully inside the cap is still redacted",
+			build: func() string {
+				secret := "FullyInsideXmlSecret"
+				body := "<password>" + secret + "</password>" + strings.Repeat("y", MaxLogBodySize+500)
+				suite.Require().Greater(len(body), MaxLogBodySize, "test body must exceed MaxLogBodySize")
+				return body
+			},
+			checkFunc: func(t *testing.T, result string) {
+				if strings.Contains(result, "FullyInsideXmlSecret") {
+					t.Fatalf("secret that was fully inside the cap leaked: %q", result)
+				}
+				if !strings.Contains(result, RedactedPlaceholder) {
+					t.Fatalf("expected redaction marker for the fully-contained tag, got %q", result)
+				}
+			},
+		},
+		{
+			name: "non-sensitive tag straddling the cut is preserved",
+			build: func() string {
+				head := strings.Repeat("x", 900)
+				marker := "SAFE_CONTENT_MARKER_" + strings.Repeat("Q", 200)
+				body := head + "<description>" + marker + "</description>"
+				suite.Require().Greater(len(body), MaxLogBodySize, "test body must exceed MaxLogBodySize")
+				return body
+			},
+			checkFunc: func(t *testing.T, result string) {
+				if !strings.Contains(result, "SAFE_CONTENT_MARKER") {
+					t.Fatalf("non-sensitive content should be preserved, got %q", result)
+				}
+				if !strings.HasSuffix(result, TruncatedSuffix) {
+					t.Fatalf("expected truncation marker, got %q", result)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			body := tt.build()
+			result := sanitizeForLogging([]byte(body), "application/xml")
+			tt.checkFunc(suite.T(), result)
+		})
+	}
+}
+
 // TestSanitizeTruncatedBodyTrimsPartialRuneOnPlainBody verifies the
 // rune-boundary trim in sanitizeTruncatedBody runs on the raw
 // body[:MaxLogBodySize] cut, not only in the final truncateUTF8 call. The
@@ -783,4 +946,72 @@ func (suite *ProxyLoggingSecurityTestSuite) TestSanitizeTruncatedBodyTrimsPartia
 	suite.True(utf8.ValidString(result), "result must be valid UTF-8")
 	suite.True(strings.HasSuffix(result, TruncatedSuffix), "result must carry the truncated suffix")
 	suite.NotContains(result, "界", "a split multi-byte rune must not survive truncation")
+}
+
+// TestStripTrailingUnterminatedTagClosingTagSplitByCutNotExposed covers the
+// MUST-1 defect: stripTrailingUnterminatedTag treated a bare "</" left at
+// the tail of a truncated prefix as proof the value was "already redacted",
+// even when the closing tag itself was split by the truncation cut (e.g.
+// "...secretvalue</pa"). The XML redaction pattern needs the complete
+// "</field>" tag to match, so a split tag was never actually redacted and
+// the secret leaked. The fix requires the complete closing tag before
+// leaving the value alone.
+func (suite *ProxyLoggingSecurityTestSuite) TestStripTrailingUnterminatedTagClosingTagSplitByCutNotExposed() {
+	secret := "SECRETLEAKME"
+	openTag := "<password>"
+	closeTag := "</password>"
+	const splitPoint = 4 // retains "</pa" - a partial closing tag, not the complete "</password>"
+	head := strings.Repeat("x", MaxLogBodySize-len(openTag)-len(secret)-splitPoint)
+	body := head + openTag + secret + closeTag
+	suite.Require().Greater(len(body), MaxLogBodySize, "test body must exceed MaxLogBodySize to hit the truncation path")
+
+	result := sanitizeForLogging([]byte(body), "application/xml")
+
+	suite.NotContains(result, secret, "secret leaked when its closing tag was split by the truncation cut")
+	suite.True(utf8.ValidString(result), "result must be valid UTF-8")
+	suite.True(strings.HasSuffix(result, TruncatedSuffix), "result must carry the truncated suffix")
+}
+
+// TestStripTrailingUnterminatedTagByteDriftFromCaseFold covers the MUST-2
+// defect: stripTrailingUnterminatedTag computed cut as a byte index into
+// strings.ToLower(s), then applied that index to s directly. strings.ToLower
+// is not byte-length-preserving for every rune, so a multi-byte case-folding
+// rune sitting before a dangling sensitive tag drifted the cut index out of
+// alignment with s. A growing fold (U+023A, +1 byte) pushed the index past
+// the real tag position, so a "cut" that should have removed the tag instead
+// retained it - and the secret with it. A shrinking fold (U+212A, -2 bytes)
+// pulled the index short of the real tag position, landing mid-rune in the
+// still-multi-byte original run and producing invalid UTF-8 in the output.
+func (suite *ProxyLoggingSecurityTestSuite) TestStripTrailingUnterminatedTagByteDriftFromCaseFold() {
+	suite.Run("growing case fold (U+023A) before a truncated tag does not retain the secret", func() {
+		secret := "DRIFTSECRET"
+		openTag := "<password>"
+		const foldRune = "Ⱥ" // 2 raw bytes; strings.ToLower grows it to 3 bytes (U+2C65)
+		const repeats = 100
+		// No closing tag anywhere in the body, so the value is never
+		// redacted by the normal XML pattern - only stripTrailingUnterminatedTag's
+		// cut can remove it, isolating the index-drift defect from the
+		// separate split-closing-tag defect covered above.
+		body := strings.Repeat(foldRune, repeats) + openTag + secret + strings.Repeat("y", MaxLogBodySize)
+		suite.Require().Greater(len(body), MaxLogBodySize, "test body must exceed MaxLogBodySize to hit the truncation path")
+
+		result := sanitizeForLogging([]byte(body), "text/plain")
+
+		suite.NotContains(result, secret, "secret retained: case-fold byte-length growth drifted the cut index past the real tag position")
+		suite.True(utf8.ValidString(result), "result must be valid UTF-8")
+	})
+
+	suite.Run("shrinking case fold (U+212A) before a truncated tag yields valid UTF-8", func() {
+		secret := "KELVINDRIFTSECRET"
+		openTag := "<password>"
+		const foldRune = "K" // 3 raw bytes; strings.ToLower shrinks it to 1 byte ('k')
+		const repeats = 100
+		body := strings.Repeat(foldRune, repeats) + openTag + secret + strings.Repeat("y", MaxLogBodySize)
+		suite.Require().Greater(len(body), MaxLogBodySize, "test body must exceed MaxLogBodySize to hit the truncation path")
+
+		result := sanitizeForLogging([]byte(body), "text/plain")
+
+		suite.True(utf8.ValidString(result), "case-fold byte-length shrinkage must not slice s mid-rune and produce invalid UTF-8")
+		suite.NotContains(result, secret, "secret must not be retained either")
+	})
 }

@@ -98,7 +98,16 @@ func sanitizeForLogging(body []byte, contentType string) string {
 			if err != nil {
 				// Fall through to string-based sanitization on marshal error
 			} else {
-				return string(sanitized)
+				out := string(sanitized)
+				if len(out) > MaxLogBodySize {
+					// Truncating AFTER redaction is safe here: redaction ran
+					// on the parsed structure before re-marshaling, so every
+					// sensitive value was already fully replaced with
+					// RedactedPlaceholder before this byte cut, and no
+					// unredacted secret can straddle it.
+					return truncateUTF8(out, MaxLogBodySize) + TruncatedSuffix
+				}
+				return out
 			}
 		}
 	}
@@ -120,11 +129,11 @@ func sanitizeForLogging(body []byte, contentType string) string {
 }
 
 // sanitizeTruncatedBody redacts sensitive fields within the first
-// MaxLogBodySize bytes of a large body, strips any dangling quoted value
-// left at the tail (a secret whose closing quote fell past the cut, so the
-// "field":"value" redaction regexes above could not match it), then
-// truncates on a UTF-8 rune boundary, so a truncated log line is both
-// masked and decodable.
+// MaxLogBodySize bytes of a large body, strips any dangling quoted value or
+// dangling sensitive-field open tag left at the tail (a secret whose closing
+// quote or closing tag fell past the cut, so the redaction regexes above
+// could not match it), then truncates on a UTF-8 rune boundary, so a
+// truncated log line is both masked and decodable.
 //
 // The rune-boundary trim runs on the raw body[:MaxLogBodySize] cut BEFORE
 // redaction, not only in the final truncateUTF8 safety-net call. Redaction
@@ -143,6 +152,7 @@ func sanitizeTruncatedBody(body []byte) string {
 		prefix = redactPatternInString(prefix, field)
 	}
 	prefix = stripTrailingUnterminatedQuote(prefix)
+	prefix = stripTrailingUnterminatedTag(prefix)
 	return truncateUTF8(prefix, MaxLogBodySize) + TruncatedSuffix
 }
 
@@ -165,6 +175,70 @@ func stripTrailingUnterminatedQuote(s string) string {
 		}
 	}
 	return s
+}
+
+// stripTrailingUnterminatedTag drops a dangling, unterminated sensitive-field
+// open tag (and everything after it) left at the end of a byte-truncated
+// prefix. The XML redaction pattern in redactPatternInString requires a
+// closing "</field>" tag to match, so a value like "<password>secretvalue"
+// whose closing tag falls past the truncation point is never redacted and
+// its leading bytes would otherwise leak. Only the fixed
+// sensitiveFieldPatterns names are checked - the same list the rest of this
+// file's redaction already uses - so an unrelated/unknown tag left dangling
+// at the cut is not touched.
+//
+// This is deliberately fail-closed: prose that happens to contain a
+// sensitive-looking open tag (e.g. "<password>") with no later "</" anywhere
+// in the retained prefix has its tail truncated too, even though nothing
+// sensitive followed. A false positive here only shortens a log line; a
+// false negative would leak a secret.
+func stripTrailingUnterminatedTag(s string) string {
+	// asciiLower, not strings.ToLower: cut below is an index into this
+	// folded string but is applied to slice s (the original), so the fold
+	// must be byte-length-preserving or the index drifts out of alignment
+	// with s. See asciiLower's doc for the specific runes that break
+	// strings.ToLower here.
+	lower := asciiLower(s)
+	cut := -1
+	for _, field := range sensitiveFieldPatterns {
+		openTag := "<" + field + ">"
+		idx := strings.LastIndex(lower, openTag)
+		if idx < 0 {
+			continue
+		}
+		// The XML redaction pattern above requires a complete "</field>"
+		// closing tag to match. A truncation cut can split the closing tag
+		// itself (e.g. "...secretvalue</pa"), leaving a bare "</" behind
+		// without the rest of the tag name. That partial "</" is not enough
+		// for the pattern to ever match, so checking for it alone (rather
+		// than the complete closing tag) wrongly treated the value as
+		// already redacted and left the secret in place.
+		if strings.Contains(lower[idx+len(openTag):], "</"+field+">") {
+			continue
+		}
+		if idx > cut {
+			cut = idx
+		}
+	}
+	if cut >= 0 {
+		s = s[:cut]
+	}
+	return s
+}
+
+// asciiLower folds A-Z in place. Unlike strings.ToLower it is
+// byte-length-preserving, so indexes into the result are valid indexes into
+// s (strings.ToLower can grow or shrink: U+023A -> U+2C65 is +1 byte,
+// U+212A -> 'k' is -2 bytes). All sensitiveFieldPatterns entries are ASCII,
+// so this fold is sufficient for matching them case-insensitively.
+func asciiLower(s string) string {
+	b := []byte(s)
+	for i := range b {
+		if b[i] >= 'A' && b[i] <= 'Z' {
+			b[i] += 'a' - 'A'
+		}
+	}
+	return string(b)
 }
 
 // truncateUTF8 truncates s to at most maxBytes on a UTF-8 rune boundary.
