@@ -5,12 +5,32 @@ package libpack_cache_redis
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	redis "github.com/redis/go-redis/v9"
 )
+
+// globEscaper escapes Redis glob-pattern metacharacters (\, *, ?, [, ]) so a
+// literal string can be embedded in a SCAN/KEYS MATCH pattern without being
+// interpreted as a wildcard. Each character is matched once per input byte,
+// so the replacements cannot cascade into one another.
+var globEscaper = strings.NewReplacer(
+	`\`, `\\`,
+	`*`, `\*`,
+	`?`, `\?`,
+	`[`, `\[`,
+	`]`, `\]`,
+)
+
+// escapeGlobPattern returns s with Redis glob metacharacters escaped so it
+// can be used as a literal prefix inside a MATCH pattern.
+func escapeGlobPattern(s string) string {
+	return globEscaper.Replace(s)
+}
 
 type RedisConfig struct {
 	ctx         context.Context
@@ -90,16 +110,25 @@ func (c *RedisConfig) Delete(key string) error {
 // Clear removes only the keys owned by this cache (those under the configured
 // prefix). Unlike FlushDB it does not wipe unrelated keys that may share the
 // selected Redis DB when the database is not exclusively owned by this proxy.
+// The prefix is glob-escaped before use so a prefix containing Redis glob
+// metacharacters (*, ?, [, ], \) is matched literally instead of being
+// interpreted as a wildcard. A failure to delete one scanned batch does not
+// abort the clear: remaining batches are still attempted, and any errors
+// encountered (scan or delete) are joined and returned to the caller so a
+// partial clear is never silently reported as a success.
 func (c *RedisConfig) Clear() error {
+	pattern := escapeGlobPattern(c.prefix) + "*"
 	var cursor uint64
+	var errs []error
 	for {
-		keys, next, err := c.client.Scan(c.ctx, cursor, c.prependKeyName("*"), 100).Result()
+		keys, next, err := c.client.Scan(c.ctx, cursor, pattern, 100).Result()
 		if err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("redis: scan at cursor %d: %w", cursor, err))
+			break
 		}
 		if len(keys) > 0 {
 			if err := c.client.Del(c.ctx, keys...).Err(); err != nil {
-				return err
+				errs = append(errs, fmt.Errorf("redis: delete batch at cursor %d: %w", cursor, err))
 			}
 		}
 		cursor = next
@@ -107,19 +136,31 @@ func (c *RedisConfig) Clear() error {
 			break
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
+// CountQueries returns the number of keys owned by this cache (those under
+// the configured prefix). The prefix is glob-escaped the same way Clear
+// escapes it, so a prefix containing Redis glob metacharacters is matched
+// literally instead of being interpreted as a wildcard, which would
+// otherwise undercount or overcount keys in admin-dashboard stats.
 func (c *RedisConfig) CountQueries() (int64, error) {
-	keys, err := c.client.Keys(c.ctx, c.prependKeyName("*")).Result()
+	pattern := escapeGlobPattern(c.prefix) + "*"
+	keys, err := c.client.Keys(c.ctx, pattern).Result()
 	if err != nil {
 		return 0, err
 	}
 	return int64(len(keys)), nil
 }
 
+// CountQueriesWithPattern returns the number of keys owned by this cache
+// whose suffix (after the prefix) matches pattern. Only the prefix is
+// glob-escaped, the same way Clear and CountQueries escape it; pattern
+// itself is left as given so a caller can still use glob metacharacters
+// intentionally in the suffix it supplies.
 func (c *RedisConfig) CountQueriesWithPattern(pattern string) (int, error) {
-	keys, err := c.client.Keys(c.ctx, c.prependKeyName(pattern)).Result()
+	fullPattern := escapeGlobPattern(c.prefix) + pattern
+	keys, err := c.client.Keys(c.ctx, fullPattern).Result()
 	if err != nil {
 		return 0, err
 	}
