@@ -360,3 +360,73 @@ func TestRetryBudget_ConcurrentUpdateConfig(t *testing.T) {
 	close(stop)
 	wg.Wait()
 }
+
+// TestRetryBudget_UpdateConfigEnablesRefill covers the latent defect where a
+// budget constructed disabled, then enabled via UpdateConfig, never started
+// its refill goroutine: tokens would be handed out once and never replenish.
+func TestRetryBudget_UpdateConfigEnablesRefill(t *testing.T) {
+	rb := NewRetryBudget(RetryBudgetConfig{
+		TokensPerSecond: 100.0, // fast refill so the poll loop below stays short
+		MaxTokens:       10,
+		Enabled:         false,
+	}, nil)
+	defer rb.Shutdown()
+
+	// No refill goroutine should be running yet: enabling later must start it.
+	rb.UpdateConfig(RetryBudgetConfig{
+		TokensPerSecond: 100.0,
+		MaxTokens:       10,
+		Enabled:         true,
+	})
+
+	// Drain the bucket to zero.
+	for i := 0; i < 10; i++ {
+		assert.True(t, rb.AllowRetry())
+	}
+	assert.False(t, rb.AllowRetry(), "bucket should be exhausted after draining")
+	assert.Equal(t, int64(0), rb.currentTokens.Load())
+
+	// Poll with a deadline instead of a fixed sleep: refill runs every 100ms,
+	// so tokens must appear well within the deadline if the loop is running.
+	deadline := time.Now().Add(2 * time.Second)
+	refilled := false
+	for time.Now().Before(deadline) {
+		if rb.currentTokens.Load() > 0 {
+			refilled = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	assert.True(t, refilled, "tokens never refilled after UpdateConfig enabled the budget")
+}
+
+// TestRetryBudget_UpdateConfigDoesNotLeakRefiller asserts that enabling a
+// budget multiple times (once at construction, then repeatedly via
+// concurrent UpdateConfig calls) starts at most one refill goroutine. It
+// uses the package-internal refillStarts counter, incremented exactly once
+// inside the sync.Once guarded by startRefillLoop, giving a deterministic
+// assertion instead of a goroutine-count heuristic.
+func TestRetryBudget_UpdateConfigDoesNotLeakRefiller(t *testing.T) {
+	rb := NewRetryBudget(RetryBudgetConfig{
+		TokensPerSecond: 50.0,
+		MaxTokens:       10,
+		Enabled:         true, // refill goroutine already started at construction
+	}, nil)
+	defer rb.Shutdown()
+
+	assert.Equal(t, int32(1), rb.refillStarts.Load(), "construction with Enabled: true should start exactly one refiller")
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Re-enabling an already-enabled budget must not start a second
+			// refiller.
+			rb.UpdateConfig(RetryBudgetConfig{TokensPerSecond: 50.0, MaxTokens: 10, Enabled: true})
+		}()
+	}
+	wg.Wait()
+
+	assert.Equal(t, int32(1), rb.refillStarts.Load(), "concurrent re-enables must not start a second refiller")
+}

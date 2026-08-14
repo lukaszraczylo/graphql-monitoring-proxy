@@ -21,6 +21,8 @@ type RetryBudget struct {
 	logger          *libpack_logger.Logger
 	ctx             context.Context
 	cancel          context.CancelFunc
+	refillOnce      sync.Once    // ensures refillLoop starts at most once, whether from construction or a later UpdateConfig
+	refillStarts    atomic.Int32 // counts startRefillLoop executions; used by tests to assert no duplicate refiller
 
 	// Statistics
 	totalAttempts  atomic.Int64
@@ -58,10 +60,23 @@ func NewRetryBudgetWithContext(ctx context.Context, config RetryBudgetConfig, lo
 
 	// Start refill goroutine
 	if rb.enabled {
-		go rb.refillLoop()
+		rb.startRefillLoop()
 	}
 
 	return rb
+}
+
+// startRefillLoop starts the background refill goroutine, at most once,
+// regardless of how many times it is called from construction or UpdateConfig.
+// Shutdown is terminal: once rb.ctx is cancelled, a later call here still
+// starts refillLoop, but it exits immediately on the cancelled context
+// without ever refilling, so enabling the budget again after Shutdown does
+// not bring back a working refiller.
+func (rb *RetryBudget) startRefillLoop() {
+	rb.refillOnce.Do(func() {
+		rb.refillStarts.Add(1)
+		go rb.refillLoop()
+	})
 }
 
 // AllowRetry checks if a retry is allowed based on the current budget
@@ -209,6 +224,14 @@ func (rb *RetryBudget) UpdateConfig(config RetryBudgetConfig) {
 	// Reset to full capacity
 	rb.currentTokens.Store(rb.maxTokens)
 	rb.configMu.Unlock()
+
+	// Enabling via UpdateConfig must (re)start the refill loop, otherwise a
+	// budget constructed disabled and later enabled would never refill.
+	// startRefillLoop is idempotent, so re-enabling an already-running budget
+	// is a no-op here.
+	if config.Enabled {
+		rb.startRefillLoop()
+	}
 
 	if rb.logger != nil {
 		rb.logger.Info(&libpack_logger.LogMessage{
