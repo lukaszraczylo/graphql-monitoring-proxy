@@ -150,12 +150,35 @@ func (suite *MemoryTestSuite) Test_LargeItems() {
 	suite.Assert().Equal(largeValue, retrieved)
 }
 
+// Test_ZeroTTL verifies the C11 cross-backend rule: a non-positive TTL is
+// clamped to defaultTTL instead of being stored as already-expired. Before
+// this fix, Set("zero-ttl", ..., 0) stamped ExpiresAt at time.Now(), so the
+// very next Get always missed.
 func (suite *MemoryTestSuite) Test_ZeroTTL() {
 	cache := New(5 * time.Second)
 	cache.Set("zero-ttl", []byte("value"), 0)
 
-	_, found := cache.Get("zero-ttl")
-	suite.Assert().False(found, "Item with zero TTL should not be stored")
+	retrieved, found := cache.Get("zero-ttl")
+	suite.Assert().True(found, "zero TTL should be clamped to defaultTTL, not stored as already-expired")
+	suite.Assert().Equal([]byte("value"), retrieved)
+
+	raw, ok := cache.entries.Load("zero-ttl")
+	suite.Require().True(ok)
+	entry, ok := raw.(CacheEntry)
+	suite.Require().True(ok)
+	suite.Assert().WithinDuration(time.Now().Add(defaultTTL), entry.ExpiresAt, 2*time.Second,
+		"clamped entry should expire ~defaultTTL from now")
+}
+
+// Test_NegativeTTL verifies the same clamp applies to a negative TTL, not
+// just exactly zero.
+func (suite *MemoryTestSuite) Test_NegativeTTL() {
+	cache := New(5 * time.Second)
+	cache.Set("negative-ttl", []byte("value"), -1*time.Second)
+
+	retrieved, found := cache.Get("negative-ttl")
+	suite.Assert().True(found, "negative TTL should be clamped to defaultTTL, not stored as already-expired")
+	suite.Assert().Equal([]byte("value"), retrieved)
 }
 
 func (suite *MemoryTestSuite) Test_LongTTL() {

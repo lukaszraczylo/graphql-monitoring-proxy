@@ -134,14 +134,40 @@ func TestGet_MissingKey_ReturnsFalseNoError(t *testing.T) {
 	assert.Nil(t, val)
 }
 
-func TestSet_TTLZero_KeyPersists(t *testing.T) {
+// TestSet_TTLZero_ClampedToDefaultTTL verifies the C11 cross-backend rule: a
+// non-positive TTL is clamped to defaultTTL instead of go-redis's native
+// behavior of sending SET with no EX/PX option (which makes the key
+// permanent). This keeps Redis's expiry semantics identical to the memory
+// and LRU backends instead of silently diverging into "never expires".
+func TestSet_TTLZero_ClampedToDefaultTTL(t *testing.T) {
 	t.Parallel()
 	rc, s := newTestRedis(t)
-	require.NoError(t, rc.Set("persist", []byte("yes"), 0))
-	s.FastForward(24 * time.Hour)
-	_, found, err := rc.Get("persist")
+	require.NoError(t, rc.Set("clamped", []byte("yes"), 0))
+
+	// Still present before defaultTTL elapses.
+	s.FastForward(defaultTTL - 5*time.Second)
+	_, found, err := rc.Get("clamped")
 	assert.NoError(t, err)
-	assert.True(t, found)
+	assert.True(t, found, "clamped entry should still be present before defaultTTL elapses")
+
+	// Gone once defaultTTL elapses -- i.e. it is bounded, not permanent.
+	s.FastForward(10 * time.Second)
+	_, found, err = rc.Get("clamped")
+	assert.NoError(t, err)
+	assert.False(t, found, "zero TTL should expire after defaultTTL, not persist forever")
+}
+
+// TestSet_NegativeTTL_ClampedToDefaultTTL verifies the same clamp applies to
+// a negative TTL, not just exactly zero.
+func TestSet_NegativeTTL_ClampedToDefaultTTL(t *testing.T) {
+	t.Parallel()
+	rc, s := newTestRedis(t)
+	require.NoError(t, rc.Set("neg", []byte("yes"), -1*time.Second))
+
+	s.FastForward(defaultTTL + 5*time.Second)
+	_, found, err := rc.Get("neg")
+	assert.NoError(t, err)
+	assert.False(t, found, "negative TTL should expire after defaultTTL, not persist forever")
 }
 
 func TestSet_WithTTL_KeyExpires(t *testing.T) {

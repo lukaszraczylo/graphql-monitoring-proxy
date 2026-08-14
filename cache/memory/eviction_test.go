@@ -2,6 +2,7 @@ package libpack_cache_memory
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -211,4 +212,103 @@ func TestEvictToFreeMemoryWithSmallMaxEntriesReachesTarget(t *testing.T) {
 	cache.evictToFreeMemory(1 << 30)
 	assert.Equal(t, int64(0), cache.GetMemoryUsage(),
 		"an oversized request should evict every entry")
+}
+
+// TestEvictOldest_EvictsCorrectOldestEntries is a determinism regression for
+// P2: evictOldest used to selection-sort only a capped subset (n*2) of
+// sync.Map's unordered Range, which could miss the true oldest entries
+// entirely and evict the wrong ones. This verifies it evicts exactly the n
+// entries with the earliest ExpiresAt, matching evictToFreeMemory's
+// collect-all-then-sort.Slice approach.
+func TestEvictOldest_EvictsCorrectOldestEntries(t *testing.T) {
+	cache := NewWithSize(5*time.Second, DefaultMaxMemorySize, DefaultMaxCacheSize)
+
+	const total = 50
+	keys := make([]string, total)
+	for i := 0; i < total; i++ {
+		key := fmt.Sprintf("key-%03d", i)
+		keys[i] = key
+		// Distinct, strictly increasing TTLs give distinct, strictly
+		// increasing ExpiresAt without depending on wall-clock sleeps between
+		// insertions.
+		cache.Set(key, []byte("v"), time.Duration(i+1)*time.Minute)
+	}
+	assert.Equal(t, int64(total), cache.CountQueries())
+
+	const evictCount = 20
+	cache.evictOldest(evictCount)
+
+	assert.Equal(t, int64(total-evictCount), cache.CountQueries())
+
+	// The evictCount entries with the smallest ExpiresAt (keys[0:evictCount])
+	// must be gone; the remaining, longer-lived entries must all survive.
+	for i := 0; i < evictCount; i++ {
+		_, found := cache.Get(keys[i])
+		assert.False(t, found, "oldest key %s should have been evicted", keys[i])
+	}
+	for i := evictCount; i < total; i++ {
+		_, found := cache.Get(keys[i])
+		assert.True(t, found, "newer key %s should survive eviction", keys[i])
+	}
+}
+
+// TestEvictOldest_MoreThanAvailable_EvictsAllWithoutPanic verifies evictOldest
+// clamps n to the number of live entries instead of indexing past the sorted
+// slice.
+func TestEvictOldest_MoreThanAvailable_EvictsAllWithoutPanic(t *testing.T) {
+	cache := NewWithSize(5*time.Second, DefaultMaxMemorySize, DefaultMaxCacheSize)
+	for i := 0; i < 5; i++ {
+		cache.Set(fmt.Sprintf("k%d", i), []byte("v"), time.Minute)
+	}
+
+	cache.evictOldest(1000)
+
+	assert.Equal(t, int64(0), cache.CountQueries())
+	assert.Equal(t, int64(0), cache.GetMemoryUsage())
+}
+
+// TestEvictOldest_ConcurrentHammer_StaysConsistent drives Set/Get/Delete from
+// many goroutines against a small maxCacheSize, which forces the count-based
+// eviction path (evictOldest) to run repeatedly and concurrently. Run with
+// -race: the entryCount/memoryUsage counters must stay lock-free-consistent
+// (never negative, always matching the live map) throughout.
+func TestEvictOldest_ConcurrentHammer_StaysConsistent(t *testing.T) {
+	const maxEntries = 50
+	cache := NewWithSize(5*time.Second, DefaultMaxMemorySize, maxEntries)
+
+	const goroutines = 16
+	const opsPerGoroutine = 200
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for g := 0; g < goroutines; g++ {
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < opsPerGoroutine; i++ {
+				key := fmt.Sprintf("g%d-k%d", g, i%20)
+				cache.Set(key, []byte("v"), time.Duration(i%10+1)*time.Second)
+				cache.Get(key)
+				if i%7 == 0 {
+					cache.Delete(key)
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+
+	// Counters must never go negative.
+	assert.GreaterOrEqual(t, cache.CountQueries(), int64(0))
+	assert.GreaterOrEqual(t, cache.GetMemoryUsage(), int64(0))
+
+	// Counters must match the live map contents exactly.
+	var actualCount, actualMemory int64
+	cache.entries.Range(func(_, v any) bool {
+		actualCount++
+		actualMemory += v.(CacheEntry).MemorySize
+		return true
+	})
+	assert.Equal(t, actualCount, cache.CountQueries(),
+		"entryCount must match the number of live entries after concurrent Set/evictOldest")
+	assert.Equal(t, actualMemory, cache.GetMemoryUsage(),
+		"memoryUsage must match the sum of live entries' MemorySize after concurrent Set/evictOldest")
 }

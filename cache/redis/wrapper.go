@@ -16,7 +16,10 @@ type CacheWrapper struct {
 // NewCacheWrapper creates a new cache wrapper
 func NewCacheWrapper(config *RedisConfig, logger *libpack_logger.Logger) *CacheWrapper {
 	if logger == nil {
-		logger = &libpack_logger.Logger{}
+		// Use the proper constructor, not a zero-value &Logger{} -- its
+		// timeFormat field is a nil atomic.Pointer, so a zero-value Logger
+		// panics on the first log call instead of degrading gracefully.
+		logger = libpack_logger.New()
 	}
 	return &CacheWrapper{
 		redis:  config,

@@ -65,6 +65,14 @@ func (c *LRUMemoryCache) Set(key string, value []byte, ttl time.Duration) {
 	}
 
 	entrySize := int64(len(key) + len(finalValue) + 64) // 64 bytes overhead estimate
+
+	// A non-positive TTL is clamped to defaultTTL (defined in memory.go) so
+	// this backend does not stamp the entry as already-expired (immediate
+	// miss on every read). Keeps behavior identical to the standard memory
+	// backend and Redis, which clamp the same way at their own Set boundary.
+	if ttl <= 0 {
+		ttl = defaultTTL
+	}
 	expiresAt := time.Now().Add(ttl)
 
 	c.mu.Lock()

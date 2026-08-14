@@ -28,6 +28,29 @@ const DefaultMaxCacheSize = 10000
 // This accounts for the CacheEntry struct overhead, map entry, and synchronization
 const approxEntryOverhead = 64
 
+// defaultTTL is the sane fallback applied whenever a configured or per-entry
+// TTL is non-positive (<=0).
+//
+// It serves two purposes:
+//  1. Sizing the background cleanup ticker (cleanupRoutine): time.NewTicker
+//     panics for a non-positive duration, so a non-positive globalTTL is
+//     replaced with defaultTTL before the ticker is created.
+//  2. Clamping a non-positive per-entry TTL passed to Set: time.Now().Add(ttl)
+//     with ttl<=0 stamps an entry as already expired, so every read would
+//     miss immediately.
+//
+// Cross-backend TTL rule (see also cache/memory/lru_memory_cache.go and
+// cache/redis/redis.go, which each define and apply their own equivalent
+// constant at their Set boundary): a non-positive TTL is always clamped to
+// defaultTTL before being applied, for every backend. This keeps behavior
+// identical regardless of backend. Without this rule, the three backends
+// diverge: go-redis treats expiration<=0 as "no EX/PX option", i.e. the key
+// never expires, the LRU backend stamps the entry as already expired so every
+// read misses, and the standard (this) backend would otherwise panic in
+// time.NewTicker. None of those are acceptable, so all three backends clamp
+// to the same bounded default instead.
+const defaultTTL = 60 * time.Second
+
 type CacheEntry struct {
 	ExpiresAt  time.Time
 	Value      []byte
@@ -82,6 +105,13 @@ func NewWithSize(globalTTL time.Duration, maxMemorySize int64, maxCacheSize int6
 }
 
 func (c *Cache) cleanupRoutine(globalTTL time.Duration) {
+	// time.NewTicker panics for a non-positive duration. A non-positive
+	// globalTTL (e.g. a misconfigured CACHE_TTL<=0) must not crash the
+	// process, so fall back to defaultTTL before deriving the interval.
+	if globalTTL <= 0 {
+		globalTTL = defaultTTL
+	}
+
 	// Clean up more frequently when the cache is large
 	ticker := time.NewTicker(globalTTL / 4)
 	defer ticker.Stop()
@@ -131,6 +161,12 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 		c.evictOldest(int(c.maxCacheSize / 10)) // Evict 10% of entries
 	}
 
+	// A non-positive TTL is clamped to defaultTTL so this backend expires
+	// entries the same way the LRU and Redis backends do. See the defaultTTL
+	// doc comment above for the cross-backend rule.
+	if ttl <= 0 {
+		ttl = defaultTTL
+	}
 	expiresAt := time.Now().Add(ttl)
 
 	// Only compress if the value is larger than the threshold
@@ -319,37 +355,42 @@ func (c *Cache) CleanExpiredEntries() {
 	})
 }
 
-// evictOldest removes the oldest n entries from the cache
+// evictOldest removes the oldest n entries from the cache, oldest by
+// ExpiresAt first. It collects every live entry and sorts once with
+// sort.Slice (O(n log n)), the same approach evictToFreeMemory below uses,
+// instead of a nested-loop selection sort (O(n^2)).
+//
+// Collecting ALL entries (not a capped subset) matters for correctness, not
+// just performance: sync.Map.Range iterates in unspecified order, so an
+// early-terminated scan over an arbitrary subset can miss the true oldest
+// keys entirely and evict the wrong entries.
 func (c *Cache) evictOldest(n int) {
 	type keyExpiry struct {
 		expiresAt time.Time
 		key       string
 	}
 
-	// Collect all entries with their expiry times
-	entries := make([]keyExpiry, 0, n*2)
+	liveEntries := atomic.LoadInt64(&c.entryCount)
+	if liveEntries < 0 {
+		liveEntries = 0
+	}
+	entries := make([]keyExpiry, 0, liveEntries)
 	c.entries.Range(func(k, v any) bool {
 		key := k.(string)
 		entry := v.(CacheEntry)
 		entries = append(entries, keyExpiry{entry.ExpiresAt, key})
-		return len(entries) < cap(entries)
+		return true
 	})
 
 	// Sort by expiry time (oldest first)
-	// Using a simple selection sort since we only need to find the n oldest
-	for i := 0; i < n && i < len(entries); i++ {
-		oldest := i
-		for j := i + 1; j < len(entries); j++ {
-			if entries[j].expiresAt.Before(entries[oldest].expiresAt) {
-				oldest = j
-			}
-		}
-		// Swap
-		if oldest != i {
-			entries[i], entries[oldest] = entries[oldest], entries[i]
-		}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].expiresAt.Before(entries[j].expiresAt)
+	})
 
-		// Delete this entry
+	if n > len(entries) {
+		n = len(entries)
+	}
+	for i := 0; i < n; i++ {
 		if entry, exists := c.entries.LoadAndDelete(entries[i].key); exists {
 			cacheEntry := entry.(CacheEntry)
 			atomic.AddInt64(&c.entryCount, -1)

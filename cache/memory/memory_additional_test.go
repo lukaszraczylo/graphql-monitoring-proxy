@@ -346,3 +346,41 @@ func TestMemoryCacheClose_IdempotentAndStillUsable(t *testing.T) {
 		t.Fatal("cache should remain writable after Close")
 	}
 }
+
+// TestNewWithSize_NonPositiveTTL_DoesNotPanic is a regression test for C1: a
+// non-positive globalTTL (e.g. a misconfigured CACHE_TTL<=0) used to reach
+// time.NewTicker(globalTTL/4) unguarded inside cleanupRoutine, and
+// time.NewTicker panics for d<=0. That panic happens in the background
+// goroutine spawned by NewWithSize, so a regression here crashes the whole
+// process, not just this test.
+func TestNewWithSize_NonPositiveTTL_DoesNotPanic(t *testing.T) {
+	tests := []struct {
+		name string
+		ttl  time.Duration
+	}{
+		{"zero TTL", 0},
+		{"negative TTL", -5 * time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cache := NewWithSize(tt.ttl, DefaultMaxMemorySize, DefaultMaxCacheSize)
+			defer cache.Shutdown()
+
+			// Give the background cleanup goroutine a moment to construct its
+			// ticker.
+			time.Sleep(20 * time.Millisecond)
+
+			// Cache must remain fully usable.
+			cache.Set("key", []byte("value"), DefaultTestExpiration)
+			retrieved, found := cache.Get("key")
+			assert.True(t, found, "cache should be usable after construction with a non-positive TTL")
+			assert.Equal(t, []byte("value"), retrieved)
+		})
+	}
+}
+
+// TestDefaultTTLValue documents the sane fallback used both to size the
+// cleanup ticker (C1) and to clamp a non-positive per-entry TTL (C11).
+func TestDefaultTTLValue(t *testing.T) {
+	assert.Equal(t, 60*time.Second, defaultTTL)
+}

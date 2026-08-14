@@ -106,6 +106,32 @@ func (suite *LRUMemoryCacheTestSuite) TestExpiration() {
 	suite.Nil(val)
 }
 
+// TestNonPositiveTTL_ClampedToDefaultTTL verifies the C11 cross-backend
+// rule: a non-positive TTL is clamped to defaultTTL instead of stamping the
+// entry as already-expired (which used to make every read miss
+// immediately, unlike the Redis backend which used to keep the entry
+// forever).
+func (suite *LRUMemoryCacheTestSuite) TestNonPositiveTTL_ClampedToDefaultTTL() {
+	cache := NewLRUMemoryCache(1024*1024, 100)
+
+	cache.Set("zero-ttl", []byte("value"), 0)
+	val, found := cache.Get("zero-ttl")
+	suite.True(found, "zero TTL should be clamped to defaultTTL, not stored as already-expired")
+	suite.Equal([]byte("value"), val)
+
+	cache.Set("negative-ttl", []byte("value"), -1*time.Second)
+	val, found = cache.Get("negative-ttl")
+	suite.True(found, "negative TTL should be clamped to defaultTTL, not stored as already-expired")
+	suite.Equal([]byte("value"), val)
+
+	cache.mu.RLock()
+	entry, ok := cache.entries["zero-ttl"]
+	cache.mu.RUnlock()
+	suite.Require().True(ok)
+	suite.WithinDuration(time.Now().Add(defaultTTL), entry.expiresAt, 2*time.Second,
+		"clamped entry should expire ~defaultTTL from now")
+}
+
 func (suite *LRUMemoryCacheTestSuite) TestEvictionByCount() {
 	cache := NewLRUMemoryCache(1024*1024, 3) // Max 3 entries
 

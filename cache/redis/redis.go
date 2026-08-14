@@ -65,6 +65,21 @@ type RedisClientConfig struct {
 	RedisDB       int
 }
 
+// defaultTTL is the sane fallback applied to a non-positive per-entry TTL
+// passed to Set.
+//
+// go-redis treats a non-positive expiration as "send SET with no EX/PX
+// option", which makes the key permanent (see redis/go-redis/v9
+// string_commands.go: `if expiration > 0 { ... }`, no else branch adds an
+// expiry). That would silently diverge from the in-memory backends: the
+// standard memory cache and the LRU cache both clamp a non-positive TTL to
+// their own equivalent defaultTTL constant (cache/memory/memory.go and
+// cache/memory/lru_memory_cache.go) so the entry still expires. Clamping here
+// too keeps all three backends' behavior identical: a misconfigured
+// (non-positive) TTL always results in a bounded expiry, never a permanent
+// entry.
+const defaultTTL = 60 * time.Second
+
 func New(redisClientConfig *RedisClientConfig) (*RedisConfig, error) {
 	c := &RedisConfig{
 		client: redis.NewClient(&redis.Options{
@@ -89,6 +104,9 @@ func New(redisClientConfig *RedisClientConfig) (*RedisConfig, error) {
 }
 
 func (c *RedisConfig) Set(key string, value []byte, ttl time.Duration) error {
+	if ttl <= 0 {
+		ttl = defaultTTL
+	}
 	return c.client.Set(c.ctx, c.prependKeyName(key), value, ttl).Err()
 }
 
