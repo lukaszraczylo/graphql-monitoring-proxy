@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/goccy/go-json"
@@ -40,11 +41,18 @@ const (
 )
 
 // Logger represents the logging object with configurations.
+//
+// timeFormat, minLogLevel and showCaller are read on every log() call, so
+// they are stored as atomics rather than behind mu: this keeps the hot log
+// path lock-free for the scalar/string config while still being safe to
+// mutate concurrently from SetTimeFormat/SetMinLogLevel/SetShowCaller. mu
+// continues to protect only the output writer, which requires exclusive
+// access while writing bytes.
 type Logger struct {
 	output      io.Writer
-	timeFormat  string
-	minLogLevel int
-	showCaller  bool
+	timeFormat  atomic.Pointer[string]
+	minLogLevel atomic.Int32
+	showCaller  atomic.Bool
 	mu          sync.Mutex // Mutex to protect concurrent access to output
 }
 
@@ -62,11 +70,21 @@ var bufferPool = sync.Pool{
 }
 
 // fieldNames allows customization of output field names.
+//
+// It is package-global by design: a single process-wide field-name mapping
+// is applied consistently across every Logger instance (this is the
+// behavior existing callers rely on, e.g. main.go configures field names on
+// one Logger and expects that naming to apply process-wide). fieldNamesMu
+// guards it so SetFieldName (writer) and log (reader) can run concurrently
+// without a data race.
 var fieldNames = map[string]string{
 	"timestamp": "timestamp",
 	"level":     "level",
 	"message":   "message",
 }
+
+// fieldNamesMu protects concurrent access to the package-global fieldNames map.
+var fieldNamesMu sync.RWMutex
 
 // osExit is a variable to allow mocking os.Exit in tests
 var osExit = os.Exit
@@ -76,12 +94,14 @@ var exitMutex sync.RWMutex
 
 // New creates a new Logger with default settings.
 func New() *Logger {
-	return &Logger{
-		timeFormat:  defaultTimeFormat,
-		minLogLevel: defaultMinLevel,
-		output:      os.Stdout,
-		showCaller:  defaultShowCaller,
+	l := &Logger{
+		output: os.Stdout,
 	}
+	format := defaultTimeFormat
+	l.timeFormat.Store(&format)
+	l.minLogLevel.Store(int32(defaultMinLevel))
+	l.showCaller.Store(defaultShowCaller)
+	return l
 }
 
 // SetOutput sets the output destination for the logger.
@@ -105,38 +125,40 @@ func GetLogLevel(level string) int {
 
 // SetTimeFormat sets the time format for the logger's timestamp field.
 func (l *Logger) SetTimeFormat(format string) *Logger {
-	l.timeFormat = format
+	l.timeFormat.Store(&format)
 	return l
 }
 
 // SetMinLogLevel sets the minimum log level for the logger.
 func (l *Logger) SetMinLogLevel(level int) *Logger {
-	l.minLogLevel = level
+	l.minLogLevel.Store(int32(level))
 	return l
 }
 
 // SetFieldName allows customizing the field names in log output.
 func (l *Logger) SetFieldName(field, name string) *Logger {
+	fieldNamesMu.Lock()
 	fieldNames[field] = name
+	fieldNamesMu.Unlock()
 	return l
 }
 
 // SetShowCaller enables or disables including the caller information in log output.
 func (l *Logger) SetShowCaller(show bool) *Logger {
-	l.showCaller = show
+	l.showCaller.Store(show)
 	return l
 }
 
 // shouldLog determines if the message should be logged based on the logger's minimum log level.
 func (l *Logger) shouldLog(level int) bool {
-	return level >= l.minLogLevel
+	return level >= int(l.minLogLevel.Load())
 }
 
 // IsLevelEnabled reports whether the given level would be emitted by this logger.
 // Useful to gate expensive log-field construction (map/slice allocations) behind a
 // cheap level check when the log call would otherwise be dropped.
 func (l *Logger) IsLevelEnabled(level int) bool {
-	return level >= l.minLogLevel
+	return level >= int(l.minLogLevel.Load())
 }
 
 // log writes the log message with the given level.
@@ -145,11 +167,17 @@ func (l *Logger) log(level int, m *LogMessage) {
 		m.Pairs = make(map[string]any)
 	}
 
-	m.Pairs[fieldNames["timestamp"]] = time.Now().Format(l.timeFormat)
-	m.Pairs[fieldNames["level"]] = levelNames[level]
-	m.Pairs[fieldNames["message"]] = m.Message
+	fieldNamesMu.RLock()
+	timestampField := fieldNames["timestamp"]
+	levelField := fieldNames["level"]
+	messageField := fieldNames["message"]
+	fieldNamesMu.RUnlock()
 
-	if l.showCaller {
+	m.Pairs[timestampField] = time.Now().Format(*l.timeFormat.Load())
+	m.Pairs[levelField] = levelNames[level]
+	m.Pairs[messageField] = m.Message
+
+	if l.showCaller.Load() {
 		m.Pairs["caller"] = getCaller()
 	}
 

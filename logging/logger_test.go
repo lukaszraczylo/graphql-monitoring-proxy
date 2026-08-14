@@ -100,7 +100,7 @@ func (suite *LoggerTestSuite) Test_LogsLevelsPrint() {
 
 			// Set logger's minimum log level
 			logger.SetMinLogLevel(tt.loggerMinLevel)
-			fmt.Println("Logger min log level:", levelNames[logger.minLogLevel])
+			fmt.Println("Logger min log level:", levelNames[logger.minLogLevel.Load()])
 
 			// Call the logging method
 			callLoggerMethod(logger, tt.method, msg)
@@ -138,13 +138,13 @@ func containsLogMessage(logOutput, expectedMessage string) bool {
 func (suite *LoggerTestSuite) Test_SetFormat() {
 	logger := New().SetTimeFormat(time.RFC3339Nano)
 
-	assert.Equal(time.RFC3339Nano, logger.timeFormat)
+	assert.Equal(time.RFC3339Nano, *logger.timeFormat.Load())
 }
 
 func (suite *LoggerTestSuite) Test_SetMinLogLevel() {
 	logger := New().SetMinLogLevel(LEVEL_DEBUG)
 
-	assert.Equal(LEVEL_DEBUG, logger.minLogLevel)
+	assert.Equal(LEVEL_DEBUG, int(logger.minLogLevel.Load()))
 }
 
 func (suite *LoggerTestSuite) Test_ShouldLog() {
