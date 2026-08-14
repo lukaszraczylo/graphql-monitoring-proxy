@@ -238,6 +238,88 @@ func TestMemoryCacheConcurrentSetDeleteEvict_CountersMatchActualState(t *testing
 	}
 }
 
+func TestMemoryCacheConcurrentSetDeleteClear_CountersMatchActualState(t *testing.T) {
+	// Regression for Clear(): the previous implementation Ranged the
+	// sync.Map calling Delete per key, then unconditionally reset both
+	// counters with StoreInt64(0). A Set racing Clear could land after the
+	// Range pass but before or after the StoreInt64 calls, leaving a live
+	// entry in the map while the counters read zero - the next Delete of
+	// that key then drove the counters permanently negative.
+	//
+	// Clear now follows the same linearized LoadAndDelete-then-subtract
+	// pattern as Delete/Get/CleanExpiredEntries/the evictors, so it no
+	// longer promises a consistent point-in-time snapshot (a concurrent Set
+	// can survive a Clear) but does guarantee entryCount/memoryUsage always
+	// match the entries actually removed. As in
+	// TestMemoryCacheConcurrentSetDeleteEvict_CountersMatchActualState,
+	// which key wins a given race is nondeterministic, so the assertion
+	// recomputes "expected" from the final map contents rather than
+	// asserting a fixed number.
+	const (
+		numKeys    = 50
+		numWorkers = 16
+		numOpsEach = 300
+	)
+
+	cache := NewWithSize(DefaultTestExpiration, DefaultMaxMemorySize, DefaultMaxCacheSize)
+	defer cache.Shutdown()
+
+	keyFor := func(i int) string { return fmt.Sprintf("clear-key-%d", i) }
+
+	// Pre-seed so Clear and the Delete workers have entries to act on from
+	// the start.
+	for i := range numKeys {
+		cache.Set(keyFor(i), []byte("seed-value"), DefaultTestExpiration)
+	}
+
+	var wg sync.WaitGroup
+	for w := range numWorkers {
+		wg.Add(1)
+		go func(worker int) {
+			defer wg.Done()
+			for op := range numOpsEach {
+				k := keyFor((worker + op) % numKeys)
+				switch op % 2 {
+				case 0:
+					cache.Set(k, []byte("value"), DefaultTestExpiration)
+				case 1:
+					cache.Delete(k)
+				}
+			}
+		}(w)
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for range 100 {
+			cache.Clear()
+		}
+	}()
+
+	wg.Wait()
+
+	// Stop the background cleanup goroutine before recomputing expected
+	// state, so it cannot race with the Range below (nothing has expired
+	// yet - DefaultTestExpiration is 5s - but this removes any doubt).
+	cache.Shutdown()
+
+	var wantCount, wantMemory int64
+	cache.entries.Range(func(_, v any) bool {
+		entry := v.(CacheEntry)
+		wantCount++
+		wantMemory += entry.MemorySize
+		return true
+	})
+
+	if got := cache.CountQueries(); got != wantCount {
+		t.Fatalf("entryCount = %d, want %d (actual live entries after join)", got, wantCount)
+	}
+	if got := cache.GetMemoryUsage(); got != wantMemory {
+		t.Fatalf("memoryUsage = %d, want %d (sum of live entries' MemorySize after join)", got, wantMemory)
+	}
+}
+
 func TestMemoryCacheClose_IdempotentAndStillUsable(t *testing.T) {
 	// Compile-time guard: the memory backend must satisfy io.Closer so
 	// cache.Shutdown() can stop its cleanup goroutine (it otherwise leaks

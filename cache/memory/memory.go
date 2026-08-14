@@ -221,13 +221,42 @@ func (c *Cache) Delete(key string) {
 	}
 }
 
+// Clear removes all entries from the cache and adjusts the entry/memory
+// counters to match exactly what was removed.
+//
+// Clear does not promise a consistent point-in-time snapshot: it takes the
+// key list first, so an entry Set concurrently with Clear can survive it.
+// The reverse can also happen: a concurrent Set that overwrites a key
+// already collected by the Range pass can itself be deleted by Clear,
+// because LoadAndDelete removes whatever mapping is current for that key
+// when it runs, not necessarily the one Range observed.
+//
+// What Clear does guarantee is counter exactness. It LoadAndDeletes each
+// collected key and subtracts exactly the MemorySize that LoadAndDelete
+// returned, the same linearized pattern Delete/Get/CleanExpiredEntries/the
+// evictors use, instead of the previous unconditional Delete followed by
+// StoreInt64(0). That previous approach could race with a concurrent Set
+// landing after the Range pass but before or after the StoreInt64 calls,
+// leaving a live entry in the map while the counters read zero. The next
+// Delete of that entry would then drive the counters permanently negative.
 func (c *Cache) Clear() {
-	c.entries.Range(func(key, value any) bool {
-		c.entries.Delete(key)
+	n := atomic.LoadInt64(&c.entryCount)
+	if n < 0 {
+		n = 0
+	}
+	keys := make([]string, 0, n)
+	c.entries.Range(func(key, _ any) bool {
+		keys = append(keys, key.(string))
 		return true
 	})
-	atomic.StoreInt64(&c.entryCount, 0)
-	atomic.StoreInt64(&c.memoryUsage, 0)
+
+	for _, key := range keys {
+		if removed, exists := c.entries.LoadAndDelete(key); exists {
+			removedEntry := removed.(CacheEntry)
+			atomic.AddInt64(&c.entryCount, -1)
+			atomic.AddInt64(&c.memoryUsage, -removedEntry.MemorySize)
+		}
+	}
 }
 
 func (c *Cache) CountQueries() int64 {
