@@ -958,14 +958,12 @@ func performProxyRequestWithEnhancedRetries(c fiber.Ctx, proxyURL string, backen
 	}
 
 	if backendUnhealthy {
-		// Backend is known to be unhealthy, fail fast
-		// Circuit breaker should handle this, so reduce retries
+		// Backend is known to be unhealthy; fail fast with fewer attempts.
+		// The circuit breaker should handle it, so the max delay matches
+		// the normal path (avoids invisible behaviour differences).
 		attempts = 3
 		initialDelay = time.Duration(baseDelayMs) * time.Millisecond
-		maxDelayTime = time.Duration(maxDelayMs/2) * time.Millisecond
-		if maxDelayTime < initialDelay {
-			maxDelayTime = initialDelay
-		}
+		maxDelayTime = time.Duration(maxDelayMs) * time.Millisecond
 	} else {
 		// Normal retry strategy
 		attempts = 7
