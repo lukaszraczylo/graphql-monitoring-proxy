@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/sony/gobreaker"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -259,4 +260,63 @@ func Test_IsRetryable_GetStatusCode_Wrapped(t *testing.T) {
 
 	assert.False(t, IsRetryable(nil))
 	assert.Equal(t, 200, GetStatusCode(nil))
+}
+
+// Test_StatusCodeForError covers the C4 fix: circuit-open errors must map to
+// 503 (previously fell through to a generic 500 because nothing mapped
+// them), a wrapped *ProxyError's own status code must survive, and any
+// other error defaults to 500. nil maps to 200.
+func Test_StatusCodeForError(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		wantStatus int
+	}{
+		{
+			name:       "nil error maps to 200",
+			err:        nil,
+			wantStatus: 200,
+		},
+		{
+			name:       "circuit breaker open (proxy sentinel) maps to 503",
+			err:        ErrCircuitOpen,
+			wantStatus: 503,
+		},
+		{
+			name:       "circuit breaker open (gobreaker sentinel) maps to 503",
+			err:        gobreaker.ErrOpenState,
+			wantStatus: 503,
+		},
+		{
+			name:       "wrapped circuit breaker open still maps to 503",
+			err:        fmt.Errorf("request failed: %w", ErrCircuitOpen),
+			wantStatus: 503,
+		},
+		{
+			name:       "wrapped gobreaker open state still maps to 503",
+			err:        fmt.Errorf("request failed: %w", gobreaker.ErrOpenState),
+			wantStatus: 503,
+		},
+		{
+			name:       "generic error defaults to 500",
+			err:        errors.New("boom"),
+			wantStatus: 500,
+		},
+		{
+			name:       "ProxyError with explicit status code is honoured",
+			err:        NewProxyError(ErrCodeRateLimited, "too many requests", http.StatusTooManyRequests, false),
+			wantStatus: http.StatusTooManyRequests,
+		},
+		{
+			name:       "wrapped ProxyError status code survives wrapping",
+			err:        fmt.Errorf("wrapped: %w", NewProxyError(ErrCodeBackendError, "boom", http.StatusBadGateway, true)),
+			wantStatus: http.StatusBadGateway,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.wantStatus, StatusCodeForError(tt.err))
+		})
+	}
 }

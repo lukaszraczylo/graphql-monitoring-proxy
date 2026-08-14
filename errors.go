@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/sony/gobreaker"
 )
 
 // Error codes for structured error responses
@@ -134,6 +136,31 @@ func IsRetryable(err error) bool {
 func GetStatusCode(err error) int {
 	if err == nil {
 		return 200
+	}
+
+	var proxyErr *ProxyError
+	if errors.As(err, &proxyErr) {
+		return proxyErr.StatusCode
+	}
+
+	return 500
+}
+
+// StatusCodeForError maps a proxy-path error to the HTTP status code an
+// error handler must return for it. It recognises the circuit-breaker
+// sentinel errors (ErrCircuitOpen, defined in proxy.go, and
+// gobreaker.ErrOpenState) as 503 Service Unavailable -- previously these
+// surfaced as a generic 500 because nothing mapped them -- defers to a
+// wrapped *ProxyError's StatusCode when present (via errors.As, so it also
+// unwraps errors returned through circuitBreakerOutcome), and otherwise
+// falls back to 500. A nil error maps to 200.
+func StatusCodeForError(err error) int {
+	if err == nil {
+		return 200
+	}
+
+	if errors.Is(err, ErrCircuitOpen) || errors.Is(err, gobreaker.ErrOpenState) {
+		return 503
 	}
 
 	var proxyErr *ProxyError

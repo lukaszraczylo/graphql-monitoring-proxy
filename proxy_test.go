@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -343,4 +344,63 @@ func (suite *Tests) Test_proxyRetryPolicyByStatusCode() {
 		_ = doRequest(server)
 		suite.Greater(hits.Load(), int32(1), "5xx should trigger retries")
 	})
+}
+
+// Test_MultiAttemptRetryReusesRequestBody locks in the P3 fix: the outbound
+// fasthttp.Request (headers + body) is built once, before the retry loop in
+// performProxyRequestWithEnhancedRetries, and reused unmodified across every
+// attempt -- instead of being re-copied from c.Request() up to 7x per
+// proxied request (doProxyRequestWithTimeout previously ran
+// c.Request().CopyTo(req) on every attempt). This verifies the hoist didn't
+// corrupt, truncate, or drop the body on any attempt: every retried hit
+// must still observe the exact original request body.
+func (suite *Tests) Test_MultiAttemptRetryReusesRequestBody() {
+	originalCoalescing := cfg.RequestCoalescing.Enable
+	originalCB := cfg.CircuitBreaker.Enable
+	cfg.RequestCoalescing.Enable = false
+	cfg.CircuitBreaker.Enable = false
+	defer func() {
+		cfg.RequestCoalescing.Enable = originalCoalescing
+		cfg.CircuitBreaker.Enable = originalCB
+	}()
+
+	const wantBody = `{"query":"query { test }"}`
+
+	var hits atomic.Int32
+	var bodyMismatch atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := hits.Add(1)
+		body, _ := io.ReadAll(r.Body)
+		if string(body) != wantBody {
+			bodyMismatch.Store(true)
+		}
+		if n < 3 {
+			// Fail the first two attempts so the request is retried at
+			// least twice, exercising the reused request across attempts.
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"errors":[{"message":"error"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"ok":true}}`))
+	}))
+	defer server.Close()
+
+	cfg.Server.HostGraphQL = server.URL
+	cfg.Client.ClientTimeout = 5
+	cfg.Client.FastProxyClient = createFasthttpClient(cfg)
+
+	reqCtx := &fasthttp.RequestCtx{}
+	reqCtx.Request.SetRequestURI("/graphql")
+	reqCtx.Request.Header.SetMethod("POST")
+	reqCtx.Request.Header.Set("Content-Type", "application/json")
+	reqCtx.Request.SetBody([]byte(wantBody))
+
+	ctx := suite.app.AcquireCtx(reqCtx)
+	err := proxyTheRequest(ctx, cfg.Server.HostGraphQL)
+	suite.app.ReleaseCtx(ctx)
+
+	suite.Nil(err, "request should eventually succeed after retries")
+	suite.GreaterOrEqual(hits.Load(), int32(3), "must have retried at least twice before succeeding")
+	suite.False(bodyMismatch.Load(), "every retry attempt must see the exact original request body, not a stale or corrupted copy")
 }

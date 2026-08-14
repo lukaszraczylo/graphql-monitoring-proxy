@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
@@ -49,11 +50,120 @@ const (
 	defaultMaxRequestsInHalfOpen = 10 // Default maximum requests in half-open state
 )
 
+// circuitBreakerCountWindow bounds how long the circuit breaker accumulates
+// Counts while CLOSED before clearing them (gobreaker Settings.Interval).
+// gobreaker treats Interval<=0 as "never clear Counts during the closed
+// state" (see sony/gobreaker Settings docs), which makes
+// CIRCUIT_FAILURE_RATIO lifetime-cumulative instead of a recent-window
+// ratio: after long uptime a handful of new failures can no longer move a
+// ratio diluted by millions of past successes. A positive Interval makes
+// gobreaker periodically clear Counts while closed, so the ratio measures a
+// rolling window instead.
+//
+// The window must comfortably exceed the worst-case time a single logical
+// request can take, not just typical request latency. gobreaker checks the
+// interval lazily, both when a request starts (beforeRequest) and when it
+// finishes (afterRequest); if the interval elapses *while* a request is
+// in flight, afterRequest rolls Counts over to a new generation before
+// recording that request's outcome, and then silently drops it (its
+// generation no longer matches the one captured at the start). Each
+// logical proxied request here can itself retry up to 7x with exponential
+// backoff capped at 10s (performProxyRequestWithEnhancedRetries), i.e.
+// ~25.5s worst case (0.5+1+2+4+8+10s) before it finally fails -- so with
+// the library default MaxFailures=10, a run of consecutive failing
+// requests can legitimately take ~4-5 minutes. A short window (e.g. the
+// more typical 60s) reproduces exactly that: it was caught by
+// TestCachingAndCircuitBreakerInteraction, where 3 sequential
+// retry-exhausting failures (~76s total) spuriously left the circuit
+// closed because the last failure's generation had already rolled over
+// out from under it. 10 minutes keeps the ratio meaningfully "recent"
+// (instead of lifetime-cumulative) while leaving multiples of headroom
+// over that worst case. With that much headroom, a single request is very
+// unlikely to straddle the window boundary; it is not impossible, since
+// gobreaker checks the interval lazily against wall-clock time rather than
+// reserving a slot up front. If one still does straddle it, gobreaker drops
+// only that one outcome, which delays a trip by at most one request rather
+// than breaking correctness.
+//
+// It is a package var (not const) purely so tests can shrink it to observe
+// window-clearing behaviour without sleeping for the real duration.
+var circuitBreakerCountWindow = 10 * time.Minute
+
 // Global circuit breaker
 var (
 	cb      *gobreaker.CircuitBreaker
 	cbMutex sync.RWMutex
 )
+
+// circuitBackoffState tracks the progressive open-state backoff (finding
+// C7) for the global circuit breaker cb. gobreaker v1.0.0's own open-state
+// Timeout (cb.timeout) is fixed at construction and has no setter, so it
+// cannot be varied per-trip from outside the library. This state instead
+// backs a decorator layered IN FRONT of gobreaker -- see
+// circuitBackoffGateBlocks and its use in performProxyRequestCore -- that
+// never reaches into gobreaker's internals; gobreaker's own Timeout keeps
+// governing its internal half-open transition unchanged.
+//
+// consecutiveTrips counts transitions to StateOpen since the last
+// successful recovery (a transition to StateClosed); lastTripUnixNano is
+// the UnixNano() of the most recent such transition (0 = never tripped).
+// Both are written from createStateChangeFunc's callback, which gobreaker
+// invokes synchronously while still holding its own internal mutex (see
+// sony/gobreaker CircuitBreaker.setState) -- so that callback must never
+// call back into the breaker (e.g. cb.State()), which would deadlock on
+// gobreaker's own non-reentrant lock. circuitBackoffGateBlocks reads this
+// state on every proxied request. Atomics (not a mutex) keep both
+// directions lock-free and sidestep any lock-ordering dependency on
+// gobreaker's internal lock.
+type circuitBackoffState struct {
+	consecutiveTrips atomic.Int64
+	lastTripUnixNano atomic.Int64
+}
+
+// recordTrip increments the consecutive-trip counter and stamps the current
+// time. Called from createStateChangeFunc on transition to StateOpen.
+func (s *circuitBackoffState) recordTrip(now time.Time) {
+	s.consecutiveTrips.Add(1)
+	s.lastTripUnixNano.Store(now.UnixNano())
+}
+
+// recordRecovery resets the consecutive-trip counter. Called from
+// createStateChangeFunc on transition to StateClosed (a successful
+// recovery), so the next trip after a clean close starts progressive
+// backoff over again at the base timeout.
+func (s *circuitBackoffState) recordRecovery() {
+	s.consecutiveTrips.Store(0)
+}
+
+// reset clears all state. Called when a new circuit breaker is constructed
+// (initCircuitBreaker) so a fresh breaker never inherits a stale trip count
+// or timestamp left over from a previous one (e.g. across tests, or a
+// config reload).
+func (s *circuitBackoffState) reset() {
+	s.consecutiveTrips.Store(0)
+	s.lastTripUnixNano.Store(0)
+}
+
+// trips returns the current consecutive-trip count (0 = never tripped, or
+// recovered since the last trip).
+func (s *circuitBackoffState) trips() int64 {
+	return s.consecutiveTrips.Load()
+}
+
+// lastTrip returns the time of the most recent transition to StateOpen, or
+// the zero time.Time if the breaker has never tripped.
+func (s *circuitBackoffState) lastTrip() time.Time {
+	ns := s.lastTripUnixNano.Load()
+	if ns == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, ns)
+}
+
+// cbBackoff is the progressive-backoff tracker for the global circuit
+// breaker cb -- one breaker, one tracker, mirroring the existing cb/cbMutex
+// global pattern.
+var cbBackoff circuitBackoffState
 
 // Package-level substring tables used by isConnectionError / isTimeoutError.
 // Hoisted to avoid per-call slice allocations on the hot path. All entries
@@ -107,17 +217,26 @@ func initCircuitBreaker(config *config) {
 	cbMutex.Lock()
 	defer cbMutex.Unlock()
 
+	// A freshly constructed breaker must never inherit a stale
+	// consecutive-trip count or timestamp from a previous one (see
+	// circuitBackoffState.reset doc) -- e.g. across tests, or a config
+	// reload that reinitializes cb.
+	cbBackoff.reset()
+
 	// Initialize circuit breaker metrics
 	InitializeCircuitBreakerMetrics(config.Monitoring)
 
 	// Create circuit breaker settings
 	cbSettings := gobreaker.Settings{
-		Name:          "graphql-proxy-circuit",
-		MaxRequests:   safeMaxRequests(config.CircuitBreaker.MaxRequestsInHalfOpen),
-		Interval:      0, // No specific interval for counting failures
+		Name:        "graphql-proxy-circuit",
+		MaxRequests: safeMaxRequests(config.CircuitBreaker.MaxRequestsInHalfOpen),
+		// Periodic reset while closed keeps CIRCUIT_FAILURE_RATIO windowed
+		// instead of lifetime-cumulative; see circuitBreakerCountWindow doc.
+		Interval:      circuitBreakerCountWindow,
 		Timeout:       time.Duration(config.CircuitBreaker.Timeout) * time.Second,
 		ReadyToTrip:   createTripFunc(config),
 		OnStateChange: createStateChangeFunc(config),
+		IsSuccessful:  circuitBreakerIsSuccessful,
 	}
 
 	// Initialize the circuit breaker
@@ -172,9 +291,88 @@ func createTripFunc(config *config) func(counts gobreaker.Counts) bool {
 	}
 }
 
+// circuitBreakerOutcome wraps a proxy failure with a pre-computed verdict on
+// whether it should count against the circuit breaker's failure statistics.
+// gobreaker.Settings.IsSuccessful only receives the error returned from the
+// Execute closure and cannot see the per-request fiber context, so the
+// classification (which needs the response status code) is made once, at
+// the point where both are available -- see performProxyRequestCore -- and
+// travels with the error. Error() and Unwrap() forward to the wrapped
+// error, so retry policy, StatusCodeForError, and logging all see the
+// original, unwrapped error.
+type circuitBreakerOutcome struct {
+	err             error
+	countsAsFailure bool
+}
+
+func (e *circuitBreakerOutcome) Error() string { return e.err.Error() }
+func (e *circuitBreakerOutcome) Unwrap() error { return e.err }
+
+// circuitBreakerIsSuccessful is gobreaker's IsSuccessful hook (see
+// Settings.IsSuccessful). It treats nil errors as success and defers to the
+// pre-computed circuitBreakerOutcome.countsAsFailure verdict for classified
+// proxy failures. Any other non-nil error -- one that never went through
+// performProxyRequestCore's classification -- is treated as a failure,
+// matching gobreaker's own default (defaultIsSuccessful) and pre-fix
+// behaviour.
+func circuitBreakerIsSuccessful(err error) bool {
+	if err == nil {
+		return true
+	}
+	var outcome *circuitBreakerOutcome
+	if errors.As(err, &outcome) {
+		return !outcome.countsAsFailure
+	}
+	return false
+}
+
+// classifyCircuitFailure decides whether a failed proxy attempt should count
+// toward the circuit breaker's failure statistics, gated by
+// CIRCUIT_TRIP_ON_TIMEOUTS / CIRCUIT_TRIP_ON_4XX / CIRCUIT_TRIP_ON_5XX.
+// statusCode is the last response status observed for this request (0 when
+// no HTTP response was ever received, e.g. a connection error).
+//
+// Every failure that isn't a classified timeout/4xx/5xx (connection errors,
+// nil fiber context, etc.) always counts -- those outcomes have no
+// dedicated flag and always tripped the breaker before this fix, so that
+// baseline is preserved regardless of flag values.
+func classifyCircuitFailure(config *config, err error, statusCode int) bool {
+	if isTimeoutError(err) {
+		return config.CircuitBreaker.TripOnTimeouts
+	}
+
+	// doProxyRequestWithTimeout's non-200 error always carries the real,
+	// freshly-copied status in c.Response() at the moment it was produced
+	// (see the comment in executeProxyAttempt). Guarding on the message
+	// first means a stale statusCode left over from an earlier attempt
+	// (e.g. this attempt was a connection error, which never copies a
+	// response) can't be misread as an HTTP status classification.
+	if strings.Contains(err.Error(), "non-200 response") {
+		switch {
+		case statusCode >= 500 && statusCode < 600:
+			return config.CircuitBreaker.TripOn5xx
+		case statusCode >= 400 && statusCode < 500:
+			return config.CircuitBreaker.TripOn4xx
+		}
+	}
+
+	return true
+}
+
 // createStateChangeFunc returns a function that handles circuit state changes
 func createStateChangeFunc(config *config) func(name string, from gobreaker.State, to gobreaker.State) {
 	return func(name string, from gobreaker.State, to gobreaker.State) {
+		// Progressive backoff bookkeeping (C7). gobreaker invokes
+		// OnStateChange synchronously while still holding its own internal
+		// mutex, so this must only touch cbBackoff's atomics -- never call
+		// back into the breaker (e.g. cb.State()), which would deadlock.
+		switch to {
+		case gobreaker.StateOpen:
+			cbBackoff.recordTrip(time.Now())
+		case gobreaker.StateClosed:
+			cbBackoff.recordRecovery()
+		}
+
 		var stateValue float64
 		var stateName string
 
@@ -213,6 +411,136 @@ func createStateChangeFunc(config *config) func(name string, from gobreaker.Stat
 			counter.Inc()
 		}
 	}
+}
+
+// gobreakerDefaultTimeout mirrors sony/gobreaker's own fallback for
+// Settings.Timeout<=0 ("If Timeout is less than or equal to 0, the timeout
+// value of the CircuitBreaker is set to 60 seconds" -- gobreaker.go
+// NewCircuitBreaker). Duplicated here, since *gobreaker.CircuitBreaker
+// exposes no getter for its internal timeout, so circuitBreakerBaseTimeout's
+// result always matches what gobreaker itself actually uses as its
+// open-state Timeout.
+const gobreakerDefaultTimeout = 60 * time.Second
+
+// circuitBreakerBaseTimeout returns the open-state Timeout gobreaker was
+// constructed with (see initCircuitBreaker), applying the same <=0
+// fallback gobreaker applies internally.
+func circuitBreakerBaseTimeout(config *config) time.Duration {
+	base := time.Duration(config.CircuitBreaker.Timeout) * time.Second
+	if base <= 0 {
+		return gobreakerDefaultTimeout
+	}
+	return base
+}
+
+// maxSaneCircuitBackoff hard-caps effectiveCircuitBackoff's result
+// independently of the configured maxBackoff. When an operator sets
+// CIRCUIT_MAX_BACKOFF_TIMEOUT=0 (uncapped) together with a
+// BackoffMultiplier>1, a high enough consecutive-trip count makes
+// base*multiplier^(trips-1) overflow math.Pow's float64 arithmetic (or the
+// subsequent float64->time.Duration conversion) into a garbage or absurdly
+// large Duration. This ceiling makes sure the breaker can never block
+// requests for longer than a sane maximum, no matter what maxBackoff is
+// configured to.
+const maxSaneCircuitBackoff = 24 * time.Hour
+
+// effectiveCircuitBackoff computes the progressive open-state backoff
+// duration for the given consecutive-trip count (finding C7):
+//
+//	effective = base * multiplier^(trips-1), capped at maxBackoff.
+//
+// trips-1, not trips, so the FIRST trip (trips<=1) always backs off by
+// exactly base -- identical to gobreaker's own fixed Timeout for that first
+// open period. The multiplier only compounds starting from the SECOND
+// consecutive trip. trips<=0 is defensive (a breaker that never tripped
+// never reaches this path) and also returns base.
+//
+// With the default BackoffMultiplier=1.0, effective==base unconditionally
+// for every trip count -- an exact fast path below skips the float
+// round-trip entirely, so this is byte-identical to pre-C7 behaviour, not
+// merely float-equal. A misconfigured multiplier<1 is clamped to 1, and the
+// result is never allowed to fall below base or above a maxBackoff that is
+// itself (misconfigured) smaller than base -- effective is always >= base,
+// so this can only ever ADD closed-door time on top of gobreaker's own
+// Timeout, never remove it. See maxSaneCircuitBackoff for the absolute
+// ceiling applied regardless of maxBackoff.
+func effectiveCircuitBackoff(base time.Duration, multiplier float64, maxBackoff time.Duration, trips int64) time.Duration {
+	if base <= 0 || trips <= 1 {
+		return base
+	}
+
+	if multiplier < 1 {
+		multiplier = 1
+	}
+	if multiplier == 1 {
+		return base
+	}
+
+	exponent := float64(trips - 1)
+	effective := time.Duration(float64(base) * math.Pow(multiplier, exponent))
+	if effective < base {
+		// Overflow or float rounding pushed us below base; never shorten.
+		return base
+	}
+
+	// Hard sanity ceiling, applied before the configured cap below and
+	// independent of it -- see maxSaneCircuitBackoff.
+	if effective > maxSaneCircuitBackoff {
+		effective = maxSaneCircuitBackoff
+	}
+
+	if maxBackoff > 0 && effective > maxBackoff {
+		if maxBackoff < base {
+			return base // misconfigured cap below base; never shorten
+		}
+		return maxBackoff
+	}
+
+	return effective
+}
+
+// circuitBackoffGateBlocks reports whether the C7 progressive-backoff gate
+// should reject a request IN FRONT of gobreaker, without calling
+// breaker.Execute -- and therefore without calling the backend or touching
+// gobreaker's own Counts/generation.
+//
+// gobreaker's own Timeout still fully governs its internal half-open
+// transition (see sony/gobreaker CircuitBreaker.currentState); this gate
+// only adds an extra rejection window on top of it. It blocks exactly when
+// both hold:
+//   - the progressively-extended effective backoff (computed from the
+//     consecutive-trip count) has not yet elapsed since the last trip, and
+//   - gobreaker's own (shorter-or-equal) Timeout HAS already elapsed, i.e.
+//     breaker.State() has lazily moved off StateOpen and would otherwise
+//     let a half-open probe through.
+//
+// When gobreaker itself is still StateOpen, calling Execute would reject
+// with ErrOpenState anyway, so no gate is needed there. When there have
+// been no trips yet (trips<=0), this always returns false without touching
+// breaker.State() at all, keeping the common (never-tripped) case
+// allocation- and lock-free on the hot path. now is a parameter (not
+// time.Now() read internally) so tests can drive this deterministically
+// without wall-clock sleeps.
+func circuitBackoffGateBlocks(config *config, breaker *gobreaker.CircuitBreaker, now time.Time) bool {
+	trips := cbBackoff.trips()
+	if trips <= 0 {
+		return false
+	}
+
+	lastTrip := cbBackoff.lastTrip()
+	if lastTrip.IsZero() {
+		return false
+	}
+
+	base := circuitBreakerBaseTimeout(config)
+	maxBackoff := time.Duration(config.CircuitBreaker.MaxBackoffTimeout) * time.Second
+	effective := effectiveCircuitBackoff(base, config.CircuitBreaker.BackoffMultiplier, maxBackoff, trips)
+
+	if now.Sub(lastTrip) >= effective {
+		return false // extended window elapsed; defer to gobreaker as normal
+	}
+
+	return breaker.State() != gobreaker.StateOpen
 }
 
 // createFasthttpClient creates and configures a fasthttp client with optimized settings.
@@ -437,35 +765,51 @@ func performProxyRequestCore(c fiber.Ctx, proxyURL string, cacheKey string) erro
 		return performProxyRequestWithRetries(c, proxyURL)
 	}
 
-	// Execute request through circuit breaker
-	_, err := cb.Execute(func() (any, error) {
-		// Execute the request with retries
-		err := performProxyRequestWithRetries(c, proxyURL)
-		// Check if the error or status code should trip the circuit breaker
-		if err != nil {
-			// Log error that could potentially trip the circuit
-			cfg.Logger.Warning(&libpack_logger.LogMessage{
-				Message: "Error in circuit-protected request",
-				Pairs: map[string]any{
-					"path":  c.Path(),
-					"error": err.Error(),
-				},
-			})
-			return nil, err
-		}
+	var err error
+	if circuitBackoffGateBlocks(cfg, cb, time.Now()) {
+		// Progressive backoff (C7): gobreaker's own Timeout has already
+		// elapsed -- it would otherwise let a half-open probe through -- but
+		// the extended per-trip backoff window has not. Reject exactly like
+		// an open breaker, without calling cb.Execute: no backend call, and
+		// gobreaker's own Counts/generation are left untouched. gobreaker
+		// stays idle in half-open until the extended window also elapses,
+		// at which point the Execute call below performs the real probe.
+		err = gobreaker.ErrOpenState
+	} else {
+		// Execute request through circuit breaker
+		_, err = cb.Execute(func() (any, error) {
+			// Execute the request with retries
+			err := performProxyRequestWithRetries(c, proxyURL)
+			if err != nil {
+				// Log error that could potentially trip the circuit
+				cfg.Logger.Warning(&libpack_logger.LogMessage{
+					Message: "Error in circuit-protected request",
+					Pairs: map[string]any{
+						"path":  c.Path(),
+						"error": err.Error(),
+					},
+				})
+				// Classify the failure so CIRCUIT_TRIP_ON_TIMEOUTS/_4XX/_5XX gate
+				// whether it counts toward the breaker's failure statistics
+				// (see circuitBreakerIsSuccessful). The error returned to the
+				// caller is unchanged either way -- only the breaker bookkeeping
+				// is affected.
+				countsAsFailure := classifyCircuitFailure(cfg, err, c.Response().StatusCode())
+				if countsAsFailure {
+					// Mirrors MetricsCircuitSuccessful below: incremented once per
+					// Execute call, only for outcomes that actually count against
+					// the breaker's failure statistics, so a single request is
+					// never double-counted.
+					cfg.Monitoring.Increment(libpack_monitoring.MetricsCircuitFailed, nil)
+				}
+				return nil, &circuitBreakerOutcome{err: err, countsAsFailure: countsAsFailure}
+			}
 
-		// Check if non-2xx responses should trip the circuit
-		statusCode := c.Response().StatusCode()
-		if cfg.CircuitBreaker.TripOn5xx && statusCode >= 500 && statusCode < 600 {
-			err := fmt.Errorf("received 5xx status code: %d", statusCode)
-			cfg.Monitoring.Increment(libpack_monitoring.MetricsCircuitFailed, nil)
-			return nil, err
-		}
-
-		// Request was successful
-		cfg.Monitoring.Increment(libpack_monitoring.MetricsCircuitSuccessful, nil)
-		return nil, nil
-	})
+			// Request was successful
+			cfg.Monitoring.Increment(libpack_monitoring.MetricsCircuitSuccessful, nil)
+			return nil, nil
+		})
+	}
 
 	// If the circuit is open, implement graceful degradation
 	if err == gobreaker.ErrOpenState {
@@ -494,7 +838,7 @@ func performProxyRequestWithRetries(c fiber.Ctx, proxyURL string) error {
 }
 
 // executeProxyAttempt performs a single proxy attempt with error handling
-func executeProxyAttempt(c fiber.Ctx, proxyURL string) error {
+func executeProxyAttempt(c fiber.Ctx, req *fasthttp.Request) error {
 	// Additional safety check inside retry loop
 	if c == nil {
 		return retry.Unrecoverable(errFiberCtxNilDuringRetry)
@@ -503,8 +847,10 @@ func executeProxyAttempt(c fiber.Ctx, proxyURL string) error {
 	// Get connection pool manager for stats tracking
 	poolMgr := GetConnectionPoolManager()
 
-	// Execute the proxy request
-	proxyErr := doProxyRequestWithTimeout(c, proxyURL, cfg.Client.FastProxyClient)
+	// Execute the proxy request. req was built once by
+	// performProxyRequestWithEnhancedRetries and is reused unmodified across
+	// every attempt (see the comment there for why that's safe).
+	proxyErr := doProxyRequestWithTimeout(c, req, cfg.Client.FastProxyClient)
 	if proxyErr != nil {
 		// Check if this is a connection error
 		if isConnectionError(proxyErr) {
@@ -576,6 +922,17 @@ func performProxyRequestWithEnhancedRetries(c fiber.Ctx, proxyURL string, backen
 		return errFiberCtxNil
 	}
 
+	// Build the outbound request once, before the retry loop, instead of
+	// re-copying c.Request() (headers + body) on every attempt. A retry
+	// replays the exact same request, so the copy-in is invariant across
+	// attempts; only the response is fresh per attempt (doProxyRequestWithTimeout
+	// acquires/releases its own *fasthttp.Response each call). This previously
+	// ran c.Request().CopyTo(req) up to 7x per proxied request.
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	c.Request().CopyTo(req)
+	req.SetRequestURI(proxyURL)
+
 	var attempts uint
 	var initialDelay time.Duration
 	var maxDelayTime time.Duration
@@ -595,7 +952,7 @@ func performProxyRequestWithEnhancedRetries(c fiber.Ctx, proxyURL string, backen
 
 	return retry.Do(
 		func() error {
-			return executeProxyAttempt(c, proxyURL)
+			return executeProxyAttempt(c, req)
 		},
 		retry.Attempts(attempts),
 		retry.DelayType(retry.BackOffDelay),
@@ -773,23 +1130,21 @@ func handleCircuitOpenGracefulDegradation(c fiber.Ctx, cacheKey string) error {
 	return ErrCircuitOpen
 }
 
-// doProxyRequestWithTimeout performs a proxy request with proper timeout handling
-func doProxyRequestWithTimeout(c fiber.Ctx, proxyURL string, client *fasthttp.Client) error {
+// doProxyRequestWithTimeout performs a proxy request with proper timeout
+// handling. req is the already-built outbound request (see
+// performProxyRequestWithEnhancedRetries); only the response is
+// acquired/released per call, so each retry attempt gets fresh
+// per-attempt response state while reusing the same request.
+func doProxyRequestWithTimeout(c fiber.Ctx, req *fasthttp.Request, client *fasthttp.Client) error {
 	// Calculate timeout from client configuration
 	clientTimeout := time.Duration(cfg.Client.ClientTimeout) * time.Second
 	if clientTimeout <= 0 {
 		clientTimeout = 30 * time.Second
 	}
 
-	// Acquire request and response objects
-	req := fasthttp.AcquireRequest()
+	// Acquire a fresh response object for this attempt
 	resp := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseRequest(req)
 	defer fasthttp.ReleaseResponse(resp)
-
-	// Copy the original request
-	c.Request().CopyTo(req)
-	req.SetRequestURI(proxyURL)
 
 	// Perform the request with timeout
 	err := client.DoTimeout(req, resp, clientTimeout)
