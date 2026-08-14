@@ -41,12 +41,30 @@ func (ms *MetricsSetup) get_metrics_name(name string, labels map[string]string) 
 	return buf.String()
 }
 
+const unknownPodName = "unknown"
+
+var (
+	// podNameOnce guards the one-time resolution of the local hostname.
+	// os.Hostname() is a syscall; resolving it on every metrics call (which
+	// happens several times per request) is wasteful since the pod name
+	// never changes for the lifetime of the process.
+	podNameOnce  sync.Once
+	podNameValue string
+	// hostnameFunc resolves the local hostname. It is a package var (rather
+	// than a direct os.Hostname() call) so tests can substitute a counting
+	// stub and verify podNameOnce caches the result after the first call.
+	hostnameFunc = os.Hostname
+)
+
 func getPodName() string {
-	const unknownPodName = "unknown"
-	if hn, err := os.Hostname(); err == nil {
-		return hn
-	}
-	return unknownPodName
+	podNameOnce.Do(func() {
+		if hn, err := hostnameFunc(); err == nil {
+			podNameValue = hn
+		} else {
+			podNameValue = unknownPodName
+		}
+	})
+	return podNameValue
 }
 
 func defaultLabels(podName string) map[string]string {
@@ -144,13 +162,6 @@ func getSortedKeys(labels map[string]string) []string {
 		return []string{}
 	}
 
-	labelsKey := labelsToString(labels)
-
-	// Check if the sorted keys are already cached
-	if keys, ok := sortedLabelKeysCache.m.Load(labelsKey); ok {
-		return keys.([]string)
-	}
-
 	// Compute the sorted keys - create a snapshot to avoid concurrent access issues
 	keys := make([]string, 0, len(labels))
 	for k := range labels {
@@ -158,8 +169,20 @@ func getSortedKeys(labels map[string]string) []string {
 	}
 	sort.Strings(keys)
 
-	// Store the sorted keys in the cache
-	sortedLabelKeysCache.m.Store(labelsKey, keys)
+	// The cache is keyed by the sorted set of label NAMES only, not values.
+	// The cached payload (the sorted key list) never depends on the label
+	// values, so keying by value (as before) created a separate, never-
+	// evicted cache entry per distinct value combination - an unbounded
+	// cardinality bomb. Keying by names collapses all maps sharing the same
+	// key set into a single entry, bounding growth to the number of
+	// distinct label-name sets used by the application.
+	namesKey := strings.Join(keys, ";")
+
+	if cached, ok := sortedLabelKeysCache.m.Load(namesKey); ok {
+		return cached.([]string)
+	}
+
+	sortedLabelKeysCache.m.Store(namesKey, keys)
 
 	return keys
 }

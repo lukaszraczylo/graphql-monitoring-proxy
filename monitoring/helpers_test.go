@@ -1,10 +1,14 @@
 package libpack_monitoring
 
 import (
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetMetricsName(t *testing.T) {
@@ -199,6 +203,75 @@ func TestEnsureDefaultLabels(t *testing.T) {
 			assert.Equal(t, tt.expectedLabels, tt.inputLabels)
 		})
 	}
+}
+
+// TestGetPodName_HostnameResolvedOnce verifies getPodName() resolves the
+// hostname exactly once (via podNameOnce) no matter how many times it is
+// called, including concurrently. Repeated os.Hostname() syscalls on every
+// metrics call were the dominant per-request cost this caching removes.
+func TestGetPodName_HostnameResolvedOnce(t *testing.T) {
+	origFn := hostnameFunc
+	t.Cleanup(func() {
+		// Restore the real hostname resolver and reset to a fresh, unfired
+		// Once (never copy an existing sync.Once - it must not be copied by
+		// value once it may have been used). The next getPodName() call will
+		// re-resolve the real hostname and re-cache it for later tests.
+		hostnameFunc = origFn
+		podNameOnce = sync.Once{}
+	})
+
+	podNameOnce = sync.Once{}
+	var callCount int32
+	hostnameFunc = func() (string, error) {
+		atomic.AddInt32(&callCount, 1)
+		return "cached-test-host", nil
+	}
+
+	// Sequential calls must all observe the cached value.
+	first := getPodName()
+	second := getPodName()
+	assert.Equal(t, "cached-test-host", first)
+	assert.Equal(t, first, second)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&callCount), "hostnameFunc must be invoked exactly once")
+
+	// Concurrent calls must not re-invoke hostnameFunc either.
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			assert.Equal(t, "cached-test-host", getPodName())
+		}()
+	}
+	wg.Wait()
+
+	assert.Equal(t, int32(1), atomic.LoadInt32(&callCount), "hostnameFunc must still be invoked exactly once after concurrent calls")
+}
+
+// TestGetSortedKeysCache_SharedAcrossValues verifies the sortedLabelKeysCache
+// is keyed by the sorted set of label NAMES only. Two maps sharing the same
+// keys but different values must collapse into a single cache entry rather
+// than growing the cache per distinct value combination (unbounded
+// cardinality bomb).
+func TestGetSortedKeysCache_SharedAcrossValues(t *testing.T) {
+	labelsA := map[string]string{"cache_key_test_a": "value1", "cache_key_test_b": "value2"}
+	labelsB := map[string]string{"cache_key_test_a": "totally-different", "cache_key_test_b": "also-different"}
+
+	keysA := getSortedKeys(labelsA)
+	keysB := getSortedKeys(labelsB)
+
+	require.Equal(t, []string{"cache_key_test_a", "cache_key_test_b"}, keysA)
+	require.Equal(t, keysA, keysB)
+
+	// Same underlying slice (same cache entry) must be returned for both
+	// maps, proving the cache did not create a second, value-keyed entry.
+	assert.Same(t, &keysA[0], &keysB[0])
+
+	// The cache entry itself must be reachable only via a names-only key.
+	namesKey := strings.Join(keysA, ";")
+	cached, ok := sortedLabelKeysCache.m.Load(namesKey)
+	require.True(t, ok)
+	assert.Equal(t, keysA, cached)
 }
 
 func TestLabelsToString(t *testing.T) {

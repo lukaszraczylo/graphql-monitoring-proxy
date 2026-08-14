@@ -81,7 +81,12 @@ func (ms *MetricsSetup) startPrometheusEndpoint() {
 		AppName: fmt.Sprintf("GraphQL Monitoring Proxy - %s v%s", libpack_config.PKG_NAME, libpack_config.PKG_VERSION),
 	})
 	app.Get("/metrics", ms.metricsEndpoint)
-	if err := app.Listen(fmt.Sprintf(":%d", envutil.GetInt("MONITORING_PORT", 9393)), fiber.ListenConfig{DisableStartupMessage: true}); err != nil {
+	// S6: bind address for the monitoring listener. This package does not
+	// import the main package's config, so it reads BIND_ADDRESS directly,
+	// the same way it already reads MONITORING_PORT. Empty default preserves
+	// today's "bind all interfaces" behavior (":port").
+	bindAddress := envutil.Getenv("BIND_ADDRESS", "")
+	if err := app.Listen(fmt.Sprintf("%s:%d", bindAddress, envutil.GetInt("MONITORING_PORT", 9393)), fiber.ListenConfig{DisableStartupMessage: true, GracefulContext: ms.ctx}); err != nil {
 		log.Critical(&libpack_logger.LogMessage{
 			Message: "Can't start the MONITORING service",
 			Pairs:   map[string]any{"error": err},
