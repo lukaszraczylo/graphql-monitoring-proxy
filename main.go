@@ -392,6 +392,20 @@ func parseConfig() {
 	}
 	c.Client.MaxIdleConnDuration = idleDuration
 
+	// Retry backoff delays (milliseconds). Configurable so tests can set very
+	// short values without burning seconds per attempt.
+	retryBaseDelay := getDetailsFromEnv("CLIENT_RETRY_BASE_DELAY_MS", 500)
+	if retryBaseDelay < 1 {
+		retryBaseDelay = 500
+	}
+	c.Client.RetryBaseDelayMs = retryBaseDelay
+
+	retryMaxDelay := getDetailsFromEnv("CLIENT_RETRY_MAX_DELAY_MS", 10000)
+	if retryMaxDelay < retryBaseDelay {
+		retryMaxDelay = retryBaseDelay
+	}
+	c.Client.RetryMaxDelayMs = retryMaxDelay
+
 	// Secure by default: TLS verification is enabled unless explicitly disabled
 	c.Client.DisableTLSVerify = getDetailsFromEnv("CLIENT_DISABLE_TLS_VERIFY", false)
 

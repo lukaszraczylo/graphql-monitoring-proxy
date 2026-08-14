@@ -40,6 +40,13 @@ func (suite *Tests) SetupTest() {
 	libpack_cache.New(5 * time.Minute)
 	parseConfig()
 
+	// Use very short retry delays in tests so that retry-exhausting requests
+	// (e.g. 7 attempts × backoff) complete in milliseconds instead of ~25s each.
+	cfgMutex.Lock()
+	cfg.Client.RetryBaseDelayMs = 10
+	cfg.Client.RetryMaxDelayMs = 10
+	cfgMutex.Unlock()
+
 	// Create context with cancel for cleanup
 	suite.ctx, suite.cancel = context.WithCancel(context.Background())
 	suite.apiDone = make(chan struct{})

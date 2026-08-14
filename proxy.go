@@ -477,7 +477,16 @@ func effectiveCircuitBackoff(base time.Duration, multiplier float64, maxBackoff 
 	}
 
 	exponent := float64(trips - 1)
-	effective := time.Duration(float64(base) * math.Pow(multiplier, exponent))
+	raw := float64(base) * math.Pow(multiplier, exponent)
+
+	// On amd64 the float64->int64 conversion for +Inf saturates to MinInt64
+	// rather than MaxInt64, so the subsequent "< base" guard would return base
+	// instead of the hard ceiling. Detect overflow before the cast.
+	if math.IsInf(raw, 1) || math.IsNaN(raw) {
+		return maxSaneCircuitBackoff
+	}
+
+	effective := time.Duration(raw)
 	if effective < base {
 		// Overflow or float rounding pushed us below base; never shorten.
 		return base
@@ -937,17 +946,31 @@ func performProxyRequestWithEnhancedRetries(c fiber.Ctx, proxyURL string, backen
 	var initialDelay time.Duration
 	var maxDelayTime time.Duration
 
+	// Read per-request base and max delay from config; fall back to coded
+	// defaults when zero (e.g. during very early startup before parseConfig).
+	baseDelayMs := cfg.Client.RetryBaseDelayMs
+	if baseDelayMs <= 0 {
+		baseDelayMs = 500
+	}
+	maxDelayMs := cfg.Client.RetryMaxDelayMs
+	if maxDelayMs <= 0 {
+		maxDelayMs = 10000
+	}
+
 	if backendUnhealthy {
 		// Backend is known to be unhealthy, fail fast
 		// Circuit breaker should handle this, so reduce retries
 		attempts = 3
-		initialDelay = 500 * time.Millisecond
-		maxDelayTime = 5 * time.Second
+		initialDelay = time.Duration(baseDelayMs) * time.Millisecond
+		maxDelayTime = time.Duration(maxDelayMs/2) * time.Millisecond
+		if maxDelayTime < initialDelay {
+			maxDelayTime = initialDelay
+		}
 	} else {
 		// Normal retry strategy
 		attempts = 7
-		initialDelay = 500 * time.Millisecond
-		maxDelayTime = 10 * time.Second
+		initialDelay = time.Duration(baseDelayMs) * time.Millisecond
+		maxDelayTime = time.Duration(maxDelayMs) * time.Millisecond
 	}
 
 	return retry.Do(

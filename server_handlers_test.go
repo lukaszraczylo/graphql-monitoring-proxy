@@ -788,12 +788,18 @@ func TestStartHTTPProxy_ErrorHandlerConfigured(t *testing.T) {
 	cfgMutex.Lock()
 	origPort := cfg.Server.PortGraphQL
 	origTimeout := cfg.Client.ClientTimeout
+	origRetryBase := cfg.Client.RetryBaseDelayMs
+	origRetryMax := cfg.Client.RetryMaxDelayMs
 	origWS := cfg.WebSocket.Enable
 	origAdmin := cfg.AdminDashboard.Enable
 	origHost := cfg.Server.HostGraphQL
 	origHostRO := cfg.Server.HostGraphQLReadOnly
 	cfg.Server.PortGraphQL = port
 	cfg.Client.ClientTimeout = 5
+	// Use short retry delays so the 7-attempt retry loop for the unreachable
+	// backend completes in milliseconds instead of ~25 seconds.
+	cfg.Client.RetryBaseDelayMs = 10
+	cfg.Client.RetryMaxDelayMs = 10
 	cfg.WebSocket.Enable = false
 	cfg.AdminDashboard.Enable = false
 	// Point at a host that always refuses connections so proxyTheRequest
@@ -807,6 +813,8 @@ func TestStartHTTPProxy_ErrorHandlerConfigured(t *testing.T) {
 		cfgMutex.Lock()
 		cfg.Server.PortGraphQL = origPort
 		cfg.Client.ClientTimeout = origTimeout
+		cfg.Client.RetryBaseDelayMs = origRetryBase
+		cfg.Client.RetryMaxDelayMs = origRetryMax
 		cfg.WebSocket.Enable = origWS
 		cfg.AdminDashboard.Enable = origAdmin
 		cfg.Server.HostGraphQL = origHost
