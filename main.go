@@ -47,6 +47,30 @@ var (
 	shutdownManager *ShutdownManager
 )
 
+// Shutdown phases for components registered on shutdownManager.
+//
+// shutdownPhaseDrainTraffic runs first: it owns the request-serving
+// lifecycle (accepting connections, draining in-flight requests) and must
+// finish before anything it depends on is torn down.
+//
+// shutdownPhaseCloseBackends runs after the drain completes. Every
+// component here (connection pool, backend health manager, metrics
+// aggregator, cache, tracer) is a dependency that in-flight requests read
+// from during the drain - closing them earlier reproduces the redis
+// "client is closed" failures the phased shutdown exists to prevent.
+const (
+	// shutdownPhaseDrainTraffic is negative so it always sorts strictly
+	// before DefaultShutdownPhase (0, see shutdown.go). A plain
+	// RegisterComponent call must never land in the same phase as traffic
+	// draining, or it would be torn down concurrently with in-flight
+	// requests instead of after they finish draining.
+	shutdownPhaseDrainTraffic = -1
+	// shutdownPhaseCloseBackends stays after DefaultShutdownPhase too, so an
+	// unphased component (DefaultShutdownPhase) is guaranteed to shut down
+	// before the backends it may depend on.
+	shutdownPhaseCloseBackends = 1
+)
+
 // getDetailsFromEnv retrieves the value from the environment or returns the default.
 // It first checks for a prefixed environment variable (GMP_KEY), then falls back to the unprefixed version.
 func getDetailsFromEnv[T any](key string, defaultValue T) T {
@@ -604,24 +628,30 @@ func main() {
 		}
 	})
 
-	// Register connection pool for cleanup
-	shutdownManager.RegisterComponent("http-connection-pool", func(ctx context.Context) error {
+	// Register connection pool for cleanup. It wraps the same fasthttp
+	// client the proxy uses per-request (cfg.Client.FastProxyClient), so it
+	// must outlive the traffic drain below.
+	shutdownManager.RegisterComponentWithPhase("http-connection-pool", shutdownPhaseCloseBackends, func(ctx context.Context) error {
 		if connectionPoolManager != nil {
 			return connectionPoolManager.Shutdown()
 		}
 		return nil
 	})
 
-	// Register backend health manager for cleanup
-	shutdownManager.RegisterComponent("backend-health-manager", func(ctx context.Context) error {
+	// Register backend health manager for cleanup. performProxyRequestWithRetries
+	// reads healthMgr.IsHealthy() on every proxied request, so it must
+	// outlive the traffic drain below.
+	shutdownManager.RegisterComponentWithPhase("backend-health-manager", shutdownPhaseCloseBackends, func(ctx context.Context) error {
 		if healthMgr := GetBackendHealthManager(); healthMgr != nil {
 			healthMgr.Shutdown()
 		}
 		return nil
 	})
 
-	// Register metrics aggregator for cleanup
-	shutdownManager.RegisterComponent("metrics-aggregator", func(ctx context.Context) error {
+	// Register metrics aggregator for cleanup. Shutdown() closes its Redis
+	// client, so it belongs with the other backend closers, after the
+	// traffic drain below.
+	shutdownManager.RegisterComponentWithPhase("metrics-aggregator", shutdownPhaseCloseBackends, func(ctx context.Context) error {
 		if aggregator := GetMetricsAggregator(); aggregator != nil {
 			aggregator.Shutdown()
 		}
@@ -629,12 +659,14 @@ func main() {
 	})
 
 	// Register HTTP proxy so in-flight requests drain gracefully on shutdown
-	// instead of being cut off when the process exits.
-	shutdownManager.RegisterComponent("http-proxy", shutdownHTTPProxy)
+	// instead of being cut off when the process exits. This runs in the
+	// traffic-drain phase, before any of the backends above are closed.
+	shutdownManager.RegisterComponentWithPhase("http-proxy", shutdownPhaseDrainTraffic, shutdownHTTPProxy)
 
 	// Close the Redis cache client's connection pool at shutdown (in-memory
-	// caches are no-ops).
-	shutdownManager.RegisterComponent("cache", func(context.Context) error {
+	// caches are no-ops). Runs after the traffic drain so in-flight
+	// CacheLookup/CacheStore calls do not hit a closed Redis client.
+	shutdownManager.RegisterComponentWithPhase("cache", shutdownPhaseCloseBackends, func(context.Context) error {
 		libpack_cache.Shutdown()
 		return nil
 	})
@@ -734,9 +766,11 @@ func main() {
 		Message: "Shutting down services...",
 	})
 
-	// Register tracer shutdown
+	// Register tracer shutdown. proxy.go calls tracer.StartSpan /
+	// ExtractSpanContext on every proxied request, so this closes after the
+	// traffic drain along with the other backend dependencies.
 	if tracer != nil {
-		shutdownManager.RegisterComponent("tracer", func(ctx context.Context) error {
+		shutdownManager.RegisterComponentWithPhase("tracer", shutdownPhaseCloseBackends, func(ctx context.Context) error {
 			return tracer.Shutdown(ctx)
 		})
 	}

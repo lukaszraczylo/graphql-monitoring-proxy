@@ -297,6 +297,183 @@ func (suite *ShutdownTestSuite) TestContextCancellation() {
 	}
 }
 
+func (suite *ShutdownTestSuite) TestRegisterComponentDefaultPhase() {
+	sm := NewShutdownManager(context.Background())
+
+	sm.RegisterComponent("component1", func(ctx context.Context) error {
+		return nil
+	})
+
+	assert.Len(suite.T(), sm.components, 1)
+	assert.Equal(suite.T(), DefaultShutdownPhase, sm.components[0].Phase)
+}
+
+func (suite *ShutdownTestSuite) TestRegisterComponentWithPhase() {
+	sm := NewShutdownManager(context.Background())
+
+	sm.RegisterComponentWithPhase("early", 1, func(ctx context.Context) error {
+		return nil
+	})
+	sm.RegisterComponentWithPhase("late", 5, func(ctx context.Context) error {
+		return nil
+	})
+
+	assert.Len(suite.T(), sm.components, 2)
+	assert.Equal(suite.T(), 1, sm.components[0].Phase)
+	assert.Equal(suite.T(), 5, sm.components[1].Phase)
+}
+
+// TestShutdownPhasesRunSequentially registers components in two phases and
+// records each component's start/end wall-clock time. It asserts every
+// phase-2 component starts only after every phase-1 component has finished,
+// proving phases execute sequentially rather than all at once.
+func (suite *ShutdownTestSuite) TestShutdownPhasesRunSequentially() {
+	sm := NewShutdownManager(context.Background())
+
+	type span struct {
+		start time.Time
+		end   time.Time
+	}
+	var mu sync.Mutex
+	spans := make(map[string]span)
+
+	recordSpan := func(name string, work func()) {
+		mu.Lock()
+		spans[name] = span{start: time.Now()}
+		mu.Unlock()
+
+		work()
+
+		mu.Lock()
+		s := spans[name]
+		s.end = time.Now()
+		spans[name] = s
+		mu.Unlock()
+	}
+
+	sm.RegisterComponentWithPhase("phase1-a", 1, func(ctx context.Context) error {
+		recordSpan("phase1-a", func() { time.Sleep(30 * time.Millisecond) })
+		return nil
+	})
+	sm.RegisterComponentWithPhase("phase1-b", 1, func(ctx context.Context) error {
+		recordSpan("phase1-b", func() { time.Sleep(30 * time.Millisecond) })
+		return nil
+	})
+	sm.RegisterComponentWithPhase("phase2-a", 2, func(ctx context.Context) error {
+		recordSpan("phase2-a", func() {})
+		return nil
+	})
+	sm.RegisterComponentWithPhase("phase2-b", 2, func(ctx context.Context) error {
+		recordSpan("phase2-b", func() {})
+		return nil
+	})
+
+	err := sm.Shutdown(2 * time.Second)
+	assert.NoError(suite.T(), err)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	assert.Len(suite.T(), spans, 4, "all four components must have run")
+
+	phase1End := spans["phase1-a"].end
+	if spans["phase1-b"].end.After(phase1End) {
+		phase1End = spans["phase1-b"].end
+	}
+
+	assert.False(suite.T(), spans["phase2-a"].start.Before(phase1End),
+		"phase2-a started before every phase-1 component finished")
+	assert.False(suite.T(), spans["phase2-b"].start.Before(phase1End),
+		"phase2-b started before every phase-1 component finished")
+}
+
+// TestShutdownSamePhaseComponentsRunConcurrently proves components sharing a
+// phase still run concurrently. Every registered component blocks on a
+// shared release gate that only opens once all of them have signaled they
+// started; if the components ran one at a time, the first would block
+// forever on the gate and the test would time out.
+func (suite *ShutdownTestSuite) TestShutdownSamePhaseComponentsRunConcurrently() {
+	sm := NewShutdownManager(context.Background())
+
+	const numComponents = 3
+	started := make(chan struct{}, numComponents)
+	release := make(chan struct{})
+
+	for i := 0; i < numComponents; i++ {
+		sm.RegisterComponentWithPhase("component", 7, func(ctx context.Context) error {
+			started <- struct{}{}
+			<-release
+			return nil
+		})
+	}
+
+	shutdownDone := make(chan struct{})
+	go func() {
+		err := sm.Shutdown(2 * time.Second)
+		assert.NoError(suite.T(), err)
+		close(shutdownDone)
+	}()
+
+	for i := 0; i < numComponents; i++ {
+		select {
+		case <-started:
+		case <-time.After(1 * time.Second):
+			suite.T().Fatal("same-phase components did not all start concurrently")
+		}
+	}
+	close(release)
+
+	select {
+	case <-shutdownDone:
+	case <-time.After(1 * time.Second):
+		suite.T().Fatal("shutdown did not complete after releasing same-phase components")
+	}
+}
+
+// TestShutdownPhaseTimeoutStillAttemptsNextPhase proves a phase-1 component
+// that ignores the ctx deadline and outlives the shutdown budget does not
+// prevent phase 2 from being attempted, and that Shutdown still returns
+// promptly instead of blocking on the hung component.
+func (suite *ShutdownTestSuite) TestShutdownPhaseTimeoutStillAttemptsNextPhase() {
+	sm := NewShutdownManager(context.Background())
+
+	phase1Started := make(chan struct{})
+	sm.RegisterComponentWithPhase("phase1-hung", 1, func(ctx context.Context) error {
+		close(phase1Started)
+		// Ignore ctx entirely to simulate a component that does not
+		// respect the shutdown deadline.
+		time.Sleep(5 * time.Second)
+		return nil
+	})
+
+	phase2Attempted := make(chan struct{})
+	sm.RegisterComponentWithPhase("phase2-after-hang", 2, func(ctx context.Context) error {
+		close(phase2Attempted)
+		return nil
+	})
+
+	start := time.Now()
+	err := sm.Shutdown(100 * time.Millisecond)
+	elapsed := time.Since(start)
+
+	assert.NoError(suite.T(), err)
+	assert.Less(suite.T(), elapsed, 1*time.Second,
+		"shutdown must not block waiting on a hung phase-1 component")
+
+	select {
+	case <-phase1Started:
+	default:
+		suite.T().Fatal("phase-1 component was never started")
+	}
+
+	select {
+	case <-phase2Attempted:
+		// Good: phase 2 was attempted despite phase 1 exceeding the deadline.
+	case <-time.After(500 * time.Millisecond):
+		suite.T().Fatal("phase-2 component was never attempted after phase-1 exceeded the shutdown deadline")
+	}
+}
+
 // Benchmark tests
 func BenchmarkRegisterComponent(b *testing.B) {
 	sm := NewShutdownManager(context.Background())
