@@ -120,7 +120,7 @@ spec:
 ### Endpoints
 
 * `:8080/*` - the graphql passthrough endpoint
-* `:8080/admin` - the admin dashboard (if enabled)
+* `:8080/admin` - the admin dashboard, enabled by default, on the public graphql port, with no built-in authentication (see [Admin Dashboard](#admin-dashboard))
 * `:9393/metrics` - the prometheus metrics endpoint
 * `:8080/healthz` - the healthcheck endpoint
 * `:8080/livez` - the liveness probe endpoint
@@ -163,6 +163,7 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 |---------------------------|------------------------------------------|----------------------------|
 | `MONITORING_PORT`         | The port to expose the metrics endpoint  | `9393`                     |
 | `PORT_GRAPHQL`            | The port to expose the graphql endpoint  | `8080`                     |
+| `BIND_ADDRESS`            | Interface the graphql, API, and metrics listeners bind to | `` (all interfaces) |
 | `HOST_GRAPHQL`            | The host to proxy the graphql endpoint   | `http://localhost/` |
 | `HOST_GRAPHQL_READONLY`   | The host to proxy the read-only graphql endpoint | ``               |
 | `HEALTHCHECK_GRAPHQL_URL` | The URL to check the health of the graphql endpoint | `` |
@@ -189,11 +190,11 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `CIRCUIT_RETURN_CACHED_ON_OPEN` | Return cached responses when open | `true`                     |
 | `CIRCUIT_TRIP_ON_TIMEOUTS` | Trip circuit breaker on timeouts       | `true`                     |
 | `CIRCUIT_TRIP_ON_5XX`     | Trip circuit breaker on 5XX responses   | `true`                     |
-| `CIRCUIT_TRIP_ON_4XX`     | Trip circuit breaker on 4XX responses (except 429) | `false`        |
+| `CIRCUIT_TRIP_ON_4XX`     | Trip circuit breaker on 4XX responses | `false`        |
 | `CIRCUIT_BACKOFF_MULTIPLIER` | Exponential backoff multiplier (e.g., 1.5) | `1.0`                 |
 | `CIRCUIT_MAX_BACKOFF_TIMEOUT` | Max timeout in seconds for backoff | `300`                      |
-| `CLIENT_READ_TIMEOUT`     | HTTP client read timeout in seconds     | ``                         |
-| `CLIENT_WRITE_TIMEOUT`    | HTTP client write timeout in seconds    | ``                         |
+| `CLIENT_READ_TIMEOUT`     | HTTP client read timeout in seconds     | `120` (inherits `PROXIED_CLIENT_TIMEOUT`) |
+| `CLIENT_WRITE_TIMEOUT`    | HTTP client write timeout in seconds    | `120` (inherits `PROXIED_CLIENT_TIMEOUT`) |
 | `CLIENT_MAX_IDLE_CONN_DURATION` | Max idle connection duration in seconds | `300`                |
 | `MAX_CONNS_PER_HOST`      | Maximum connections per host            | `1024`                     |
 | `CLIENT_DISABLE_TLS_VERIFY` | Disable TLS verification              | `false`                    |
@@ -203,17 +204,17 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `ALLOWED_INTROSPECTION`  | Allow only certain queries in introspection | ``                  |
 | `ENABLE_ACCESS_LOG`       | Enable the access log                   | `false`                    |
 | `READ_ONLY_MODE`          | Enable the read only mode               | `false`                    |
-| `ALLOWED_URLS`              | Allow access only to certain URLs       | `/v1/graphql,/v1/version`  |
+| `ALLOWED_URLS`              | Allow access only to certain URLs       | `` (all URLs allowed)      |
 | `ENABLE_API`              | Enable the monitoring API               | `false`                    |
 | `API_PORT`                | The port to expose the monitoring API   | `9090`                     |
-| `ADMIN_API_KEY`           | API key for admin endpoint authentication (optional) | ``                |
+| `ADMIN_API_KEY`           | API key that protects the monitoring API (`/api/*` on `API_PORT`), optional, fails open when unset. Does **not** protect the `/admin` dashboard | ``                |
 | `BANNED_USERS_FILE`       | The path to the file with banned users  | `/go/src/app/banned_users.json`   |
 | `PROXIED_CLIENT_TIMEOUT` | The timeout for the proxied client in seconds     | `120`                      |
 | `PURGE_METRICS_ON_CRAWL` | Purge metrics on each /metrics crawl    | `false`                      |
-| `PURGE_METRICS_ON_TIMER` | Purge metrics every x seconds. `0` - disabled | `0`                      |
+| `PURGE_METRICS_ON_TIMER` | Purge metrics every x seconds. Runs by default (about every 30 minutes); `0` disables it | `1800`                      |
 | `HASURA_EVENT_CLEANER`   | Enable the hasura event cleaner          | `false`                    |
 | `HASURA_EVENT_CLEANER_OLDER_THAN` | The interval for the hasura event cleaner (in days) | `1`                  |
-| `HASURA_EVENT_METADATA_DB` | URL to the hasura metadata database    | `postgresql://localhost:5432/hasura` |
+| `HASURA_EVENT_METADATA_DB` | URL to the hasura metadata database    | ``                          |
 | `ENABLE_TRACE`            | Enable OpenTelemetry tracing           | `false`                    |
 | `TRACE_ENDPOINT`          | OpenTelemetry collector endpoint       | `localhost:4317`           |
 | `RETRY_BUDGET_ENABLE`     | Enable retry budget mechanism          | `true`                     |
@@ -224,7 +225,8 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `WEBSOCKET_PING_INTERVAL` | WebSocket ping interval in seconds     | `30`                       |
 | `WEBSOCKET_PONG_TIMEOUT`  | WebSocket pong timeout in seconds      | `60`                       |
 | `WEBSOCKET_MAX_MESSAGE_SIZE` | Max WebSocket message size in bytes | `524288` (512KB)           |
-| `ADMIN_DASHBOARD_ENABLE`  | Enable admin dashboard UI              | `true`                     |
+| `ADMIN_DASHBOARD_ENABLE`  | Enable admin dashboard UI. No built-in authentication; served on `PORT_GRAPHQL` | `true`                     |
+| `BACKEND_STARTUP_TIMEOUT` | Seconds to wait for the GraphQL backend to become ready during startup | `300`                      |
 | `PPROF_PORT`              | Localhost-only debug pprof endpoint port (default: disabled). Never expose publicly. | ``       |
 
 ### Tracing
@@ -331,6 +333,7 @@ Native WebSocket support enables GraphQL subscriptions and real-time features. E
 - Configurable message size limits
 - Connection statistics and monitoring
 - Graceful connection handling
+- Banned users and role-based rate limits are enforced on the WebSocket upgrade path, the same as on the HTTP POST path
 
 **Configuration:**
 ```bash
@@ -372,11 +375,11 @@ You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` or `ENAB
 
 **Important**: The cache key is calculated from the **request body + user context (user ID and role)**. This means:
 - Identical queries with different variables are cached separately
-- **Identical queries from different users are cached separately** (security isolation)
-- **Identical queries with different roles are cached separately** (prevents privilege escalation)
-- This ensures correct caching behavior and prevents data leakage between users
+- Identical queries from different users are cached separately
+- Identical queries with different roles are cached separately
+- This keeps distinct identities from sharing a cache entry
 
-**🔒 Security Update (v0.27.0+)**: Cache keys now include user context by default to prevent security vulnerabilities where users could see each other's cached data. This is enabled by default and should NOT be disabled in multi-user applications.
+**Note on the security scope of this isolation**: The proxy decodes the JWT payload for the user ID and role, but it does not verify the JWT signature. A cache hit also returns before the request reaches the upstream backend's own authorization check. Treat the user/role split in the cache key as isolation between honest clients, not as an authorization boundary. Do not rely on it to stop a forged token from reaching another user's cached data. Cache keys include user context by default; keep this enabled in multi-user applications.
 
 Example:
 ```graphql
@@ -389,14 +392,14 @@ variables: { "id": "123" }  // Cache key: MD5(body + user:alice + role:user)
 query GetUser($id: ID!) { user(id: $id) { name } }
 variables: { "id": "456" }  // Cache key: MD5(body + user:alice + role:user)
 
-# Different users (SECURITY: prevents data leakage)
+# Different users (isolation: separate cache entry per identity)
 query GetMyProfile { me { email } }
 Authorization: Bearer token_for_alice  // Cache key: MD5(body + user:alice + role:user)
 
 query GetMyProfile { me { email } }
 Authorization: Bearer token_for_bob    // Cache key: MD5(body + user:bob + role:user)
 
-# Different roles (SECURITY: prevents privilege escalation)
+# Different roles (isolation: separate cache entry per role)
 query GetData { data { value } }
 Authorization: Bearer token_admin  // Cache key: MD5(body + user:alice + role:admin)
 
@@ -426,7 +429,7 @@ Starting with version `0.26.0`, the memory cache implementation has been enhance
 
 - **Memory limits**: Set maximum memory usage via `CACHE_MAX_MEMORY_SIZE` (default: 100MB)
 - **Entry limits**: Set maximum number of entries via `CACHE_MAX_ENTRIES` (default: 10,000)
-- **Smart eviction**: When limits are reached, the cache will automatically evict the least recently used entries
+- **Eviction**: When limits are reached, the default cache backend evicts the entries closest to expiry first. Set `CACHE_USE_LRU=true` to use the LRU backend instead, which evicts the least recently used entries
 - **Compression**: Large cache entries are automatically compressed to reduce memory footprint
 - **Memory monitoring**: Memory usage is tracked and reported in metrics
 
@@ -465,15 +468,15 @@ Since version `0.15.48` the you can also use the distributed Redis cache.
 
 The proxy supports two cache eviction strategies:
 
-**Standard (default):** Uses Go's `sync.Map` with approximate eviction. When memory limits are reached, entries are evicted based on iteration order (pseudo-random). This is memory-efficient and has excellent concurrent read performance.
+**Standard (default):** Uses Go's `sync.Map`. When memory limits are reached, the cache sorts live entries by expiry and evicts the oldest-expiry entries first. This is memory-efficient and has excellent concurrent read performance.
 
 **LRU (Least Recently Used):** Uses a proper LRU algorithm with a linked list to track access order. When limits are reached, the least recently accessed entries are evicted first. Enable with `CACHE_USE_LRU=true`.
 
 | Feature | Standard | LRU |
 |---------|----------|-----|
-| Eviction order | Pseudo-random | Least recently used |
+| Eviction order | Oldest-expiry-first (sorted) | Least recently used |
 | Read performance | Excellent | Good |
-| Memory tracking | Approximate | Precise |
+| Memory tracking | Approximate | Approximate |
 | Best for | High read throughput | Cache hit optimization |
 
 *LRU cache configuration:*
@@ -504,11 +507,13 @@ The proxy implements an advanced circuit breaker pattern to prevent cascading fa
 Key features:
 - **Dual tripping strategies**: Trip on consecutive failures OR failure ratio
 - **Automatic recovery**: The circuit breaker will automatically attempt recovery after a timeout period
-- **Health monitoring endpoint**: Check circuit breaker status via `/api/circuit-breaker/health`
+- **Health monitoring endpoint**: Check circuit breaker status via `/api/circuit-breaker/health`, which requires the `X-API-Key` header when `ADMIN_API_KEY` is set
 - **Configurable thresholds**: Set failure thresholds, timeouts, and recovery behavior
 - **Fallback mechanism**: Can serve cached responses when the circuit is open
 - **Selective error filtering**: Configure which HTTP status codes trigger failures
 - **Exponential backoff**: Optional progressive timeout increases for repeated failures
+- **Open-circuit response**: A request hitting an open circuit gets HTTP 503, not the generic 500 an unclassified error would return
+- **Rolling failure window**: The failure ratio is measured over a rolling window of about 10 minutes, not over the connection's lifetime
 
 ##### Production-Ready Configuration for High Traffic
 
@@ -587,8 +592,8 @@ GMP_CIRCUIT_TRIP_ON_5XX=true
 The proxy includes an optimized HTTP client with granular controls for timeouts, connection pooling, and TLS verification. This helps improve performance and reliability when communicating with backend GraphQL servers.
 
 Configuration:
-- `CLIENT_READ_TIMEOUT`: HTTP client read timeout in seconds
-- `CLIENT_WRITE_TIMEOUT`: HTTP client write timeout in seconds
+- `CLIENT_READ_TIMEOUT`: HTTP client read timeout in seconds (default: inherits `PROXIED_CLIENT_TIMEOUT`, `120` seconds)
+- `CLIENT_WRITE_TIMEOUT`: HTTP client write timeout in seconds (default: inherits `PROXIED_CLIENT_TIMEOUT`, `120` seconds)
 - `CLIENT_MAX_IDLE_CONN_DURATION`: Maximum duration to keep idle connections open (default: `300` seconds)
 - `MAX_CONNS_PER_HOST`: Maximum number of connections per host (default: `1024`)
 - `CLIENT_DISABLE_TLS_VERIFY`: Disable TLS certificate verification (default: `false`)
@@ -638,7 +643,7 @@ GMP_BACKEND_STARTUP_TIMEOUT=300
 
 When enabled, the proxy will:
 - Perform periodic health checks against the GraphQL backend during startup
-- Use exponential backoff with jitter for health check retries
+- Use exponential backoff (1.5x growth, capped at 30 seconds) for health check retries
 - Log startup progress and backend readiness status
 - Start accepting traffic only after backend is confirmed healthy
 - Continue startup if backend doesn't respond within the timeout (with warnings)
@@ -663,15 +668,15 @@ Enhanced retry mechanism that adapts based on backend health and error types:
 - Exponential backoff
 
 **Degraded Operation (Unhealthy Backend)**:
-- 10 retry attempts
-- Initial delay: 2 seconds
-- Maximum delay: 30 seconds
-- Longer delays to account for backend recovery time
+- 3 retry attempts
+- Initial delay: 500ms
+- Maximum delay: 5 seconds
+- Fails fast; the circuit breaker handles a persistently degraded backend
 
 **Error Classification**:
 - Connection errors (connection refused, reset, etc.): Retryable
-- Timeout errors: Limited retries to prevent cascade failures
-- 4xx client errors: Generally not retryable (except 429, 503)
+- Timeout errors: Not retried; returned immediately to prevent cascade failures
+- 4xx client errors: Not retryable, except 429 and 503
 - 5xx server errors: Retryable with backoff
 
 ##### Connection Pool with Auto-Recovery
@@ -679,13 +684,13 @@ Enhanced retry mechanism that adapts based on backend health and error types:
 Advanced connection pool management with automatic health monitoring and recovery:
 
 **Keep-Alive Mechanism**:
-- Interval: 15 seconds
+- Interval: 45 seconds
 - Lightweight GraphQL queries to maintain connection health
 - Automatic failure detection and recovery
 
 **Connection Recovery**:
 - Recovery check interval: 60 seconds
-- Automatic connection pool reset after 5+ consecutive failures
+- Automatic connection pool reset after more than 5 consecutive failures (6+)
 - Coordinated with backend health status
 
 **Connection Statistics Tracking**:
@@ -702,29 +707,22 @@ When the backend is unavailable, the proxy provides graceful degradation:
 - Serve cached responses when backend is unavailable
 - Automatic cache hit metrics tracking
 
-**Informative Error Responses**:
-- Standard GraphQL error format with helpful extensions
-- Includes retry recommendations and timeout information
-- Maintains API contract even during failures
+**Error Response When the Circuit Is Open**:
+- HTTP status: `503 Service Unavailable`
+- Content-Type: `text/plain`
+- Body: `circuit breaker is open`
 
 **Example Error Response**:
-```json
-{
-  "errors": [{
-    "message": "GraphQL backend is temporarily unavailable",
-    "extensions": {
-      "code": "SERVICE_UNAVAILABLE",
-      "retryable": true,
-      "retry_after": 60
-    }
-  }],
-  "data": null
-}
+```
+HTTP/1.1 503 Service Unavailable
+Content-Type: text/plain; charset=utf-8
+
+circuit breaker is open
 ```
 
 ##### Monitoring and Observability
 
-Connection resilience provides extensive monitoring through API endpoints:
+Connection resilience provides extensive monitoring through API endpoints. Both endpoints require the `X-API-Key` header when `ADMIN_API_KEY` is set:
 
 **Backend Health Endpoint**: `/api/backend/health`
 ```json
@@ -746,7 +744,7 @@ Connection resilience provides extensive monitoring through API endpoints:
   "connection_failures": 2,
   "last_recovery_attempt": "2024-01-15T09:15:00Z",
   "cleanup_interval": "30s",
-  "keepalive_interval": "15s",
+  "keepalive_interval": "45s",
   "recovery_check_interval": "60s"
 }
 ```
@@ -812,13 +810,12 @@ Enable rate limiting based on user roles using the `ROLE_RATE_LIMIT` environment
 - `ROLE_RATE_LIMIT`: Enable role-based rate limiting (default: `false`)
 
 **Features:**
-- **Dynamic configuration reload**: Rate limit configuration is automatically reloaded periodically without restart
 - **Burst control**: Optional burst limits for handling traffic spikes
-- **Per-endpoint limits**: Different rate limits for specific GraphQL endpoints
-- **IP-based limiting**: Additional rate limiting by client IP address
+
+`ratelimit.json` is loaded once at startup; changing the file requires a restart.
 
 Available interval values:
-`nano`, `micro`, `milli`, `second`, `minute`, `hour`, `day`, or duration strings like `5s`, `10m`
+`second`, `minute`, `hour`, `day`, or a Go duration string, for example `5s`, `10m`, `500ms`
 
 ##### Basic Rate Limit Configuration (`ratelimit.json`)
 
@@ -850,7 +847,7 @@ Available interval values:
       "req": 1000,
       "interval": "second",
       "burst": 2000,  // Allow bursts up to 2000 requests
-      "endpoints": ["/v1/graphql", "/v1/relay"]  // Optional endpoint-specific limits
+      "endpoints": ["/v1/graphql", "/v1/relay"]  // Parsed but not currently enforced
     },
     "premium": {
       "req": 500,
@@ -886,7 +883,7 @@ You can enable the read-only mode by setting the `READ_ONLY_MODE` environment va
 
 #### Allowing access to listed URLs
 
-You can allow access only to certain URLs by setting the `ALLOWED_URLS` environment variable to a comma-separated list of URLs. If enabled - other URLs will return `403 Forbidden` error and request will **not** reach the proxied service.
+You can allow access only to certain URLs by setting the `ALLOWED_URLS` environment variable to a comma-separated list of URLs. `ALLOWED_URLS` is empty by default, so the proxy allows all URLs and the feature stays off. If enabled - other URLs will return `403 Forbidden` error and request will **not** reach the proxied service.
 
 #### Blocking introspection
 
@@ -908,11 +905,11 @@ The GraphQL monitoring proxy implements several security measures to protect you
 
 3. **Log Sanitization**: Sensitive data (passwords, tokens, API keys, credit cards, SSNs) are automatically redacted from debug logs to prevent information disclosure.
 
-4. **Optional API Authentication**: Admin endpoints can be protected with API key authentication when needed, while supporting network-level security for internal deployments.
+4. **Optional API Authentication**: `ADMIN_API_KEY` can protect the monitoring API (`/api/*` on `API_PORT`) behind a required `X-API-Key` header. It does not protect the `/admin` dashboard, and the API stays open when the key is unset.
 
 5. **Rate Limiting**: Role-based rate limiting prevents abuse and DDoS attacks.
 
-6. **GraphQL Query Complexity**: The proxy can analyze and limit query complexity to prevent resource exhaustion attacks.
+6. **Request Size Limits**: The proxy rejects GraphQL request bodies larger than 1 MB, and can optionally block schema introspection, to reduce resource exhaustion risk.
 
 For production deployments, we recommend:
 - Running the proxy in a secure network segment (VPC, Kubernetes cluster)
@@ -925,7 +922,7 @@ For production deployments, we recommend:
 
 #### Authentication
 
-The admin API endpoints support optional authentication for flexibility in different deployment scenarios:
+The monitoring API endpoints under `/api/*` on `API_PORT` support optional authentication for flexibility in different deployment scenarios. This authentication does not cover the `/admin` dashboard on `PORT_GRAPHQL`, which has no built-in authentication (see [Admin Dashboard](#admin-dashboard)):
 
 - **Without Authentication** (default): When `ADMIN_API_KEY` or `GMP_ADMIN_API_KEY` is not set, the API endpoints are accessible without authentication. This is suitable for internal services protected by network segmentation (firewalls, VPCs, Kubernetes network policies, service mesh, etc.).
 
@@ -987,6 +984,11 @@ Example response:
 }
 ```
 
+#### Backend and connection pool health
+
+* `GET /api/backend/health` - get the GraphQL backend health status
+* `GET /api/connection-pool/health` - get the connection pool health status
+
 Both ban/unban endpoints require the `user_id` and `reason` parameters to be present in the request body.
 
 Example request without authentication (internal deployment):
@@ -1020,6 +1022,8 @@ Ban details will be stored in the `banned_users.json` file, which you can mount 
 
 The admin dashboard provides a real-time, web-based interface for monitoring proxy performance and health. Access it at `/admin` or `/admin/dashboard` on the main proxy port (default: `:8080/admin`).
 
+**Security caveat**: The dashboard is enabled by default (`ADMIN_DASHBOARD_ENABLE=true`), served on the public GraphQL port, and has no built-in authentication. `ADMIN_API_KEY` does not protect it; that key protects only the monitoring API on `API_PORT`. Disable the dashboard, or restrict access to it at the reverse proxy or network layer, before you expose the GraphQL port to untrusted clients.
+
 **Features:**
 - **Live metrics**: Streamed over a WebSocket (`/admin/ws/stats`) every 2 seconds, with automatic fallback to 5-second HTTP polling if the WebSocket is unavailable
 - **Overview**: Proxy version, uptime, total/succeeded/failed/skipped requests, success rate, and current/average requests per second
@@ -1040,7 +1044,8 @@ GMP_ADMIN_DASHBOARD_ENABLE=true
 ```
 
 **Security Considerations:**
-- The dashboard is accessible on the main proxy port
+- The dashboard has no built-in authentication and is accessible on the main proxy port
+- `ADMIN_API_KEY` protects only the monitoring API on `API_PORT` (`/api/*`), not `/admin`
 - For production, consider:
   - Using Kubernetes NetworkPolicies to restrict access
   - Adding authentication via ingress/service mesh
@@ -1106,7 +1111,7 @@ You can always enable `PURGE_METRICS_ON_CRAWL` environment variable to purge the
 
 With the `PURGE_METRICS_ON_CRAWL` enabled, the `graphql_proxy_requests_failed`, `graphql_proxy_requests_skipped` and `graphql_proxy_requests_succesful` metrics will remain between resets.
 
-If you prefer more control over the metrics purging - you can enable `PURGE_METRICS_ON_TIMER` environment variable and set the interval in seconds. This will allow you to purge the metrics on a regular basis, for example every 90 seconds. It could be better solution if you have multiple crawlers checking the metrics endpoints and you want to avoid the situation when metrics are purged by for example healthcheck.
+`PURGE_METRICS_ON_TIMER` purges metrics on a regular basis and defaults to `1800` seconds (about 30 minutes). Set it to a different number of seconds, for example `90`, to change the interval, or to `0` to disable timer-based purging. This can be a better solution than `PURGE_METRICS_ON_CRAWL` if you have multiple crawlers checking the metrics endpoint and you want to avoid the situation where metrics are purged by, for example, a healthcheck.
 
 #### Healthcheck
 

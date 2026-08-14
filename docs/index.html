@@ -6,7 +6,7 @@
         <title>GraphQL Monitoring Proxy - High-Performance GraphQL Gateway</title>
         <meta
             name="description"
-            content="High-performance GraphQL proxy with monitoring, caching, circuit breaker, rate limiting, and security features. Zero cost monitoring at 100k+ req/s."
+            content="High-performance GraphQL proxy with monitoring, caching, circuit breaker, rate limiting, and security features. Zero cost monitoring, tested at 30k queries/second."
         />
         <script src="https://cdn.tailwindcss.com"></script>
         <script>
@@ -179,8 +179,8 @@
             <div class="max-w-6xl mx-auto px-4 sm:px-6">
                 <div class="grid sm:grid-cols-4 gap-4 text-center">
                     <div class="glass p-6 rounded-xl">
-                        <div class="text-4xl font-bold gradient-text mb-2">100k+</div>
-                        <p class="text-sm text-gray-600 dark:text-gray-400">Requests/second</p>
+                        <div class="text-4xl font-bold gradient-text mb-2">30k+</div>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Queries/second</p>
                     </div>
                     <div class="glass p-6 rounded-xl">
                         <div class="text-4xl font-bold gradient-text mb-2">10MB</div>
@@ -448,7 +448,7 @@ GMP_ALLOWED_INTROSPECTION="__typename"</code></pre>
                             <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i><strong>Read-only mode:</strong> Block all mutations</li>
                             <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i><strong>URL allowlist:</strong> Restrict accessible endpoints</li>
                             <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i><strong>JWT claim extraction:</strong> User ID and role from tokens</li>
-                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i><strong>API authentication:</strong> Optional X-API-Key for admin endpoints</li>
+                            <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i><strong>API authentication:</strong> Optional X-API-Key for the monitoring API only, not the /admin dashboard</li>
                             <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i><strong>Log sanitization:</strong> Automatic redaction of sensitive data</li>
                             <li class="flex items-start gap-2"><i class="fas fa-check text-green-500 mt-1"></i><strong>SQL injection prevention:</strong> Parameterized queries</li>
                         </ul>
@@ -516,17 +516,11 @@ GMP_RETRY_BUDGET_MAX_TOKENS=100</code></pre>
                             <i class="fas fa-triangle-exclamation mr-2 text-orange-500"></i>
                             Graceful Degradation
                         </h3>
-                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Informative error responses with retry recommendations.</p>
-                        <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs overflow-x-auto"><code>{
-  "errors": [{
-    "message": "Backend temporarily unavailable",
-    "extensions": {
-      "code": "SERVICE_UNAVAILABLE",
-      "retryable": true,
-      "retry_after": 60
-    }
-  }]
-}</code></pre>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">When the circuit is open, the proxy serves a cached response if one is available; otherwise it returns HTTP 503.</p>
+                        <pre class="bg-gray-900 text-gray-100 p-3 rounded-lg text-xs overflow-x-auto"><code>HTTP/1.1 503 Service Unavailable
+Content-Type: text/plain
+
+circuit breaker is open</code></pre>
                     </div>
                 </div>
             </div>
