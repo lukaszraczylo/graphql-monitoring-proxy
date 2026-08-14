@@ -25,6 +25,10 @@ type MetricsAggregator struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	mu           sync.RWMutex
+	// wg tracks the publisher goroutine started by startPublishingAsync.
+	// Shutdown waits on it so it never returns while that goroutine is
+	// still running (see Shutdown's doc comment).
+	wg sync.WaitGroup
 }
 
 // InstanceMetrics represents metrics for a single proxy instance
@@ -141,7 +145,7 @@ func InitializeMetricsAggregator(redisURL, redisPassword string, redisDB int, lo
 	metricsAggregator = aggregator
 
 	// Start publishing metrics
-	go aggregator.startPublishing()
+	aggregator.startPublishingAsync()
 
 	if logger != nil {
 		logger.Info(&libpack_logger.LogMessage{
@@ -164,8 +168,19 @@ func GetMetricsAggregator() *MetricsAggregator {
 	return metricsAggregator
 }
 
+// startPublishingAsync launches the publisher goroutine and registers it
+// with ma.wg before starting it, so Shutdown can join on it via wg.Wait().
+// wg.Add must happen-before the goroutine's wg.Done (WaitGroup's own
+// contract), so Add is called here, synchronously in the caller, rather
+// than as the first line inside startPublishing.
+func (ma *MetricsAggregator) startPublishingAsync() {
+	ma.wg.Add(1)
+	go ma.startPublishing()
+}
+
 // startPublishing periodically publishes metrics to Redis
 func (ma *MetricsAggregator) startPublishing() {
+	defer ma.wg.Done()
 	defer ma.publishTimer.Stop()
 
 	// Publish immediately on start
@@ -174,8 +189,12 @@ func (ma *MetricsAggregator) startPublishing() {
 	for {
 		select {
 		case <-ma.ctx.Done():
-			// Clean up our metrics on shutdown
-			ma.removeInstanceMetrics()
+			// Shutdown() removes this instance's Redis keys synchronously,
+			// before it closes the Redis client, so this goroutine must not
+			// also call removeInstanceMetrics() here: doing so raced
+			// Shutdown()'s Close() call (the two used the same client
+			// concurrently with no ordering guarantee) and left the
+			// instance's key/set-membership behind until TTL expiry.
 			return
 		case <-ma.publishTimer.C:
 			ma.publishMetrics()
@@ -778,14 +797,41 @@ func (ma *MetricsAggregator) aggregateStats(instances []InstanceMetrics) map[str
 	return result
 }
 
-// Shutdown stops the metrics aggregator
+// Shutdown stops the metrics aggregator.
+//
+// It cancels the publisher goroutine, synchronously removes this instance's
+// Redis keys via removeInstanceMetrics (so the removal always completes
+// before the Redis client closes, instead of racing it), waits for the
+// publisher goroutine (started by startPublishingAsync) to fully exit, and
+// clears the package-level singleton if this instance is currently
+// registered as it, so a later InitializeMetricsAggregator call creates a
+// fresh instance rather than silently no-oping against a closed client.
+//
+// ma.mu is held only across cancel/removeInstanceMetrics/Close, not across
+// wg.Wait() or the aggregatorMutex update below. publishMetrics is the only
+// other user of ma.mu (via RLock), and it is only ever invoked by the
+// publisher goroutine. Holding ma.mu across wg.Wait() would deadlock: a
+// publishMetrics call that raced the ctx-cancellation select (picked the
+// timer case just as cancel() ran) blocks on ma.mu.RLock() until Shutdown
+// unlocks, so waiting for that same goroutine to exit while still holding
+// the write lock would wait forever. Unlocking before wg.Wait() avoids that.
+// The straggler is still safe: it can only resume after Unlock(), by which
+// point Close() has already run (still inside the lock, unchanged from
+// before), so it hits a closed client and fails fast instead of
+// resurrecting the instance key removeInstanceMetrics just deleted.
+// wg.Wait() then blocks Shutdown from returning until the goroutine has
+// truly exited, closing the window where it reads the package-level cfg
+// after a caller has already reset it.
 func (ma *MetricsAggregator) Shutdown() {
 	ma.mu.Lock()
-	defer ma.mu.Unlock()
 
 	if ma.cancel != nil {
 		ma.cancel()
 	}
+
+	// Remove this instance's key and set membership before closing the
+	// client so the cleanup cannot race Close() (see startPublishing).
+	ma.removeInstanceMetrics()
 
 	if ma.redisClient != nil {
 		_ = ma.redisClient.Close() // Best-effort cleanup
@@ -796,6 +842,20 @@ func (ma *MetricsAggregator) Shutdown() {
 			Message: "Metrics aggregator shut down",
 		})
 	}
+
+	ma.mu.Unlock()
+
+	// Join the publisher goroutine. Must happen unlocked - see doc comment.
+	ma.wg.Wait()
+
+	// Clear the singleton only if this instance is still registered as it;
+	// a test-constructed or already-replaced instance must not clobber a
+	// different, currently-active aggregator.
+	aggregatorMutex.Lock()
+	if metricsAggregator == ma {
+		metricsAggregator = nil
+	}
+	aggregatorMutex.Unlock()
 }
 
 // GetInstanceID returns the current instance ID

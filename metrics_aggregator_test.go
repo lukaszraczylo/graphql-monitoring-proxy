@@ -119,12 +119,17 @@ func TestMetricsAggregator_InitializeMetricsAggregator_BadURL(t *testing.T) {
 	metricsAggregator = nil
 	aggregatorMutex.Unlock()
 	t.Cleanup(func() {
+		// Shutdown() itself acquires aggregatorMutex (to clear the singleton
+		// if it owns it), so it must not be called while this goroutine
+		// already holds that lock - grab-and-release first, then call
+		// Shutdown() unlocked.
 		aggregatorMutex.Lock()
-		if metricsAggregator != nil {
-			metricsAggregator.Shutdown()
-		}
+		current := metricsAggregator
 		metricsAggregator = old
 		aggregatorMutex.Unlock()
+		if current != nil {
+			current.Shutdown()
+		}
 	})
 
 	// An unreachable address should cause Ping to fail and return an error.
@@ -214,7 +219,7 @@ func TestMetricsAggregator_StartPublishing_PublishesOnStart(t *testing.T) {
 	ma, _ := newTestAggregator(t)
 
 	// Run startPublishing in background; it calls publishMetrics immediately.
-	go ma.startPublishing()
+	ma.startPublishingAsync()
 
 	// Give the initial synchronous publish time to complete, then cancel.
 	time.Sleep(80 * time.Millisecond)
@@ -627,4 +632,106 @@ func TestMetricsAggregator_Shutdown_Idempotent(t *testing.T) {
 		ma.Shutdown()
 		ma.Shutdown()
 	})
+}
+
+// TestMetricsAggregator_Shutdown_RemovesInstanceMetricsBeforeClose is the L3
+// regression test. It runs the real publisher goroutine (as
+// InitializeMetricsAggregator does) with a tight publish interval to provoke
+// the shutdown-ordering race, then asserts the instance's key and set
+// membership are gone the moment Shutdown() returns - not left lingering
+// until Redis TTL expiry.
+func TestMetricsAggregator_Shutdown_RemovesInstanceMetricsBeforeClose(t *testing.T) {
+	minimalCfg(t)
+
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	t.Cleanup(func() { mr.Close() })
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	ctx, cancel := context.WithCancel(context.Background())
+
+	ma := &MetricsAggregator{
+		redisClient:  client,
+		logger:       libpack_logger.New(),
+		instanceID:   "shutdown-race-test",
+		publishKey:   "graphql-proxy:metrics:instances",
+		ttl:          30 * time.Second,
+		publishTimer: time.NewTicker(5 * time.Millisecond), // tight interval to provoke the race
+		ctx:          ctx,
+		cancel:       cancel,
+	}
+
+	// Run the publisher goroutine exactly like InitializeMetricsAggregator does.
+	ma.startPublishingAsync()
+
+	// Let it publish at least once so the key/set-membership exist before shutdown.
+	time.Sleep(30 * time.Millisecond)
+
+	ma.Shutdown()
+
+	// Give the (now-exiting) publisher goroutine a moment to observe
+	// ctx.Done(); the race detector will flag it if it still touches Redis.
+	time.Sleep(30 * time.Millisecond)
+
+	key := fmt.Sprintf("%s:%s", ma.publishKey, ma.instanceID)
+
+	// Query miniredis directly - ma.redisClient is closed by now.
+	assert.False(t, mr.Exists(key), "instance key must be removed before Shutdown returns, not left lingering until TTL")
+
+	// SREM-ing the only member deletes the set key itself (matches real
+	// Redis semantics for empty collections), so the set key must be gone.
+	assert.False(t, mr.Exists(ma.publishKey), "instance must be removed from the cluster set before Shutdown returns")
+
+	// Confirm the client really is closed - proves the cleanup ran before
+	// Close(), not that Close() never happened.
+	closedErr := ma.redisClient.Ping(context.Background()).Err()
+	assert.Error(t, closedErr, "redis client must be closed after Shutdown")
+}
+
+// TestMetricsAggregator_Shutdown_ClearsSingleton_AllowsReinit is the L6
+// regression test: Shutdown() must clear the package-level singleton so a
+// later InitializeMetricsAggregator call produces a fresh, usable instance
+// instead of silently no-oping against the closed one.
+func TestMetricsAggregator_Shutdown_ClearsSingleton_AllowsReinit(t *testing.T) {
+	// Register mr.Close() before the singleton-restore cleanup below: t.Cleanup
+	// runs LIFO, and the restore cleanup calls Shutdown() on the live instance,
+	// which needs a still-running Redis server. Registering mr.Close() first
+	// means it runs last, after that Shutdown() call has completed.
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	t.Cleanup(func() { mr.Close() })
+
+	aggregatorMutex.Lock()
+	old := metricsAggregator
+	metricsAggregator = nil
+	aggregatorMutex.Unlock()
+	t.Cleanup(func() {
+		// Grab-and-release before calling Shutdown(): Shutdown() itself
+		// locks aggregatorMutex, so it must not be invoked while this
+		// goroutine still holds it.
+		aggregatorMutex.Lock()
+		current := metricsAggregator
+		metricsAggregator = old
+		aggregatorMutex.Unlock()
+		if current != nil {
+			current.Shutdown()
+		}
+	})
+
+	require.NoError(t, InitializeMetricsAggregator(mr.Addr(), "", 0, libpack_logger.New()))
+	first := GetMetricsAggregator()
+	require.NotNil(t, first, "first Initialize must produce a usable aggregator")
+
+	first.Shutdown()
+
+	assert.Nil(t, GetMetricsAggregator(), "singleton must be cleared after Shutdown so a closed instance is never returned again")
+
+	require.NoError(t, InitializeMetricsAggregator(mr.Addr(), "", 0, libpack_logger.New()), "re-Initialize after Shutdown must succeed, not silently no-op")
+	second := GetMetricsAggregator()
+	require.NotNil(t, second)
+	assert.NotSame(t, first, second, "re-Initialize must produce a fresh instance, not the closed one")
+
+	// The new instance's Redis client must actually work (not closed).
+	_, err = second.GetAggregatedMetrics()
+	assert.NoError(t, err, "the re-initialized aggregator's Redis client must be usable")
 }
