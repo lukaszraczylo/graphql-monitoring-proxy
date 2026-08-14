@@ -573,7 +573,7 @@ func apiConnectionPoolHealth(c fiber.Ctx) error {
 		"connection_failures":     connectionFailures,
 		"last_recovery_attempt":   stats["last_recovery_attempt"],
 		"cleanup_interval":        "30s",
-		"keepalive_interval":      "15s",
+		"keepalive_interval":      poolMgr.keepAliveInterval.String(),
 		"recovery_check_interval": "60s",
 	}
 
