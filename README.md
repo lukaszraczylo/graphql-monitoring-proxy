@@ -169,6 +169,14 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `HEALTHCHECK_GRAPHQL_URL` | The URL to check the health of the graphql endpoint | `` |
 | `JWT_USER_CLAIM_PATH`     | Path to the user claim in the JWT token  | ``                         |
 | `JWT_ROLE_CLAIM_PATH`     | Path to the role claim in the JWT token  | ``                         |
+| `JWT_VERIFY_SIGNATURE`    | Verify the JWT signature before trusting its claims (see [Caching](#caching)) | `false` |
+| `JWT_SECRET`              | HMAC shared secret used to verify the signature (HS256/HS384/HS512) | `` |
+| `JWT_PUBLIC_KEY`          | PEM public key used to verify the signature (RSA or ECDSA), inline or a file path | `` |
+| `JWT_JWKS_URL`            | JWKS endpoint used to verify the signature, with automatic key rotation | `` |
+| `JWT_SIGNING_METHODS`     | Comma-separated list of allowed algorithms, for example `RS256,ES256` | `` (allows the whole key family) |
+| `JWT_ISSUER`              | Expected `iss` claim, checked only when set | `` |
+| `JWT_AUDIENCE`            | Expected `aud` claim, checked only when set | `` |
+| `JWT_LEEWAY_SECONDS`      | Clock-skew tolerance, in seconds, for the `exp` and `nbf` checks | `0` |
 | `ROLE_FROM_HEADER`        | Header name to extract the role from     | ``                         |
 | `ROLE_RATE_LIMIT`         | Enable request rate limiting based on role| `false`                   |
 | `ENABLE_GLOBAL_CACHE`     | Enable the cache                        | `false`                    |
@@ -379,7 +387,9 @@ You can then start using the cache by setting the `ENABLE_GLOBAL_CACHE` or `ENAB
 - Identical queries with different roles are cached separately
 - This keeps distinct identities from sharing a cache entry
 
-**Note on the security scope of this isolation**: The proxy decodes the JWT payload for the user ID and role, but it does not verify the JWT signature. A cache hit also returns before the request reaches the upstream backend's own authorization check. Treat the user/role split in the cache key as isolation between honest clients, not as an authorization boundary. Do not rely on it to stop a forged token from reaching another user's cached data. Cache keys include user context by default; keep this enabled in multi-user applications.
+**Note on the security scope of this isolation**: By default, the proxy decodes the JWT payload for the user ID and role, but it does not verify the JWT signature. A cache hit also returns before the request reaches the upstream backend's own authorization check. Treat the user/role split in the cache key as isolation between honest clients, not as an authorization boundary, unless you enable signature verification. Do not rely on the unverified split alone to stop a forged token from reaching another user's cached data. Cache keys include user context by default; keep this enabled in multi-user applications.
+
+**Verifying the JWT signature**: Set `JWT_VERIFY_SIGNATURE=true` and configure exactly one key source: `JWT_SECRET`, `JWT_PUBLIC_KEY`, or `JWT_JWKS_URL`. The proxy then checks the token signature before it trusts any claim. It rejects a request that carries an invalid, expired, or algorithm-mismatched token with a `401` response. A request with no `Authorization` header still stays anonymous. It is not rejected. This setting is off by default, so an upgrade with no configuration change keeps today's behaviour. A misconfigured key source, such as zero or more than one of the three sources above, stops the proxy at startup instead of running half-configured.
 
 Example:
 ```graphql

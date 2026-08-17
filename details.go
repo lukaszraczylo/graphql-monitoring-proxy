@@ -15,31 +15,56 @@ const defaultValue = "-"
 
 var emptyMetrics = map[string]string{}
 
-func extractClaimsFromJWTHeader(authorization string) (usr, role string) {
+// extractClaimsFromJWTHeader extracts the user ID and role claim from an
+// Authorization header value.
+//
+// When cfg.Client.JWTVerifier is set (JWT_VERIFY_SIGNATURE=true), the token
+// signature is checked first; a signature, expiry, or algorithm failure
+// returns a non-nil err and the caller must not trust usr/role (this is the
+// fix for GHSA-9gqw-h2rw-44wv, where a forged token with a guessed claim
+// could otherwise read another user's cached response).
+//
+// When JWTVerifier is nil (the default), this falls back to the legacy
+// path: the payload is decoded without checking its signature, exactly as
+// before this field existed. err is always nil on that path, matching
+// pre-verification behaviour byte for byte.
+func extractClaimsFromJWTHeader(authorization string) (usr, role string, err error) {
 	usr, role = defaultValue, defaultValue
+
+	if cfg.Client.JWTVerifier != nil {
+		claimMap, verr := cfg.Client.JWTVerifier.Verify(authorization)
+		if verr != nil {
+			handleError("JWT verification failed", map[string]any{"token": maskToken(authorization)})
+			return defaultValue, defaultValue, verr
+		}
+
+		usr = extractClaim(claimMap, cfg.Client.JWTUserClaimPath, "user id")
+		role = extractClaim(claimMap, cfg.Client.JWTRoleClaimPath, "role")
+		return usr, role, nil
+	}
 
 	tokenParts := strings.SplitN(authorization, ".", 3)
 	if len(tokenParts) != 3 {
 		handleError("Can't split the token", map[string]any{"token": maskToken(authorization)})
-		return
+		return usr, role, nil
 	}
 
-	claim, err := base64.RawURLEncoding.DecodeString(tokenParts[1])
-	if err != nil {
+	claim, decErr := base64.RawURLEncoding.DecodeString(tokenParts[1])
+	if decErr != nil {
 		handleError("Can't decode the token", map[string]any{"token": maskToken(authorization)})
-		return
+		return usr, role, nil
 	}
 
 	var claimMap map[string]any
-	if err = json.Unmarshal(claim, &claimMap); err != nil {
+	if jsonErr := json.Unmarshal(claim, &claimMap); jsonErr != nil {
 		handleError("Can't unmarshal the claim", map[string]any{"token": maskToken(authorization)})
-		return
+		return usr, role, nil
 	}
 
 	usr = extractClaim(claimMap, cfg.Client.JWTUserClaimPath, "user id")
 	role = extractClaim(claimMap, cfg.Client.JWTRoleClaimPath, "role")
 
-	return
+	return usr, role, nil
 }
 
 func extractClaim(claimMap map[string]any, claimPath, name string) string {

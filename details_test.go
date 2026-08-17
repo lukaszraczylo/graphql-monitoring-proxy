@@ -73,7 +73,8 @@ func (suite *Tests) Test_extractClaimsFromJWTHeader() {
 			if len(tt.jwt_role_path) > 0 {
 				cfg.Client.JWTRoleClaimPath = tt.jwt_role_path
 			}
-			gotUsr, gotRole := extractClaimsFromJWTHeader(tt.args.authorization)
+			gotUsr, gotRole, err := extractClaimsFromJWTHeader(tt.args.authorization)
+			suite.NoError(err, "Unexpected verification error")
 			suite.Equal(tt.wantUsr, gotUsr, "Unexpected user ID")
 			suite.Equal(tt.wantRole, gotRole, "Unexpected role")
 		})

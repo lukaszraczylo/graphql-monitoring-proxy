@@ -713,7 +713,14 @@ func performProxyRequest(c fiber.Ctx, proxyURL string) error {
 	// reached without going through handleCaching (direct callers).
 	cacheKey, _ := c.Locals("query_cache_hash").(string)
 	if cacheKey == "" {
-		userID, userRole := extractUserInfo(c)
+		// Error intentionally ignored: the primary rejection for an
+		// invalid/forged token already happened in processGraphQLRequest
+		// (it 401s before the request ever reaches here). On a verify
+		// failure extractUserInfo returns ("-", "-", err), so a forged
+		// token still only maps into the shared anonymous cache bucket
+		// below, never into a genuine, verified user's own bucket
+		// (GHSA-9gqw-h2rw-44wv).
+		userID, userRole, _ := extractUserInfo(c)
 		cacheKey = libpack_cache.CalculateHash(c, userID, userRole)
 	}
 

@@ -207,7 +207,11 @@ func handleWebSocketOrDefault(c fiber.Ctx) error {
 	if IsWebSocketRequest(c) {
 		wsp := GetWebSocketProxy()
 		if wsp != nil {
-			extractedUserID, extractedRoleName := extractUserInfo(c)
+			extractedUserID, extractedRoleName, authErr := extractUserInfo(c)
+			if authErr != nil {
+				cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+				return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired authorization token")
+			}
 
 			if checkIfUserIsBanned(c, extractedUserID) {
 				return c.Status(fiber.StatusForbidden).SendString("User is banned")
@@ -378,7 +382,11 @@ func processGraphQLRequest(c fiber.Ctx) error {
 	startTime := time.Now()
 
 	// Extract user information and check permissions
-	extractedUserID, extractedRoleName := extractUserInfo(c)
+	extractedUserID, extractedRoleName, authErr := extractUserInfo(c)
+	if authErr != nil {
+		cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)
+		return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired authorization token")
+	}
 
 	// Check if user is banned
 	if checkIfUserIsBanned(c, extractedUserID) {
@@ -424,15 +432,31 @@ func processGraphQLRequest(c fiber.Ctx) error {
 	return nil
 }
 
-// extractUserInfo extracts user ID and role from request headers
-func extractUserInfo(c fiber.Ctx) (string, string) {
-	extractedUserID := "-"
-	extractedRoleName := "-"
+// extractUserInfo extracts the user ID and role from request headers.
+//
+// On a JWT signature verification failure (cfg.Client.JWTVerifier set and
+// the Authorization header carries an invalid/expired/forged token), it
+// returns ("-", "-", err) without applying the RoleFromHeader override, so
+// callers can 401 the request instead of proxying it under a wrong or
+// forged identity (GHSA-9gqw-h2rw-44wv). A missing Authorization header is
+// never an error; the request stays anonymous, exactly like before
+// verification existed.
+func extractUserInfo(c fiber.Ctx) (string, string, error) {
+	extractedUserID := defaultValue
+	extractedRoleName := defaultValue
 
-	// Extract from JWT if available
+	// Extract from JWT if available. The claim-path check keeps the legacy
+	// (verify-off) gate unchanged; when a verifier IS configured, any
+	// Authorization header must still be checked even with no claim path
+	// set, otherwise JWT_VERIFY_SIGNATURE=true alone would never call
+	// Verify and the forged-token rejection below would never trigger.
 	if authorization := c.Get("Authorization"); authorization != "" &&
-		(len(cfg.Client.JWTUserClaimPath) > 0 || len(cfg.Client.JWTRoleClaimPath) > 0) {
-		extractedUserID, extractedRoleName = extractClaimsFromJWTHeader(authorization)
+		(len(cfg.Client.JWTUserClaimPath) > 0 || len(cfg.Client.JWTRoleClaimPath) > 0 || cfg.Client.JWTVerifier != nil) {
+		usr, role, err := extractClaimsFromJWTHeader(authorization)
+		if err != nil {
+			return defaultValue, defaultValue, err
+		}
+		extractedUserID, extractedRoleName = usr, role
 	}
 
 	// Override role from header if configured
@@ -442,7 +466,7 @@ func extractUserInfo(c fiber.Ctx) (string, string) {
 		}
 	}
 
-	return extractedUserID, extractedRoleName
+	return extractedUserID, extractedRoleName, nil
 }
 
 // handleCaching manages the caching logic for GraphQL requests

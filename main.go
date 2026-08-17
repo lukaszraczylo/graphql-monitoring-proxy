@@ -273,6 +273,22 @@ func parseConfig() {
 		os.Exit(1)
 	}
 
+	// JWT signature verification (GHSA-9gqw-h2rw-44wv): read here, next to the
+	// claim-path variables, but the verifier itself is built further down
+	// (after c.Logger exists) so a fatal misconfiguration can be logged
+	// through the normal logger, matching the other fatal-config-error
+	// patterns in this function. Off by default -- JWT_VERIFY_SIGNATURE=false
+	// or unset keeps today's unverified claim decode (see
+	// extractClaimsFromJWTHeader in details.go) byte-for-byte unchanged.
+	jwtVerifySignature := getDetailsFromEnv("JWT_VERIFY_SIGNATURE", false)
+	jwtSecret := getDetailsFromEnv("JWT_SECRET", "")
+	jwtPublicKey := getDetailsFromEnv("JWT_PUBLIC_KEY", "")
+	jwtJWKSURL := getDetailsFromEnv("JWT_JWKS_URL", "")
+	jwtSigningMethods := getDetailsFromEnv("JWT_SIGNING_METHODS", "")
+	jwtIssuer := getDetailsFromEnv("JWT_ISSUER", "")
+	jwtAudience := getDetailsFromEnv("JWT_AUDIENCE", "")
+	jwtLeewaySeconds := getDetailsFromEnv("JWT_LEEWAY_SECONDS", 0)
+
 	c.Client.RoleFromHeader = getDetailsFromEnv("ROLE_FROM_HEADER", "")
 	c.Client.RoleRateLimit = getDetailsFromEnv("ROLE_RATE_LIMIT", false)
 	// In-memory cache
@@ -664,6 +680,42 @@ func parseConfig() {
 	}
 
 	// Note: RPS tracker is initialized in main() with context for graceful shutdown
+
+	// Initialize JWT signature verification (GHSA-9gqw-h2rw-44wv). The proxy
+	// derives per-user cache keys from JWT claims (see details.go); those
+	// claims were previously trusted without checking the token's signature,
+	// so a forged token with a guessed claim could read another user's
+	// cached response. A misconfigured key source here is fatal: the proxy
+	// must never boot half-configured, trusting claims it cannot actually
+	// verify.
+	if jwtVerifySignature {
+		verifier, err := newJWTVerifier(jwtVerifierConfig{
+			Secret:         jwtSecret,
+			PublicKeyPEM:   jwtPublicKey,
+			JWKSURL:        jwtJWKSURL,
+			SigningMethods: jwtSigningMethods,
+			Issuer:         jwtIssuer,
+			Audience:       jwtAudience,
+			LeewaySeconds:  jwtLeewaySeconds,
+		})
+		if err != nil {
+			cfg.Logger.Error(&libpack_logging.LogMessage{
+				Message: "Failed to initialize JWT signature verification",
+				Pairs:   map[string]any{"error": err.Error()},
+			})
+
+			if ifNotInTest() {
+				fmt.Fprintln(os.Stderr, "❌ CRITICAL ERROR: JWT_VERIFY_SIGNATURE is enabled but misconfigured")
+				fmt.Fprintln(os.Stderr, err.Error())
+				os.Exit(1)
+			}
+		} else {
+			cfg.Client.JWTVerifier = verifier
+			cfg.Logger.Info(&libpack_logging.LogMessage{
+				Message: "JWT signature verification enabled",
+			})
+		}
+	}
 
 	// Load rate limit configuration with improved error handling
 	if err := loadRatelimitConfig(); err != nil {

@@ -42,21 +42,26 @@ type config struct {
 		PerUserCacheDisabled  bool // Disable per-user cache isolation (SECURITY RISK - not recommended)
 	}
 	Client struct {
-		GQLClient            *graphql.BaseClient
-		FastProxyClient      *fasthttp.Client
-		JWTUserClaimPath     string
-		JWTRoleClaimPath     string
-		RoleFromHeader       string
-		proxy                string
-		ClientTimeout        int
-		MaxConnsPerHost      int
-		ReadTimeout          int
-		WriteTimeout         int
-		MaxIdleConnDuration  int
-		RetryBaseDelayMs     int // initial backoff delay in milliseconds (default 500)
-		RetryMaxDelayMs      int // maximum backoff delay in milliseconds (default 10000)
-		RoleRateLimit        bool
-		DisableTLSVerify     bool
+		GQLClient        *graphql.BaseClient
+		FastProxyClient  *fasthttp.Client
+		JWTUserClaimPath string
+		JWTRoleClaimPath string
+		// JWTVerifier verifies JWT signatures before extractClaimsFromJWTHeader
+		// trusts a claim from the token (GHSA-9gqw-h2rw-44wv). nil (the default)
+		// means JWT_VERIFY_SIGNATURE is off and claims are decoded unverified,
+		// exactly like before this field existed.
+		JWTVerifier         *JWTVerifier
+		RoleFromHeader      string
+		proxy               string
+		ClientTimeout       int
+		MaxConnsPerHost     int
+		ReadTimeout         int
+		WriteTimeout        int
+		MaxIdleConnDuration int
+		RetryBaseDelayMs    int // initial backoff delay in milliseconds (default 500)
+		RetryMaxDelayMs     int // maximum backoff delay in milliseconds (default 10000)
+		RoleRateLimit       bool
+		DisableTLSVerify    bool
 	}
 	Server struct {
 		HostGraphQL         string
