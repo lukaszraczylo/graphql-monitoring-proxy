@@ -2,6 +2,8 @@ module github.com/lukaszraczylo/graphql-monitoring-proxy
 
 go 1.25.0
 
+toolchain go1.26.6
+
 require (
 	github.com/MicahParks/keyfunc/v3 v3.8.1
 	github.com/VictoriaMetrics/metrics v1.44.0
