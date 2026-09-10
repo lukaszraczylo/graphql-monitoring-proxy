@@ -442,6 +442,10 @@ func parseConfig() {
 
 	// Create HTTP client with the optimized parameters
 	c.Client.FastProxyClient = createFasthttpClient(&c)
+	// fiber v3.5.0+ guards clients registered via proxy.WithClient against
+	// loopback/private upstreams. The upstream is operator-configured
+	// (HOST_GRAPHQL) and is commonly a localhost sidecar, so allow it.
+	proxy.WithSecurityPolicy(proxy.SecurityPolicy{AllowPrivateIPs: true})
 	proxy.WithClient(c.Client.FastProxyClient) // Setting the global proxy client
 	// API configurations
 	c.Server.EnableApi = getDetailsFromEnv("ENABLE_API", false)
