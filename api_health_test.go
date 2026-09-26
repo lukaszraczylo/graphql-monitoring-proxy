@@ -62,7 +62,7 @@ func TestApiBackendHealth_HealthyManager_Returns200(t *testing.T) {
 	defer func() { backendHealthManager = orig }()
 
 	// inject a healthy manager directly (bypassing sync.Once)
-	mgr := NewBackendHealthManager(&fasthttp.Client{}, "http://localhost:8080", libpack_logger.New())
+	mgr := NewBackendHealthManager(&fasthttp.Client{}, "http://localhost:8080", "", libpack_logger.New())
 	mgr.isHealthy.Store(true)
 	backendHealthManager = mgr
 
@@ -86,7 +86,7 @@ func TestApiBackendHealth_UnhealthyManager_Returns503(t *testing.T) {
 	orig := backendHealthManager
 	defer func() { backendHealthManager = orig }()
 
-	mgr := NewBackendHealthManager(&fasthttp.Client{}, "http://localhost:8080", libpack_logger.New())
+	mgr := NewBackendHealthManager(&fasthttp.Client{}, "http://localhost:8080", "", libpack_logger.New())
 	mgr.isHealthy.Store(false)
 	backendHealthManager = mgr
 

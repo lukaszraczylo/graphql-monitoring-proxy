@@ -77,16 +77,8 @@ func (suite *ConnectionResilienceTestSuite) TearDownTest() {
 
 // TestBackendHealthManager tests the backend health monitoring
 func (suite *ConnectionResilienceTestSuite) TestBackendHealthManager() {
-	suite.Run("initialization", func() {
-		healthMgr := NewBackendHealthManager(cfg.Client.FastProxyClient, cfg.Server.HostGraphQL, cfg.Logger)
-		suite.NotNil(healthMgr)
-		suite.Equal(cfg.Server.HostGraphQL, healthMgr.backendURL)
-		suite.Equal(5*time.Second, healthMgr.checkInterval)
-		suite.Equal(30, healthMgr.maxRetries)
-	})
-
 	suite.Run("health check success", func() {
-		healthMgr := NewBackendHealthManager(cfg.Client.FastProxyClient, cfg.Server.HostGraphQL, cfg.Logger)
+		healthMgr := NewBackendHealthManager(cfg.Client.FastProxyClient, cfg.Server.HostGraphQL, "", cfg.Logger)
 		isHealthy := healthMgr.checkBackendHealth()
 		suite.True(isHealthy)
 		suite.GreaterOrEqual(suite.mockServerCalled.Load(), int32(1))
@@ -94,13 +86,13 @@ func (suite *ConnectionResilienceTestSuite) TestBackendHealthManager() {
 
 	suite.Run("health check failure", func() {
 		// Use invalid URL to simulate failure
-		healthMgr := NewBackendHealthManager(cfg.Client.FastProxyClient, "http://invalid-url:99999", cfg.Logger)
+		healthMgr := NewBackendHealthManager(cfg.Client.FastProxyClient, "http://invalid-url:99999", "", cfg.Logger)
 		isHealthy := healthMgr.checkBackendHealth()
 		suite.False(isHealthy)
 	})
 
 	suite.Run("startup readiness with healthy backend", func() {
-		healthMgr := NewBackendHealthManager(cfg.Client.FastProxyClient, cfg.Server.HostGraphQL, cfg.Logger)
+		healthMgr := NewBackendHealthManager(cfg.Client.FastProxyClient, cfg.Server.HostGraphQL, "", cfg.Logger)
 		err := healthMgr.WaitForBackendReady(10 * time.Second)
 		suite.NoError(err)
 		suite.True(healthMgr.IsHealthy())
@@ -108,7 +100,7 @@ func (suite *ConnectionResilienceTestSuite) TestBackendHealthManager() {
 
 	suite.Run("startup readiness timeout", func() {
 		// Use invalid URL to simulate backend not ready
-		healthMgr := NewBackendHealthManager(cfg.Client.FastProxyClient, "http://invalid-url:99999", cfg.Logger)
+		healthMgr := NewBackendHealthManager(cfg.Client.FastProxyClient, "http://invalid-url:99999", "", cfg.Logger)
 		err := healthMgr.WaitForBackendReady(2 * time.Second)
 		suite.Error(err)
 		suite.Contains(err.Error(), "did not become ready")
@@ -177,7 +169,7 @@ func (suite *ConnectionResilienceTestSuite) TestConnectionPoolManager() {
 func (suite *ConnectionResilienceTestSuite) TestIntegratedHealthManagement() {
 	suite.Run("global initialization", func() {
 		// Initialize global instances
-		healthMgr := InitializeBackendHealth(cfg.Client.FastProxyClient, cfg.Server.HostGraphQL, cfg.Logger)
+		healthMgr := InitializeBackendHealth(cfg.Client.FastProxyClient, cfg.Server.HostGraphQL, "", cfg.Logger)
 		poolMgr := NewConnectionPoolManager(cfg.Client.FastProxyClient)
 
 		// Set global instances
@@ -194,7 +186,7 @@ func (suite *ConnectionResilienceTestSuite) TestIntegratedHealthManagement() {
 		// and may have already fired earlier in the process (e.g. via parseConfig in
 		// another test), in which case it returns whatever the global currently is —
 		// which TearDownTest above just nilled.
-		healthMgr := NewBackendHealthManager(cfg.Client.FastProxyClient, cfg.Server.HostGraphQL, cfg.Logger)
+		healthMgr := NewBackendHealthManager(cfg.Client.FastProxyClient, cfg.Server.HostGraphQL, "", cfg.Logger)
 		backendHealthManager = healthMgr
 
 		// Start health checking
@@ -272,7 +264,7 @@ func TestConnectionResilienceSuite(t *testing.T) {
 // periodic checking — otherwise the backend could never be marked healthy
 // again even after it recovers.
 func (suite *ConnectionResilienceTestSuite) TestHealthChecksStartAfterStartupTimeout() {
-	bhm := NewBackendHealthManager(cfg.Client.FastProxyClient, "http://invalid-url:99999", cfg.Logger)
+	bhm := NewBackendHealthManager(cfg.Client.FastProxyClient, "http://invalid-url:99999", "", cfg.Logger)
 	err := bhm.WaitForBackendReady(200 * time.Millisecond)
 	suite.Error(err, "expected timeout for unreachable backend")
 

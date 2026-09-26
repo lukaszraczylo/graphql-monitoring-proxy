@@ -64,10 +64,11 @@ type config struct {
 		DisableTLSVerify    bool
 	}
 	Server struct {
-		HostGraphQL         string
-		HostGraphQLReadOnly string
-		HealthcheckGraphQL  string
-		AllowURLs           []string // List of allowed URL paths for access control
+		HostGraphQL           string
+		HostGraphQLReadOnly   string
+		HealthcheckGraphQL    string
+		BackendHealthcheckURL string
+		AllowURLs             []string // List of allowed URL paths for access control
 		// BindAddress is the host portion of every listener's bind address
 		// (GraphQL proxy, admin API, monitoring). Empty (the default)
 		// preserves the existing ":port" behavior of binding all

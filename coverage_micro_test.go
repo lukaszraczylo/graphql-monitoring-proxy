@@ -187,7 +187,7 @@ func TestCoverageMicro_BackendHealth(t *testing.T) {
 	client := &fasthttp.Client{}
 
 	t.Run("updateHealthStatus healthy→unhealthy transition", func(t *testing.T) {
-		bhm := NewBackendHealthManager(client, "http://localhost:9999", logger)
+		bhm := NewBackendHealthManager(client, "http://localhost:9999", "", logger)
 		defer bhm.Shutdown()
 
 		// Start healthy
@@ -203,7 +203,7 @@ func TestCoverageMicro_BackendHealth(t *testing.T) {
 	})
 
 	t.Run("updateHealthStatus unhealthy→healthy resets counter", func(t *testing.T) {
-		bhm := NewBackendHealthManager(client, "http://localhost:9999", logger)
+		bhm := NewBackendHealthManager(client, "http://localhost:9999", "", logger)
 		defer bhm.Shutdown()
 
 		bhm.isHealthy.Store(false)
@@ -219,7 +219,7 @@ func TestCoverageMicro_BackendHealth(t *testing.T) {
 	})
 
 	t.Run("GetLastHealthCheck round-trip", func(t *testing.T) {
-		bhm := NewBackendHealthManager(client, "http://localhost:9999", logger)
+		bhm := NewBackendHealthManager(client, "http://localhost:9999", "", logger)
 		defer bhm.Shutdown()
 
 		before := time.Now()

@@ -167,6 +167,7 @@ You can still use the non-prefixed environment variables in the spirit of the ba
 | `HOST_GRAPHQL`            | The host to proxy the graphql endpoint   | `http://localhost/` |
 | `HOST_GRAPHQL_READONLY`   | The host to proxy the read-only graphql endpoint | ``               |
 | `HEALTHCHECK_GRAPHQL_URL` | The URL to check the health of the graphql endpoint | `` |
+| `BACKEND_HEALTHCHECK_URL` | Optional HTTP readiness URL for startup and periodic backend checks; empty keeps the GraphQL probe | `` |
 | `JWT_USER_CLAIM_PATH`     | Path to the user claim in the JWT token  | ``                         |
 | `JWT_ROLE_CLAIM_PATH`     | Path to the role claim in the JWT token  | ``                         |
 | `JWT_VERIFY_SIGNATURE`    | Verify the JWT signature before trusting its claims (see [Caching](#caching)) | `false` |
@@ -1126,6 +1127,12 @@ With the `PURGE_METRICS_ON_CRAWL` enabled, the `graphql_proxy_requests_failed`, 
 #### Healthcheck
 
 If you'd like the `/healthz` endpoint to perform actual check for the connectivity to the graphql endpoint - set the `HEALTHCHECK_GRAPHQL_URL` environment variable to the exact URL of the graphql endpoint. The query executed will be `query { __typename }` and if the response is not `200 OK` - the healthcheck will fail. Remember that the endpoint is a full URL which you'd like to check, so it should include the protocol, host and path - for example `http://localhost:8080/v1/graphql` and it's NOT the same as value of `HOST_GRAPHQL` environment variable which should provide only the host, without path, ending with slash.
+
+`BACKEND_HEALTHCHECK_URL` controls a separate check: the backend health manager's startup and periodic probes. Set it to an unauthenticated readiness endpoint, for example `http://127.0.0.1:8080/ready`. The manager sends `GET` to the supplied path and query, without a GraphQL body or authentication headers. Any 2xx response is healthy; network errors, timeouts, and other status codes are unhealthy. The request timeout remains five seconds, and redirects are not followed.
+
+When this variable is empty, the manager continues to send an unauthenticated `POST` containing `{"query":"{__typename}"}` to `HOST_GRAPHQL`. It preserves a supplied path, or appends `/v1/graphql` when there is no path beyond `/`. A configured readiness URL must use HTTP or HTTPS with a nonempty host and no userinfo or fragment. Invalid configuration stops startup; it does not fall back to GraphQL. Do not put secrets in the URL: probe targets are logged.
+
+This setting does not change `HEALTHCHECK_GRAPHQL_URL`, the API `/healthz` check, GraphQL authorization, or headers on forwarded client requests. Keep the GraphQL endpoint protected; only the readiness endpoint must accept these unauthenticated probes.
 
 #### Monitoring endpoint
 

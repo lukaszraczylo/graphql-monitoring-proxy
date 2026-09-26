@@ -246,6 +246,33 @@ func validateJWTClaimPath(path string) error {
 	return nil
 }
 
+func validateBackendHealthcheckURL(rawURL string) error {
+	if rawURL == "" {
+		return nil
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		// Parse errors can include credentials from the rejected URL.
+		return fmt.Errorf("must be a valid HTTP or HTTPS URL")
+	}
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.Opaque != "" {
+		return fmt.Errorf("must use HTTP or HTTPS with a nonempty host")
+	}
+	if u.User != nil {
+		return fmt.Errorf("must not contain userinfo or credentials")
+	}
+	if u.Fragment != "" {
+		return fmt.Errorf("must not contain a fragment")
+	}
+	if port := u.Port(); port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return fmt.Errorf("must use a port between 1 and 65535")
+		}
+	}
+	return nil
+}
+
 // parseConfig loads and parses the configuration.
 func parseConfig() {
 	libpack_config.PKG_NAME = "graphql_proxy"
@@ -259,6 +286,11 @@ func parseConfig() {
 	c.Server.BindAddress = getDetailsFromEnv("BIND_ADDRESS", "")
 	c.Server.HostGraphQL = getDetailsFromEnv("HOST_GRAPHQL", "http://localhost/")
 	c.Server.HostGraphQLReadOnly = getDetailsFromEnv("HOST_GRAPHQL_READONLY", "")
+	c.Server.BackendHealthcheckURL = getDetailsFromEnv("BACKEND_HEALTHCHECK_URL", "")
+	if err := validateBackendHealthcheckURL(c.Server.BackendHealthcheckURL); err != nil {
+		fmt.Fprintf(os.Stderr, "CRITICAL ERROR: Invalid BACKEND_HEALTHCHECK_URL: %v\n", err)
+		os.Exit(1)
+	}
 	// Client configurations
 	c.Client.JWTUserClaimPath = getDetailsFromEnv("JWT_USER_CLAIM_PATH", "")
 	c.Client.JWTRoleClaimPath = getDetailsFromEnv("JWT_ROLE_CLAIM_PATH", "")
@@ -678,7 +710,7 @@ func parseConfig() {
 
 	// Initialize backend health manager
 	if cfg.Server.HostGraphQL != "" {
-		healthMgr := InitializeBackendHealth(cfg.Client.FastProxyClient, cfg.Server.HostGraphQL, cfg.Logger)
+		healthMgr := InitializeBackendHealth(cfg.Client.FastProxyClient, cfg.Server.HostGraphQL, cfg.Server.BackendHealthcheckURL, cfg.Logger)
 		// Start health checking in background
 		healthMgr.StartHealthChecking()
 	}
