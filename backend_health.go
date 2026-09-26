@@ -22,6 +22,8 @@ type BackendHealthManager struct {
 	logger           *libpack_logger.Logger
 	cancel           context.CancelFunc
 	backendURL       string
+	healthCheckURL   string
+	useHTTPReadiness bool
 	checkInterval    time.Duration
 	maxRetries       int
 	mu               sync.RWMutex
@@ -32,18 +34,41 @@ type BackendHealthManager struct {
 }
 
 // NewBackendHealthManager creates a new backend health manager
-func NewBackendHealthManager(client *fasthttp.Client, backendURL string, logger *libpack_logger.Logger) *BackendHealthManager {
+func NewBackendHealthManager(client *fasthttp.Client, backendURL, readinessURL string, logger *libpack_logger.Logger) *BackendHealthManager {
 	ctx, cancel := context.WithCancel(context.Background())
+	healthCheckURL := readinessURL
+	if healthCheckURL == "" {
+		healthCheckURL = backendGraphQLHealthURL(backendURL)
+	} else {
+		// Path normalization is a client setting in fasthttp. Use a separate
+		// pool so readiness URLs stay exact without changing forwarded traffic.
+		client = &fasthttp.Client{
+			Dial:                     client.Dial,
+			DialTimeout:              client.DialTimeout,
+			TLSConfig:                client.TLSConfig,
+			ReadTimeout:              client.ReadTimeout,
+			WriteTimeout:             client.WriteTimeout,
+			MaxIdleConnDuration:      client.MaxIdleConnDuration,
+			MaxConnDuration:          client.MaxConnDuration,
+			ReadBufferSize:           client.ReadBufferSize,
+			WriteBufferSize:          client.WriteBufferSize,
+			MaxResponseBodySize:      client.MaxResponseBodySize,
+			NoDefaultUserAgentHeader: client.NoDefaultUserAgentHeader,
+			DisablePathNormalizing:   true,
+		}
+	}
 	return &BackendHealthManager{
-		client:        client,
-		backendURL:    backendURL,
-		checkInterval: 5 * time.Second,
-		maxRetries:    30, // 30 * 5s = 2.5 minutes max startup wait
-		ctx:           ctx,
-		cancel:        cancel,
-		logger:        logger,
-		startupProbe:  true,
-		readinessChan: make(chan bool, 1),
+		client:           client,
+		backendURL:       backendURL,
+		healthCheckURL:   healthCheckURL,
+		useHTTPReadiness: readinessURL != "",
+		checkInterval:    5 * time.Second,
+		maxRetries:       30, // 30 * 5s = 2.5 minutes max startup wait
+		ctx:              ctx,
+		cancel:           cancel,
+		logger:           logger,
+		startupProbe:     true,
+		readinessChan:    make(chan bool, 1),
 	}
 }
 
@@ -59,6 +84,7 @@ func (bhm *BackendHealthManager) WaitForBackendReady(timeout time.Duration) erro
 		Message: "Waiting for GraphQL backend to become ready",
 		Pairs: map[string]any{
 			"backend_url": bhm.backendURL,
+			"check_url":   bhm.healthCheckURL,
 			"timeout":     timeout.String(),
 		},
 	})
@@ -149,42 +175,14 @@ func (bhm *BackendHealthManager) checkBackendHealth() bool {
 	defer fasthttp.ReleaseRequest(req)
 	defer fasthttp.ReleaseResponse(resp)
 
-	// Determine the health check URL
-	// If backendURL is just "http://host:port" or "http://host:port/", append /v1/graphql
-	// If it has a path like "/v1/graphql", use that path
-	healthCheckURL := bhm.backendURL
-	hasGraphQLPath := false
-
-	if len(bhm.backendURL) > 0 {
-		// Simple check: if URL has a path component beyond just "/"
-		lastSlash := -1
-		protoEnd := 0
-		if idx := strings.Index(bhm.backendURL, "://"); idx >= 0 {
-			protoEnd = idx + 3
-		}
-		for i := protoEnd; i < len(bhm.backendURL); i++ {
-			if bhm.backendURL[i] == '/' {
-				lastSlash = i
-				break
-			}
-		}
-		// Has path if there's a slash after protocol and it's not the last char or followed by more path
-		hasGraphQLPath = lastSlash >= protoEnd && lastSlash < len(bhm.backendURL)-1
-
-		// If no GraphQL path, append /v1/graphql (standard Hasura endpoint)
-		if !hasGraphQLPath {
-			// Remove trailing slash if present
-			baseURL := strings.TrimSuffix(bhm.backendURL, "/")
-			healthCheckURL = baseURL + "/v1/graphql"
-		}
+	req.SetRequestURI(bhm.healthCheckURL)
+	if bhm.useHTTPReadiness {
+		req.Header.SetMethod(http.MethodGet)
+	} else {
+		req.Header.SetMethod(http.MethodPost)
+		req.Header.SetContentType("application/json")
+		req.SetBodyString(`{"query":"{__typename}"}`)
 	}
-
-	// Always send GraphQL introspection query for health check
-	healthQuery := `{"query":"{__typename}"}`
-	req.SetRequestURI(healthCheckURL)
-	req.Header.SetMethod(http.MethodPost)
-	req.Header.SetContentType("application/json")
-	req.SetBody([]byte(healthQuery))
 
 	// Short timeout for health checks
 	err := bhm.client.DoTimeout(req, resp, 5*time.Second)
@@ -193,7 +191,7 @@ func (bhm *BackendHealthManager) checkBackendHealth() bool {
 			Message: "Backend health check failed",
 			Pairs: map[string]any{
 				"error":     err.Error(),
-				"check_url": healthCheckURL,
+				"check_url": bhm.healthCheckURL,
 			},
 		})
 		return false
@@ -207,7 +205,7 @@ func (bhm *BackendHealthManager) checkBackendHealth() bool {
 			Message: "Backend returned unhealthy status",
 			Pairs: map[string]any{
 				"status_code": statusCode,
-				"check_url":   healthCheckURL,
+				"check_url":   bhm.healthCheckURL,
 			},
 		})
 	}
@@ -284,6 +282,9 @@ func (bhm *BackendHealthManager) Shutdown() {
 		return
 	}
 	bhm.cancel()
+	if bhm.useHTTPReadiness {
+		bhm.client.CloseIdleConnections()
+	}
 	if bhm.logger != nil {
 		bhm.logger.Info(&libpack_logger.LogMessage{
 			Message: "Backend health manager shut down",
@@ -298,9 +299,9 @@ var (
 )
 
 // InitializeBackendHealth initializes the backend health manager
-func InitializeBackendHealth(client *fasthttp.Client, backendURL string, logger *libpack_logger.Logger) *BackendHealthManager {
+func InitializeBackendHealth(client *fasthttp.Client, backendURL, readinessURL string, logger *libpack_logger.Logger) *BackendHealthManager {
 	backendHealthOnce.Do(func() {
-		backendHealthManager = NewBackendHealthManager(client, backendURL, logger)
+		backendHealthManager = NewBackendHealthManager(client, backendURL, readinessURL, logger)
 	})
 	return backendHealthManager
 }
@@ -308,4 +309,18 @@ func InitializeBackendHealth(client *fasthttp.Client, backendURL string, logger 
 // GetBackendHealthManager returns the global backend health manager
 func GetBackendHealthManager() *BackendHealthManager {
 	return backendHealthManager
+}
+
+func backendGraphQLHealthURL(backendURL string) string {
+	if backendURL == "" {
+		return ""
+	}
+	protoEnd := 0
+	if idx := strings.Index(backendURL, "://"); idx >= 0 {
+		protoEnd = idx + 3
+	}
+	if pathStart := strings.IndexByte(backendURL[protoEnd:], '/'); pathStart >= 0 && protoEnd+pathStart < len(backendURL)-1 {
+		return backendURL
+	}
+	return strings.TrimSuffix(backendURL, "/") + "/v1/graphql"
 }
