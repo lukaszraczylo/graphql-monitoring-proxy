@@ -9,7 +9,7 @@ require (
 	github.com/VictoriaMetrics/metrics v1.44.0
 	github.com/alicebob/miniredis/v2 v2.33.0
 	github.com/avast/retry-go/v4 v4.7.0
-	github.com/goccy/go-json v0.10.6
+	github.com/goccy/go-json v0.11.1
 	github.com/gofiber/contrib/v3/websocket v1.2.6
 	github.com/gofiber/fiber/v3 v3.5.0
 	github.com/gofrs/flock v0.13.1
