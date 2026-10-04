@@ -24,7 +24,7 @@ require (
 	github.com/lukaszraczylo/go-simple-graphql v1.2.89
 	github.com/lukaszraczylo/oss-telemetry v0.2.5
 	github.com/redis/go-redis/v9 v9.22.0
-	github.com/sony/gobreaker v1.0.0
+	github.com/sony/gobreaker/v2 v2.4.0
 	github.com/stretchr/testify v1.12.1
 	github.com/valyala/fasthttp v1.74.0
 	go.opentelemetry.io/otel v1.47.0

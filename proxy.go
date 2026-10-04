@@ -23,7 +23,7 @@ import (
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 	libpack_tracing "github.com/lukaszraczylo/graphql-monitoring-proxy/tracing"
-	"github.com/sony/gobreaker"
+	"github.com/sony/gobreaker/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -91,7 +91,7 @@ var circuitBreakerCountWindow = 10 * time.Minute
 
 // Global circuit breaker
 var (
-	cb      *gobreaker.CircuitBreaker
+	cb      *gobreaker.CircuitBreaker[any]
 	cbMutex sync.RWMutex
 )
 
@@ -240,7 +240,7 @@ func initCircuitBreaker(config *config) {
 	}
 
 	// Initialize the circuit breaker
-	cb = gobreaker.NewCircuitBreaker(cbSettings)
+	cb = gobreaker.NewCircuitBreaker[any](cbSettings)
 
 	config.Logger.Info(&libpack_logger.LogMessage{
 		Message: "Circuit breaker initialized",
@@ -530,7 +530,7 @@ func effectiveCircuitBackoff(base time.Duration, multiplier float64, maxBackoff 
 // allocation- and lock-free on the hot path. now is a parameter (not
 // time.Now() read internally) so tests can drive this deterministically
 // without wall-clock sleeps.
-func circuitBackoffGateBlocks(config *config, breaker *gobreaker.CircuitBreaker, now time.Time) bool {
+func circuitBackoffGateBlocks(config *config, breaker *gobreaker.CircuitBreaker[any], now time.Time) bool {
 	trips := cbBackoff.trips()
 	if trips <= 0 {
 		return false

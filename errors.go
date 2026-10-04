@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sony/gobreaker"
+	"github.com/sony/gobreaker/v2"
 )
 
 // Error codes for structured error responses

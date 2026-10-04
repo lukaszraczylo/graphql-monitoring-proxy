@@ -14,7 +14,7 @@ import (
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_config "github.com/lukaszraczylo/graphql-monitoring-proxy/config"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
-	"github.com/sony/gobreaker"
+	"github.com/sony/gobreaker/v2"
 )
 
 var bannedUsersIDs sync.Map // key: userID string, value: reason string

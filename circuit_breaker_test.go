@@ -15,7 +15,7 @@ import (
 	libpack_cache_memory "github.com/lukaszraczylo/graphql-monitoring-proxy/cache/memory"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
-	"github.com/sony/gobreaker"
+	"github.com/sony/gobreaker/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"github.com/valyala/fasthttp"
@@ -497,7 +497,7 @@ func (suite *CircuitBreakerTestSuite) TestCircuitBreakerFailureRatioWindow() {
 func (suite *CircuitBreakerTestSuite) TestCircuitBackoffResetsOnSuccessfulRecovery() {
 	cbMutex.Lock()
 	cbBackoff.reset()
-	cb = gobreaker.NewCircuitBreaker(gobreaker.Settings{
+	cb = gobreaker.NewCircuitBreaker[any](gobreaker.Settings{
 		Name:          "recovery-test",
 		MaxRequests:   1,
 		Timeout:       5 * time.Millisecond,
@@ -682,7 +682,7 @@ func TestCircuitBackoffGateBlocks(t *testing.T) {
 			testCfg.CircuitBreaker.BackoffMultiplier = tt.multiplier
 			testCfg.CircuitBreaker.MaxBackoffTimeout = int(tt.maxBackoff / time.Second)
 
-			breaker := gobreaker.NewCircuitBreaker(gobreaker.Settings{Name: "gate-test"})
+			breaker := gobreaker.NewCircuitBreaker[any](gobreaker.Settings{Name: "gate-test"})
 			now := tripTime.Add(tt.elapsed)
 
 			got := circuitBackoffGateBlocks(testCfg, breaker, now)
@@ -725,10 +725,10 @@ func TestCircuitBackoffLongerClosedDoorWithHigherMultiplier(t *testing.T) {
 	cfgProgressive.CircuitBreaker.BackoffMultiplier = 2.0
 
 	seed()
-	blockedAtDefault := circuitBackoffGateBlocks(cfgDefault, gobreaker.NewCircuitBreaker(gobreaker.Settings{Name: "default"}), now)
+	blockedAtDefault := circuitBackoffGateBlocks(cfgDefault, gobreaker.NewCircuitBreaker[any](gobreaker.Settings{Name: "default"}), now)
 
 	seed()
-	blockedAtProgressive := circuitBackoffGateBlocks(cfgProgressive, gobreaker.NewCircuitBreaker(gobreaker.Settings{Name: "progressive"}), now)
+	blockedAtProgressive := circuitBackoffGateBlocks(cfgProgressive, gobreaker.NewCircuitBreaker[any](gobreaker.Settings{Name: "progressive"}), now)
 
 	assert.False(t, blockedAtDefault, "multiplier=1.0 (default): base has already elapsed, gate must match today's behaviour and not block")
 	assert.True(t, blockedAtProgressive, "multiplier=2.0: effective backoff has not yet elapsed at the same instant, gate must still block -- strictly longer closed-door time than the default")
