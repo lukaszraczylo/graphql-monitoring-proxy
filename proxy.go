@@ -17,7 +17,7 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/avast/retry-go/v4"
+	"github.com/avast/retry-go/v5"
 	"github.com/gofiber/fiber/v3"
 	libpack_cache "github.com/lukaszraczylo/graphql-monitoring-proxy/cache"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
@@ -978,10 +978,7 @@ func performProxyRequestWithEnhancedRetries(c fiber.Ctx, proxyURL string, backen
 		maxDelayTime = time.Duration(maxDelayMs) * time.Millisecond
 	}
 
-	return retry.Do(
-		func() error {
-			return executeProxyAttempt(c, req)
-		},
+	return retry.New(
 		retry.Attempts(attempts),
 		retry.DelayType(retry.BackOffDelay),
 		retry.Delay(initialDelay),
@@ -1056,7 +1053,9 @@ func performProxyRequestWithEnhancedRetries(c fiber.Ctx, proxyURL string, backen
 			}
 			return true
 		}),
-	)
+	).Do(func() error {
+		return executeProxyAttempt(c, req)
+	})
 }
 
 // isConnectionError checks if the error is a connection-related error

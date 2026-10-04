@@ -8,7 +8,7 @@ require (
 	github.com/MicahParks/keyfunc/v3 v3.8.2
 	github.com/VictoriaMetrics/metrics v1.44.1
 	github.com/alicebob/miniredis/v2 v2.33.0
-	github.com/avast/retry-go/v4 v4.7.0
+	github.com/avast/retry-go/v5 v5.0.0
 	github.com/goccy/go-json v0.11.2
 	github.com/gofiber/contrib/v3/websocket v1.2.7
 	github.com/gofiber/fiber/v3 v3.5.0
@@ -38,6 +38,7 @@ require (
 require (
 	github.com/MicahParks/jwkset v0.11.3 // indirect
 	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
+	github.com/avast/retry-go/v4 v4.7.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/fasthttp/websocket v1.5.12 // indirect
