@@ -2,12 +2,12 @@ module github.com/lukaszraczylo/graphql-monitoring-proxy
 
 go 1.26.0
 
-toolchain go1.26.6
+toolchain go1.27.1
 
 require (
 	github.com/MicahParks/keyfunc/v3 v3.8.2
 	github.com/VictoriaMetrics/metrics v1.44.1
-	github.com/alicebob/miniredis/v2 v2.33.0
+	github.com/alicebob/miniredis/v2 v2.39.0
 	github.com/avast/retry-go/v5 v5.0.0
 	github.com/goccy/go-json v0.11.2
 	github.com/gofiber/contrib/v3/websocket v1.2.7
@@ -37,7 +37,6 @@ require (
 
 require (
 	github.com/MicahParks/jwkset v0.11.3 // indirect
-	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
 	github.com/avast/retry-go/v4 v4.7.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -60,7 +59,7 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fastrand v1.1.0 // indirect
 	github.com/valyala/histogram v1.2.0 // indirect
-	github.com/yuin/gopher-lua v1.1.1 // indirect
+	github.com/yuin/gopher-lua v1.1.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.47.0 // indirect
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
