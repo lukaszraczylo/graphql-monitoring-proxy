@@ -2,6 +2,8 @@ package libpack_cache_redis
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
 	"sync/atomic"
 	"testing"
 
@@ -125,19 +127,9 @@ func TestClear_NormalPrefix_StillClearsAllOwnedKeys(t *testing.T) {
 // intercept DEL commands without a rewrite of RedisConfig into an
 // interface-backed mock, which the task's infra allows.
 //
-// Every DEL call is made to fail (not just one). A test that lets only one
-// batch's DEL succeed was tried first, and does not work against miniredis:
-// its SCAN implementation uses an index-based cursor over a sorted key
-// snapshot (cmd_generic.go cmdScan), which is invalidated as soon as a
-// preceding batch actually deletes keys mid-scan (the very "scan, then
-// delete this batch" loop Clear uses), causing miniredis to abort the SCAN
-// early with a synthetic empty result before Clear's loop reaches the next
-// batch. Real Redis's SCAN cursor (reverse binary iteration) is documented
-// to be robust against concurrent deletion during a single full iteration
-// and would not exhibit this; it is a miniredis simplification, not a
-// RedisConfig defect. Failing every batch's DEL sidesteps it (no batch is
-// ever actually deleted, so the key set never shrinks between scans) while
-// still proving Clear does not stop scanning after the first DEL error.
+// Every DEL call is made to fail so the key set never shrinks between
+// scans. SCAN is paginated by the hook itself because miniredis ignores
+// COUNT and returns every key in one batch.
 func TestClear_AllBatchesDelFail_AttemptsEveryBatchAndAggregatesErrors(t *testing.T) {
 	s, err := miniredis.Run()
 	require.NoError(t, err)
@@ -146,10 +138,7 @@ func TestClear_AllBatchesDelFail_AttemptsEveryBatchAndAggregatesErrors(t *testin
 	rc, err := New(&RedisClientConfig{RedisServer: s.Addr(), Prefix: "pfx:"})
 	require.NoError(t, err)
 
-	// miniredis SCAN batches deterministically by COUNT over the sorted,
-	// match-filtered key set (see cmd_generic.go cmdScan), so 250 owned keys
-	// with a SCAN COUNT of 100 (as used by Clear) yields exactly 3 batches:
-	// [0:100), [100:200), [200:250).
+	// 250 owned keys with a SCAN page size of 100 yield exactly 3 batches.
 	const totalKeys = 250
 	const wantBatches = 3
 	for i := 0; i < totalKeys; i++ {
@@ -158,7 +147,26 @@ func TestClear_AllBatchesDelFail_AttemptsEveryBatchAndAggregatesErrors(t *testin
 	}
 
 	var seen int32
-	s.Server().SetPreHook(func(c *miniredis_server.Peer, cmd string, _ ...string) bool {
+	const scanPage = 100
+	s.Server().SetPreHook(func(c *miniredis_server.Peer, cmd string, args ...string) bool {
+		if cmd == "SCAN" {
+			cursor, convErr := strconv.Atoi(args[0])
+			if convErr != nil {
+				c.WriteError("ERR invalid cursor")
+				return true
+			}
+			keys := s.Keys()
+			sort.Strings(keys)
+			end := min(cursor+scanPage, len(keys))
+			next := end
+			if end == len(keys) {
+				next = 0
+			}
+			c.WriteLen(2)
+			c.WriteBulk(strconv.Itoa(next))
+			c.WriteStrings(keys[cursor:end])
+			return true
+		}
 		if cmd != "DEL" {
 			return false // let miniredis handle everything else normally
 		}
