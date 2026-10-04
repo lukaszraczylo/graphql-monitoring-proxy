@@ -20,7 +20,7 @@ require (
 	github.com/graphql-go/graphql v0.8.1
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/lukaszraczylo/ask v0.0.0-20240916204100-6e9ef53a62d9
-	github.com/lukaszraczylo/go-ratecounter v0.1.12
+	github.com/lukaszraczylo/go-ratecounter v0.1.13
 	github.com/lukaszraczylo/go-simple-graphql v1.2.89
 	github.com/lukaszraczylo/oss-telemetry v0.2.5
 	github.com/redis/go-redis/v9 v9.22.0
