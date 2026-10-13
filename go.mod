@@ -7,7 +7,7 @@ toolchain go1.27.2
 require (
 	github.com/MicahParks/keyfunc/v3 v3.8.2
 	github.com/VictoriaMetrics/metrics v1.44.1
-	github.com/alicebob/miniredis/v2 v2.39.0
+	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/avast/retry-go/v5 v5.0.0
 	github.com/goccy/go-json v0.11.2
 	github.com/gofiber/contrib/v3/websocket v1.2.7
@@ -15,7 +15,7 @@ require (
 	github.com/gofrs/flock v0.13.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
-	github.com/gookit/goutil v0.8.1
+	github.com/gookit/goutil v0.8.2
 	github.com/gorilla/websocket v1.5.3
 	github.com/graphql-go/graphql v0.8.1
 	github.com/jackc/pgx/v5 v5.11.0
