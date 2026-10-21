@@ -2,7 +2,7 @@ module github.com/lukaszraczylo/graphql-monitoring-proxy
 
 go 1.26.0
 
-toolchain go1.27.2
+toolchain go1.27.3
 
 require (
 	github.com/MicahParks/keyfunc/v3 v3.8.2
@@ -26,7 +26,7 @@ require (
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/sony/gobreaker/v2 v2.4.0
 	github.com/stretchr/testify v1.12.1
-	github.com/valyala/fasthttp v1.75.0
+	github.com/valyala/fasthttp v1.76.0
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.47.0
 	go.opentelemetry.io/otel/sdk v1.47.0
