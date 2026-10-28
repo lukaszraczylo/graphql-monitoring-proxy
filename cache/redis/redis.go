@@ -32,6 +32,9 @@ func escapeGlobPattern(s string) string {
 	return globEscaper.Replace(s)
 }
 
+// scanCountBatch is the SCAN COUNT hint used when counting keys.
+const scanCountBatch = 1000
+
 type RedisConfig struct {
 	ctx         context.Context
 	client      *redis.Client
@@ -163,12 +166,28 @@ func (c *RedisConfig) Clear() error {
 // literally instead of being interpreted as a wildcard, which would
 // otherwise undercount or overcount keys in admin-dashboard stats.
 func (c *RedisConfig) CountQueries() (int64, error) {
-	pattern := escapeGlobPattern(c.prefix) + "*"
-	keys, err := c.client.Keys(c.ctx, pattern).Result()
-	if err != nil {
-		return 0, err
+	return c.scanCount(escapeGlobPattern(c.prefix) + "*")
+}
+
+// scanCount counts keys matching pattern with a cursor SCAN. KEYS builds the
+// whole reply in memory on the server and blocks it, which spiked a shared
+// Dragonfly to its memory limit when the prefix is empty.
+func (c *RedisConfig) scanCount(pattern string) (int64, error) {
+	var (
+		cursor uint64
+		total  int64
+	)
+	for {
+		keys, next, err := c.client.Scan(c.ctx, cursor, pattern, scanCountBatch).Result()
+		if err != nil {
+			return 0, fmt.Errorf("redis: scan at cursor %d: %w", cursor, err)
+		}
+		total += int64(len(keys))
+		cursor = next
+		if cursor == 0 {
+			return total, nil
+		}
 	}
-	return int64(len(keys)), nil
 }
 
 // CountQueriesWithPattern returns the number of keys owned by this cache
@@ -177,12 +196,11 @@ func (c *RedisConfig) CountQueries() (int64, error) {
 // itself is left as given so a caller can still use glob metacharacters
 // intentionally in the suffix it supplies.
 func (c *RedisConfig) CountQueriesWithPattern(pattern string) (int, error) {
-	fullPattern := escapeGlobPattern(c.prefix) + pattern
-	keys, err := c.client.Keys(c.ctx, fullPattern).Result()
+	total, err := c.scanCount(escapeGlobPattern(c.prefix) + pattern)
 	if err != nil {
 		return 0, err
 	}
-	return len(keys), nil
+	return int(total), nil
 }
 
 // GetMemoryUsage returns an approximation of memory usage for Redis.
