@@ -18,7 +18,7 @@ require (
 	github.com/gookit/goutil v0.8.6
 	github.com/gorilla/websocket v1.5.3
 	github.com/graphql-go/graphql v0.8.1
-	github.com/jackc/pgx/v5 v5.11.0
+	github.com/jackc/pgx/v5 v5.12.0
 	github.com/lukaszraczylo/ask v0.0.0-20240916204100-6e9ef53a62d9
 	github.com/lukaszraczylo/go-ratecounter v0.1.13
 	github.com/lukaszraczylo/go-simple-graphql v1.2.89
@@ -43,7 +43,7 @@ require (
 	github.com/fasthttp/websocket v1.5.12 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/gofiber/schema v1.9.1 // indirect
+	github.com/gofiber/schema v1.9.2 // indirect
 	github.com/gofiber/utils/v2 v2.6.3 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.33.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
