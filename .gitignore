@@ -5,3 +5,6 @@ dist/
 coverage.out
 CLAUDE.md
 graphql-monitoring-proxy
+
+# Lean proofs: local only, never committed
+theorems/

@@ -148,29 +148,37 @@ func (rb *RetryBudget) refill() {
 	now := time.Now().UnixNano()
 	last := rb.lastRefill.Load()
 
-	// Calculate elapsed time in seconds
-	elapsed := float64(now-last) / float64(time.Second)
+	tokensToAdd, newLast := refillStep(tokensPerSecond, last, now)
+	if tokensToAdd <= 0 {
+		return
+	}
+	if rb.lastRefill.CompareAndSwap(last, newLast) {
+		for {
+			current := rb.currentTokens.Load()
+			newValue := current + tokensToAdd
+			if newValue > maxTokens {
+				newValue = maxTokens
+			}
 
-	// Calculate tokens to add
-	tokensToAdd := int64(elapsed * tokensPerSecond)
-
-	if tokensToAdd > 0 {
-		// Update last refill time
-		if rb.lastRefill.CompareAndSwap(last, now) {
-			// Add tokens, capped at maxTokens
-			for {
-				current := rb.currentTokens.Load()
-				newValue := current + tokensToAdd
-				if newValue > maxTokens {
-					newValue = maxTokens
-				}
-
-				if rb.currentTokens.CompareAndSwap(current, newValue) {
-					break
-				}
+			if rb.currentTokens.CompareAndSwap(current, newValue) {
+				break
 			}
 		}
 	}
+}
+
+// refillStep returns the whole tokens earned between last and now (ns) and the
+// clock to store. The clock advances only by the time those tokens pay for, so
+// the fractional remainder carries into the next tick.
+func refillStep(tokensPerSecond float64, last, now int64) (int64, int64) {
+	if tokensPerSecond <= 0 || now <= last {
+		return 0, last
+	}
+	tokens := int64(float64(now-last) / float64(time.Second) * tokensPerSecond)
+	if tokens <= 0 {
+		return 0, last
+	}
+	return tokens, last + int64(float64(tokens)/tokensPerSecond*float64(time.Second))
 }
 
 // GetStats returns current statistics
