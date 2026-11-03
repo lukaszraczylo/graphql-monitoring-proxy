@@ -8,17 +8,17 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
-	goratecounter "github.com/lukaszraczylo/go-ratecounter"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
 // RateLimitConfig holds the rate limit configuration for a role
 type RateLimitConfig struct {
-	RateCounterTicker *goratecounter.RateCounter
+	// sustained enforces Req over the full Interval.
+	sustained *attemptWindow
 	// burstCounter enforces Burst over a short trailing window, independent
-	// of RateCounterTicker's sustained-rate window. Nil when Burst <= 0
+	// of the sustained window. Nil when Burst <= 0
 	// (burst disabled). See burstWindow and checkRateLimit for semantics.
-	burstCounter *burstWindow
+	burstCounter *attemptWindow
 	Endpoints    []string      `json:"endpoints,omitempty"`
 	Interval     time.Duration `json:"interval"`
 	Req          int           `json:"req"`
@@ -107,51 +107,6 @@ func burstWindowDuration(interval time.Duration) time.Duration {
 	return w
 }
 
-// burstWindow is a minimal, clock-injectable, trailing-window request
-// counter used to enforce RateLimitConfig.Burst independently of the
-// sustained-rate RateCounterTicker.
-//
-// go-ratecounter@v0.1.12 cannot provide this second, shorter window
-// cleanly: the window length lives on *RateCounter itself, not per named
-// Counter (helpers.go: GetRate -> c.parent.interval.Seconds()), so two
-// different window lengths need two separate RateCounter instances. Each
-// instance drives its own background goroutine off wall-clock time.Now with
-// no seam to inject a fake clock (helpers.go: start(), cleanUpOldValues(),
-// addValue() all call time.Now() directly). That would force any test of
-// window rollover to sleep on real time. burstWindow is implemented here
-// instead, with a swappable clock, so tests can advance time deterministically.
-type burstWindow struct {
-	mu     sync.Mutex
-	now    func() time.Time
-	window time.Duration
-	hits   []time.Time
-}
-
-// newBurstWindow returns a burstWindow that tracks hits over the trailing
-// duration window, using the real wall clock.
-func newBurstWindow(window time.Duration) *burstWindow {
-	return &burstWindow{now: time.Now, window: window}
-}
-
-// recordAndCount records a hit at the current time, drops hits older than
-// the trailing window, and returns the resulting hit count within the
-// window. Safe for concurrent use.
-func (b *burstWindow) recordAndCount() int {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	now := b.now()
-	cutoff := now.Add(-b.window)
-	live := b.hits[:0]
-	for _, t := range b.hits {
-		if t.After(cutoff) {
-			live = append(live, t)
-		}
-	}
-	live = append(live, now)
-	b.hits = live
-	return len(b.hits)
-}
-
 // Variable to hold the current load config function - allows for testing
 var loadConfigFunc = loadConfigFromPath
 
@@ -237,14 +192,12 @@ func loadConfigFromPath(path string) error {
 
 	newRateLimits := make(map[string]RateLimitConfig, len(config.RateLimit))
 	for key, value := range config.RateLimit {
-		value.RateCounterTicker = goratecounter.NewRateCounter().WithConfig(goratecounter.RateCounterConfig{
-			Interval: value.Interval,
-		})
+		value.sustained = newAttemptWindow(value.Interval, value.Req)
 
 		// Burst disabled (<=0) leaves burstCounter nil, so checkRateLimit
 		// performs the Req-only check exactly as before burst existed.
 		if value.Burst > 0 {
-			value.burstCounter = newBurstWindow(burstWindowDuration(value.Interval))
+			value.burstCounter = newAttemptWindow(burstWindowDuration(value.Interval), value.Burst)
 		}
 
 		if cfg.LogLevel == "DEBUG" {
@@ -279,7 +232,7 @@ func rateLimitedRequest(userID, userRole string) bool {
 	// Try to get config from atomic value first for better performance
 	if configInterface := rateLimitConfigAtomic.Load(); configInterface != nil {
 		if config, ok := configInterface.(map[string]RateLimitConfig); ok {
-			if roleConfig, exists := config[userRole]; exists && roleConfig.RateCounterTicker != nil {
+			if roleConfig, exists := config[userRole]; exists && roleConfig.sustained != nil {
 				return checkRateLimit(userID, userRole, roleConfig, "")
 			}
 		}
@@ -290,7 +243,7 @@ func rateLimitedRequest(userID, userRole string) bool {
 	roleConfig, ok := rateLimits[userRole]
 	rateLimitMu.RUnlock()
 
-	if !ok || roleConfig.RateCounterTicker == nil {
+	if !ok || roleConfig.sustained == nil {
 		cfg.Logger.Warning(&libpack_logger.LogMessage{
 			Message: "Rate limit role not found or ticker not initialized - defaulting to deny",
 			Pairs:   map[string]any{"user_role": userRole},
@@ -315,45 +268,37 @@ func rateLimitedRequest(userID, userRole string) bool {
 // sustained count. Burst >= Req therefore never rejects anything the sustained
 // gate admits; Burst only takes effect when it is below Req.
 func checkRateLimit(userID, userRole string, roleConfig RateLimitConfig, endpoint string) bool {
-	roleConfig.RateCounterTicker.Incr(1)
-	tickerRate := roleConfig.RateCounterTicker.Get()
+	debug := cfg.Logger.IsLevelEnabled(libpack_logger.LEVEL_DEBUG)
 
-	logDetails := map[string]any{
-		"user_role":   userRole,
-		"user_id":     userID,
-		"rate":        tickerRate,
-		"config_rate": roleConfig.Req,
-		"interval":    roleConfig.Interval,
-		"endpoint":    endpoint,
-	}
-
-	cfg.Logger.Debug(&libpack_logger.LogMessage{
-		Message: "Rate limit ticker",
-		Pairs:   map[string]any{"log_details": logDetails},
-	})
-
-	if tickerRate > int64(roleConfig.Req) {
-		cfg.Logger.Debug(&libpack_logger.LogMessage{
-			Message: "Rate limit exceeded",
-			Pairs:   map[string]any{"log_details": logDetails},
-		})
+	if roleConfig.sustained.recordAndExceeds() {
+		if debug {
+			cfg.Logger.Debug(&libpack_logger.LogMessage{
+				Message: "Rate limit exceeded",
+				Pairs: map[string]any{
+					"user_role":   userRole,
+					"user_id":     userID,
+					"config_rate": roleConfig.Req,
+					"interval":    roleConfig.Interval,
+					"endpoint":    endpoint,
+				},
+			})
+		}
 		return false
 	}
 
 	if roleConfig.burstCounter != nil {
-		burstCount := roleConfig.burstCounter.recordAndCount()
-		burstLogDetails := map[string]any{
-			"user_role":    userRole,
-			"user_id":      userID,
-			"burst_count":  burstCount,
-			"config_burst": roleConfig.Burst,
-			"endpoint":     endpoint,
-		}
-		if burstCount > roleConfig.Burst {
-			cfg.Logger.Debug(&libpack_logger.LogMessage{
-				Message: "Burst limit exceeded",
-				Pairs:   map[string]any{"log_details": burstLogDetails},
-			})
+		if roleConfig.burstCounter.recordAndExceeds() {
+			if debug {
+				cfg.Logger.Debug(&libpack_logger.LogMessage{
+					Message: "Burst limit exceeded",
+					Pairs: map[string]any{
+						"user_role":    userRole,
+						"user_id":      userID,
+						"config_burst": roleConfig.Burst,
+						"endpoint":     endpoint,
+					},
+				})
+			}
 			return false
 		}
 	}

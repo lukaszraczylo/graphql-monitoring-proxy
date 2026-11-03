@@ -11,7 +11,6 @@ import (
 
 	fiber "github.com/gofiber/fiber/v3"
 	gorillaws "github.com/gorilla/websocket"
-	goratecounter "github.com/lukaszraczylo/go-ratecounter"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 	libpack_monitoring "github.com/lukaszraczylo/graphql-monitoring-proxy/monitoring"
 	"github.com/stretchr/testify/assert"
@@ -652,11 +651,9 @@ func TestHandleWebSocketOrDefault_RateLimitedUserRejected(t *testing.T) {
 	rateLimitMu.Lock()
 	rateLimits = map[string]RateLimitConfig{
 		defaultValue: {
-			RateCounterTicker: goratecounter.NewRateCounter().WithConfig(goratecounter.RateCounterConfig{
-				Interval: 1 * time.Second,
-			}),
-			Interval: 1 * time.Second,
-			Req:      0,
+			sustained: newAttemptWindow(1*time.Second, 0),
+			Interval:  1 * time.Second,
+			Req:       0,
 		},
 	}
 	rateLimitConfigAtomic.Store(rateLimits)

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/goccy/go-json"
-	goratecounter "github.com/lukaszraczylo/go-ratecounter"
 	libpack_logger "github.com/lukaszraczylo/graphql-monitoring-proxy/logging"
 )
 
@@ -65,8 +64,8 @@ func (suite *Tests) Test_loadRatelimitConfig() {
 		suite.Contains(rateLimits, "user")
 		suite.Equal(100, rateLimits["admin"].Req)
 		suite.Equal(10, rateLimits["user"].Req)
-		suite.NotNil(rateLimits["admin"].RateCounterTicker)
-		suite.NotNil(rateLimits["user"].RateCounterTicker)
+		suite.NotNil(rateLimits["admin"].sustained)
+		suite.NotNil(rateLimits["user"].sustained)
 	})
 
 	// Test loading config from non-existent path
@@ -154,23 +153,17 @@ func (suite *Tests) Test_rateLimitedRequest() {
 	rateLimits = make(map[string]RateLimitConfig)
 
 	// Admin role with high limit
-	adminCounter := goratecounter.NewRateCounter().WithConfig(goratecounter.RateCounterConfig{
-		Interval: 1 * time.Second,
-	})
 	rateLimits["admin"] = RateLimitConfig{
-		RateCounterTicker: adminCounter,
-		Interval:          1 * time.Second,
-		Req:               100,
+		sustained: newAttemptWindow(1*time.Second, 100),
+		Interval:  1 * time.Second,
+		Req:       100,
 	}
 
 	// User role with low limit
-	userCounter := goratecounter.NewRateCounter().WithConfig(goratecounter.RateCounterConfig{
-		Interval: 1 * time.Second,
-	})
 	rateLimits["user"] = RateLimitConfig{
-		RateCounterTicker: userCounter,
-		Interval:          1 * time.Second,
-		Req:               2, // Set very low for testing
+		sustained: newAttemptWindow(1*time.Second, 2),
+		Interval:  1 * time.Second,
+		Req:       2, // Set very low for testing
 	}
 	rateLimitMu.Unlock()
 
@@ -327,19 +320,17 @@ func (f *fakeClock) Advance(d time.Duration) {
 }
 
 // newBurstTestRoleConfig mirrors the RateLimitConfig construction performed
-// by loadConfigFromPath: a real RateCounterTicker for the sustained check,
+// by loadConfigFromPath: a real sustained window for the Req check,
 // and (only when burst > 0) a burstCounter sized by burstWindowDuration.
 func newBurstTestRoleConfig(interval time.Duration, req, burst int) RateLimitConfig {
 	rc := RateLimitConfig{
-		RateCounterTicker: goratecounter.NewRateCounter().WithConfig(goratecounter.RateCounterConfig{
-			Interval: interval,
-		}),
-		Interval: interval,
-		Req:      req,
-		Burst:    burst,
+		sustained: newAttemptWindow(interval, req),
+		Interval:  interval,
+		Req:       req,
+		Burst:     burst,
 	}
 	if burst > 0 {
-		rc.burstCounter = newBurstWindow(burstWindowDuration(interval))
+		rc.burstCounter = newAttemptWindow(burstWindowDuration(interval), burst)
 	}
 	return rc
 }
