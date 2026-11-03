@@ -131,11 +131,11 @@ func (suite *RedisConfigSuite) TestGetKeys() {
 	err = suite.redisConfig.Set("otherkey", []byte("othervalue"), ttl)
 	assert.NoError(suite.T(), err)
 
-	keys, _ := suite.redisConfig.client.Keys(suite.redisConfig.ctx, "testkey*").Result()
-	expectedKeys := []string{"testkey1", "testkey2"}
+	keys, _ := suite.redisConfig.client.Keys(suite.redisConfig.ctx, DefaultKeyPrefix+"testkey*").Result()
+	expectedKeys := []string{DefaultKeyPrefix + "testkey1", DefaultKeyPrefix + "testkey2"}
 	assert.ElementsMatch(suite.T(), expectedKeys, keys)
 
-	suite.redisConfig.client.Del(suite.redisConfig.ctx, "testkey1", "testkey2", "otherkey")
+	suite.redisConfig.client.Del(suite.redisConfig.ctx, DefaultKeyPrefix+"testkey1", DefaultKeyPrefix+"testkey2", DefaultKeyPrefix+"otherkey")
 }
 
 func (suite *RedisConfigSuite) TestGetKeysCount() {
@@ -154,5 +154,5 @@ func (suite *RedisConfigSuite) TestGetKeysCount() {
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), int64(3), count3)
 
-	suite.redisConfig.client.Del(suite.redisConfig.ctx, "testkey1", "testkey2", "otherkey")
+	suite.redisConfig.client.Del(suite.redisConfig.ctx, DefaultKeyPrefix+"testkey1", DefaultKeyPrefix+"testkey2", DefaultKeyPrefix+"otherkey")
 }

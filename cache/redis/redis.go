@@ -83,7 +83,15 @@ type RedisClientConfig struct {
 // entry.
 const defaultTTL = 60 * time.Second
 
+// DefaultKeyPrefix namespaces cache keys when no prefix is configured, so Clear
+// and CountQueries never touch keys of other applications on a shared Redis.
+const DefaultKeyPrefix = "gmp:"
+
 func New(redisClientConfig *RedisClientConfig) (*RedisConfig, error) {
+	prefix := redisClientConfig.Prefix
+	if prefix == "" {
+		prefix = DefaultKeyPrefix
+	}
 	c := &RedisConfig{
 		client: redis.NewClient(&redis.Options{
 			Addr:     redisClientConfig.RedisServer,
@@ -91,7 +99,7 @@ func New(redisClientConfig *RedisClientConfig) (*RedisConfig, error) {
 			DB:       redisClientConfig.RedisDB,
 		}),
 		ctx:    context.Background(),
-		prefix: redisClientConfig.Prefix,
+		prefix: prefix,
 		builderPool: &sync.Pool{
 			New: func() any {
 				return &strings.Builder{}
