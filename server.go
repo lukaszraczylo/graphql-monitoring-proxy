@@ -442,6 +442,11 @@ func processGraphQLRequest(c fiber.Ctx) error {
 // never an error; the request stays anonymous, exactly like before
 // verification existed.
 func extractUserInfo(c fiber.Ctx) (string, string, error) {
+	return extractUserInfoFromHeaders(func(key string) string { return c.Get(key) })
+}
+
+// extractUserInfoFromHeaders resolves user id and role from request headers via get.
+func extractUserInfoFromHeaders(get func(string) string) (string, string, error) {
 	extractedUserID := defaultValue
 	extractedRoleName := defaultValue
 
@@ -450,7 +455,7 @@ func extractUserInfo(c fiber.Ctx) (string, string, error) {
 	// Authorization header must still be checked even with no claim path
 	// set, otherwise JWT_VERIFY_SIGNATURE=true alone would never call
 	// Verify and the forged-token rejection below would never trigger.
-	if authorization := c.Get("Authorization"); authorization != "" &&
+	if authorization := get("Authorization"); authorization != "" &&
 		(len(cfg.Client.JWTUserClaimPath) > 0 || len(cfg.Client.JWTRoleClaimPath) > 0 || cfg.Client.JWTVerifier != nil) {
 		usr, role, err := extractClaimsFromJWTHeader(authorization)
 		if err != nil {
@@ -461,7 +466,7 @@ func extractUserInfo(c fiber.Ctx) (string, string, error) {
 
 	// Override role from header if configured
 	if cfg.Client.RoleFromHeader != "" {
-		if role := c.Get(cfg.Client.RoleFromHeader); role != "" {
+		if role := get(cfg.Client.RoleFromHeader); role != "" {
 			extractedRoleName = role
 		}
 	}

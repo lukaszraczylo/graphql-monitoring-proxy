@@ -143,8 +143,13 @@ func periodicallyReloadBannedUsers(ctx context.Context) {
 	}
 }
 
-func checkIfUserIsBanned(c fiber.Ctx, userID string) bool {
+func isUserBanned(userID string) bool {
 	_, found := bannedUsersIDs.Load(userID)
+	return found
+}
+
+func checkIfUserIsBanned(c fiber.Ctx, userID string) bool {
+	found := isUserBanned(userID)
 
 	cfg.Logger.Debug(&libpack_logger.LogMessage{
 		Message: "Checking if user is banned",

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -230,6 +231,22 @@ func (wsp *WebSocketProxy) handleConnection(ctx context.Context, clientConn *web
 
 	// Try to extract headers from connection_init payload (for GraphQL WebSocket protocols)
 	enrichedHeaders := wsp.extractAuthFromPayload(message, headers)
+
+	// The upgrade request was gated on its own headers; the backend acts as the
+	// identity in enrichedHeaders, so gate that one too.
+	if authErr := authorizePayloadIdentity(headers, enrichedHeaders); authErr != nil {
+		wsp.errors.Add(1)
+		if wsp.logger != nil {
+			wsp.logger.Warning(&libpack_logger.LogMessage{
+				Message: "WebSocket connection_init identity rejected",
+				Pairs:   map[string]any{"connection_id": connectionID, "reason": authErr.Error()},
+			})
+		}
+		_ = clientConn.WriteMessage(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.ClosePolicyViolation, authErr.Error()))
+		_ = clientConn.Close() // Best-effort cleanup
+		return
+	}
 
 	// Connect to backend WebSocket with enriched headers
 	backendConn, err := wsp.dialBackend(ctx, enrichedHeaders)
@@ -584,6 +601,36 @@ func (wsp *WebSocketProxy) extractAuthFromPayload(message []byte, originalHeader
 	}
 
 	return enrichedHeaders
+}
+
+var (
+	errWSUnauthorized = errors.New("invalid or expired authorization token")
+	errWSBanned       = errors.New("user is banned")
+	errWSRateLimited  = errors.New("rate limit exceeded")
+)
+
+// authorizePayloadIdentity applies the ban and rate-limit checks of the upgrade
+// path to the identity that connection_init supplied. It does nothing when the
+// payload left Authorization and the role header unchanged, because the upgrade
+// request already passed those checks (and counted against the rate limit).
+func authorizePayloadIdentity(upgrade, enriched http.Header) error {
+	roleHeader := cfg.Client.RoleFromHeader
+	if upgrade.Get("Authorization") == enriched.Get("Authorization") &&
+		(roleHeader == "" || upgrade.Get(roleHeader) == enriched.Get(roleHeader)) {
+		return nil
+	}
+
+	userID, role, err := extractUserInfoFromHeaders(enriched.Get)
+	if err != nil {
+		return errWSUnauthorized
+	}
+	if isUserBanned(userID) {
+		return errWSBanned
+	}
+	if cfg.Client.RoleRateLimit && !rateLimitedRequest(userID, role) {
+		return errWSRateLimited
+	}
+	return nil
 }
 
 // dialBackend establishes a WebSocket connection to the backend
