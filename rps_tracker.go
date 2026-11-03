@@ -57,16 +57,22 @@ func (r *RPSTracker) Shutdown() {
 
 // sample calculates RPS since last sample
 func (r *RPSTracker) sample() {
-	now := time.Now()
-	nowNano := now.UnixNano()
+	r.sampleCount()
+}
 
-	currentCount := r.lastCount.Load()
+// sampleCount performs one sample and returns the requests it consumed.
+func (r *RPSTracker) sampleCount() int64 {
+	nowNano := time.Now().UnixNano()
+
 	lastSampleNano := r.lastSampleTime.Load()
 
 	if lastSampleNano == 0 {
 		r.lastSampleTime.Store(nowNano)
-		return
+		return 0
 	}
+
+	// Swap, not Load+Store(0): requests recorded between the two would be lost.
+	currentCount := r.lastCount.Swap(0)
 
 	elapsed := float64(nowNano-lastSampleNano) / float64(time.Second)
 	if elapsed > 0 {
@@ -75,9 +81,8 @@ func (r *RPSTracker) sample() {
 		r.currentRPS.Store(uint64(rps * 100))
 	}
 
-	// Reset for next sample
-	r.lastCount.Store(0)
 	r.lastSampleTime.Store(nowNano)
+	return currentCount
 }
 
 // GetCurrentRPS returns the current requests per second
