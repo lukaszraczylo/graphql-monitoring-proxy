@@ -158,7 +158,8 @@ func (c *Cache) Set(key string, value []byte, ttl time.Duration) {
 		c.evictToFreeMemory(memoryToFree)
 	} else if atomic.LoadInt64(&c.entryCount) >= c.maxCacheSize {
 		// Fall back to count-based eviction for backward compatibility
-		c.evictOldest(int(c.maxCacheSize / 10)) // Evict 10% of entries
+		// 10% of entries, at least one: max/10 is 0 for caps below 10.
+		c.evictOldest(int(max(1, c.maxCacheSize/10)))
 	}
 
 	// A non-positive TTL is clamped to defaultTTL so this backend expires
