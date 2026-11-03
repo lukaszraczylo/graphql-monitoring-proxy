@@ -12,6 +12,9 @@ import (
 const (
 	initialDelay    = 60 * time.Second
 	cleanupInterval = 1 * time.Hour
+
+	// minRetentionDays guards against a cutoff at or after NOW(), which would delete all event history.
+	minRetentionDays = 1
 )
 
 // Use parameterized queries to prevent SQL injection
@@ -45,6 +48,10 @@ func enableHasuraEventCleaner(ctx context.Context) error {
 	clearOlderThan := cfg.HasuraEventCleaner.ClearOlderThan
 	logger := cfg.Logger
 	cfgMutex.RUnlock()
+
+	if clearOlderThan < minRetentionDays {
+		return fmt.Errorf("HASURA_EVENT_CLEANER_OLDER_THAN must be at least %d day, got %d: event cleaner not started", minRetentionDays, clearOlderThan)
+	}
 
 	logger.Info(&libpack_logger.LogMessage{
 		Message: "Event cleaner enabled",
