@@ -740,11 +740,7 @@ func performProxyRequest(c fiber.Ctx, proxyURL string) error {
 				}, proxyErr
 			}
 
-			return &CoalescedResponse{
-				Body:       c.Response().Body(),
-				StatusCode: c.Response().StatusCode(),
-				// Headers intentionally left nil; not populated or read anywhere.
-			}, nil
+			return snapshotCoalescedResponse(c), nil
 		})
 
 		// Check for error from rc.Do (though it typically returns nil)
@@ -771,6 +767,17 @@ func performProxyRequest(c fiber.Ctx, proxyURL string) error {
 
 	// No coalescing - execute directly
 	return performProxyRequestCore(c, proxyURL, cacheKey)
+}
+
+// snapshotCoalescedResponse captures the primary's response for waiters. It
+// copies the body because fasthttp reuses the buffer once the primary handler
+// returns, while waiters can still be reading.
+func snapshotCoalescedResponse(c fiber.Ctx) *CoalescedResponse {
+	return &CoalescedResponse{
+		Body:       bytes.Clone(c.Response().Body()),
+		StatusCode: c.Response().StatusCode(),
+		// Headers intentionally left nil; not populated or read anywhere.
+	}
 }
 
 // performProxyRequestCore executes the proxy request with retries and circuit breaker
