@@ -304,35 +304,19 @@ func rateLimitedRequest(userID, userRole string) bool {
 
 // checkRateLimit performs the actual rate limit check.
 //
-// Two independent gates apply, both must pass:
+// Two gates apply, both must pass:
 //
-//  1. Sustained: tickerRate (requests measured over the full Interval) must
-//     stay at or below Req. This is the only gate when Burst <= 0, and its
-//     comparison is unchanged from before the burst fix.
-//  2. Burst (only when roleConfig.burstCounter != nil, i.e. Burst > 0): the
-//     raw request count within a short trailing window (see
-//     burstWindowDuration), much shorter than Interval, must stay at or
-//     below Burst.
+//  1. Sustained: the request count over the full Interval must stay at or
+//     below Req (Req is per Interval, not per second).
+//  2. Burst (only when Burst > 0): the request count within a short trailing
+//     window (see burstWindowDuration) must stay at or below Burst.
 //
-// Because the burst window is short relative to Interval, a client can
-// legally land up to Burst requests in a tight cluster - more than a
-// steady Req-paced stream would deliver in that same short span - as long
-// as the sustained gate still holds over the full Interval. That is what
-// makes burst > req a real spike allowance instead of a no-op. Burst is a
-// short-window ceiling layered ON TOP of the sustained Req rate, not a
-// replacement for it. burst < req is an unusual config: the burst gate
-// becomes the tighter, binding constraint whenever requests cluster in
-// time, but the sustained cap for evenly-spread traffic is still Req
-// alone. The pre-fix code compared the SAME sustained-window tickerRate
-// against both Burst and Req, so when burst < req its Burst check tripped
-// first and Burst was effectively the sustained cap too. This gate's
-// Req-only sustained check can therefore allow MORE through than the
-// pre-fix code did for evenly-spread traffic under a burst < req config.
-// In both cases the burst gate never allows more than Burst requests
-// within its own window (fail-safe).
+// The burst window lies inside the Interval, so its count never exceeds the
+// sustained count. Burst >= Req therefore never rejects anything the sustained
+// gate admits; Burst only takes effect when it is below Req.
 func checkRateLimit(userID, userRole string, roleConfig RateLimitConfig, endpoint string) bool {
 	roleConfig.RateCounterTicker.Incr(1)
-	tickerRate := roleConfig.RateCounterTicker.GetRate()
+	tickerRate := roleConfig.RateCounterTicker.Get()
 
 	logDetails := map[string]any{
 		"user_role":   userRole,
@@ -348,7 +332,7 @@ func checkRateLimit(userID, userRole string, roleConfig RateLimitConfig, endpoin
 		Pairs:   map[string]any{"log_details": logDetails},
 	})
 
-	if tickerRate > float64(roleConfig.Req) {
+	if tickerRate > int64(roleConfig.Req) {
 		cfg.Logger.Debug(&libpack_logger.LogMessage{
 			Message: "Rate limit exceeded",
 			Pairs:   map[string]any{"log_details": logDetails},

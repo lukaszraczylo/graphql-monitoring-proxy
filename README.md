@@ -821,7 +821,7 @@ Enable rate limiting based on user roles using the `ROLE_RATE_LIMIT` environment
 - `ROLE_RATE_LIMIT`: Enable role-based rate limiting (default: `false`)
 
 **Features:**
-- **Burst control**: Optional burst limits for handling traffic spikes
+- **Burst control**: Optional `burst` caps requests in a short window (one tenth of the interval). `req` counts requests per `interval`. A `burst` at or above `req` has no effect.
 
 `ratelimit.json` is loaded once at startup; changing the file requires a restart.
 

@@ -372,59 +372,26 @@ func Test_checkRateLimit_BurstSemantics(t *testing.T) {
 		}
 	})
 
-	t.Run("b_burst_above_req_allows_short_spike_sustained_still_capped", func(t *testing.T) {
+	t.Run("b_burst_above_req_is_noop_sustained_caps_at_req", func(t *testing.T) {
 		const (
 			interval = 10 * time.Second
 			req      = 3
-			burst    = 6 // burst > req
+			burst    = 6 // burst >= req: dominated by the sustained gate
 		)
 		rc := newBurstTestRoleConfig(interval, req, burst)
 		fc := newFakeClock(time.Now())
 		rc.burstCounter.now = fc.Now
 
-		// A rapid cluster of `burst` requests must all be allowed, even
-		// though burst (6) > req (3): the sustained gate only bounds the
-		// total over the full 10s Interval (tickerRate <= 3 needs count <=
-		// 30), so a small cluster like this never trips it.
-		for i := 1; i <= burst; i++ {
+		for i := 1; i <= req; i++ {
 			if !checkRateLimit("u", "role-b", rc, "") {
-				t.Fatalf("request %d in first burst: got denied, want allowed (<= Burst=%d)", i, burst)
+				t.Fatalf("request %d: got denied, want allowed (<= Req=%d per Interval)", i, req)
 			}
 		}
 
-		// The (burst+1)th request in the SAME short window must be denied
-		// by the burst gate specifically - not by the sustained gate,
-		// which alone would still allow it (tickerRate = 7/10 = 0.7 <= 3).
-		// This is the proof burst > req is not a no-op: it is the gate
-		// that actually fires here.
+		// Clearing the burst window must not readmit: Req is per Interval.
+		fc.Advance(2 * burstWindowDuration(interval))
 		if checkRateLimit("u", "role-b", rc, "") {
-			t.Fatalf("request %d: got allowed, want denied by burst gate (> Burst=%d)", burst+1, burst)
-		}
-
-		// Roll the burst window forward (fake clock only - the real
-		// sustained ticker has not aged, since no real time passed) and
-		// repeat clusters of `burst` requests. Each cluster alone passes
-		// burst, but the cumulative sustained count keeps climbing until
-		// it exceeds req*interval.Seconds() = 30, at which point the
-		// sustained gate must deny regardless of how the burst window
-		// resets. This proves "sustained still capped at Req".
-		sustainedTripped := false
-		for batch := 0; batch < 10 && !sustainedTripped; batch++ {
-			fc.Advance(2 * burstWindowDuration(interval)) // clears the burst window
-			for i := 1; i <= burst; i++ {
-				allowed := checkRateLimit("u", "role-b", rc, "")
-				rate := rc.RateCounterTicker.GetRate()
-				if rate > float64(req) {
-					if allowed {
-						t.Fatalf("batch %d req %d: allowed with sustained rate %.2f > Req=%d", batch, i, rate, req)
-					}
-					sustainedTripped = true
-					break
-				}
-			}
-		}
-		if !sustainedTripped {
-			t.Fatalf("sustained gate never tripped after repeated bursts; expected it to cap total requests at Req over the Interval")
+			t.Fatalf("request %d: got allowed, want denied by the sustained gate (Req=%d per Interval)", req+1, req)
 		}
 	})
 
