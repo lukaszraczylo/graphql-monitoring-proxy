@@ -118,7 +118,7 @@ func (bhm *BackendHealthManager) WaitForBackendReady(timeout time.Duration) erro
 		}
 
 		// Exponential backoff (1.5x growth, capped at maxDelay), no jitter
-		time.Sleep(currentDelay)
+		time.Sleep(min(currentDelay, time.Until(deadline)))
 		currentDelay = time.Duration(float64(currentDelay) * 1.5)
 		if currentDelay > maxDelay {
 			currentDelay = maxDelay
