@@ -5,7 +5,7 @@ go 1.26.0
 toolchain go1.27.3
 
 require (
-	github.com/MicahParks/keyfunc/v3 v3.8.2
+	github.com/MicahParks/keyfunc/v3 v3.9.1
 	github.com/VictoriaMetrics/metrics v1.44.1
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/avast/retry-go/v5 v5.0.0
@@ -35,7 +35,7 @@ require (
 )
 
 require (
-	github.com/MicahParks/jwkset v0.11.3 // indirect
+	github.com/MicahParks/jwkset v0.11.4 // indirect
 	github.com/avast/retry-go/v4 v4.7.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
