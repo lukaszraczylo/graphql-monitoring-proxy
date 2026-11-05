@@ -8,7 +8,7 @@ require (
 	github.com/MicahParks/keyfunc/v3 v3.9.1
 	github.com/VictoriaMetrics/metrics v1.44.1
 	github.com/alicebob/miniredis/v2 v2.40.0
-	github.com/avast/retry-go/v5 v5.0.0
+	github.com/avast/retry-go/v5 v5.0.1
 	github.com/goccy/go-json v0.12.0
 	github.com/gofiber/contrib/v3/websocket v1.2.10
 	github.com/gofiber/fiber/v3 v3.6.1
