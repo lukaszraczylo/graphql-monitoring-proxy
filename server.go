@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -474,6 +475,18 @@ func extractUserInfoFromHeaders(get func(string) string) (string, string, error)
 	return extractedUserID, extractedRoleName, nil
 }
 
+// skipCacheRequested reports whether the client asked to bypass the response
+// cache, with the same headers the upstream engine honours: X-Skip-Cache: true,
+// or Cache-Control no-cache / no-store. Callers send them on reads that gate
+// money, quotas or permissions, which must not be served stale.
+func skipCacheRequested(c fiber.Ctx) bool {
+	if strings.EqualFold(c.Get("X-Skip-Cache"), "true") {
+		return true
+	}
+	cc := strings.ToLower(c.Get(fiber.HeaderCacheControl))
+	return strings.Contains(cc, "no-cache") || strings.Contains(cc, "no-store")
+}
+
 // handleCaching manages the caching logic for GraphQL requests
 func handleCaching(c fiber.Ctx, parsedResult *parseGraphQLQueryResult, userID, userRole string) (bool, error) {
 	// Calculate query hash for cache key - now includes user context for security
@@ -499,7 +512,7 @@ func handleCaching(c fiber.Ctx, parsedResult *parseGraphQLQueryResult, userID, u
 
 	// Check if caching is enabled
 	cacheEnabled := parsedResult.cacheRequest || cfg.Cache.CacheEnable || cfg.Cache.CacheRedisEnable
-	if !cacheEnabled {
+	if !cacheEnabled || skipCacheRequested(c) {
 		// No caching, just proxy the request
 		if err := proxyTheRequest(c, parsedResult.activeEndpoint); err != nil {
 			cfg.Monitoring.Increment(libpack_monitoring.MetricsFailed, nil)

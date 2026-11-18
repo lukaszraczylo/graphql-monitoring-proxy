@@ -434,6 +434,8 @@ query MyProducts @cached(refresh: true) {
 }
 ```
 
+To skip the cache for one request, send `X-Skip-Cache: true` or `Cache-Control: no-cache` (or `no-store`). The proxy then sends the request to the backend, does not store the response and does not merge it with an identical request in flight. Use it for reads that gate money, quotas or permissions.
+
 #### Memory-Aware Caching
 
 Starting with version `0.26.0`, the memory cache implementation has been enhanced with memory-aware features to prevent out-of-memory situations:

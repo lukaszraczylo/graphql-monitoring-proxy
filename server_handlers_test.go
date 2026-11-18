@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -872,5 +873,93 @@ func TestStartHTTPProxy_ErrorHandlerConfigured(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("StartHTTPProxy did not return after shutdownHTTPProxy")
+	}
+}
+
+func TestHandleCaching_BypassHeadersSkipCache(t *testing.T) {
+	parseConfig()
+	_ = StartMonitoringServer()
+
+	libpack_cache.EnableCache(&libpack_cache.CacheConfig{
+		Logger: cfg.Logger,
+		TTL:    60,
+	})
+
+	cfgMutex.Lock()
+	origEnable := cfg.Cache.CacheEnable
+	cfg.Cache.CacheEnable = true
+	cfg.Cache.CacheTTL = 60
+	cfgMutex.Unlock()
+	defer func() {
+		cfgMutex.Lock()
+		cfg.Cache.CacheEnable = origEnable
+		cfgMutex.Unlock()
+	}()
+
+	var hits atomic.Int32
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := hits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		_, _ = fmt.Fprintf(w, `{"data":{"n":%d}}`, n)
+	}))
+	defer backend.Close()
+
+	cfgMutex.Lock()
+	origHost := cfg.Server.HostGraphQL
+	origHostRO := cfg.Server.HostGraphQLReadOnly
+	cfg.Server.HostGraphQL = backend.URL
+	cfg.Server.HostGraphQLReadOnly = backend.URL
+	cfgMutex.Unlock()
+	defer func() {
+		cfgMutex.Lock()
+		cfg.Server.HostGraphQL = origHost
+		cfg.Server.HostGraphQLReadOnly = origHostRO
+		cfgMutex.Unlock()
+	}()
+
+	app := fiber.New()
+	app.Post("/*", processGraphQLRequest)
+
+	tests := []struct {
+		name   string
+		header string
+		value  string
+	}{
+		{"X-Skip-Cache", "X-Skip-Cache", "true"},
+		{"Cache-Control no-cache", "Cache-Control", "no-cache"},
+		{"Cache-Control no-store", "Cache-Control", "no-store, max-age=0"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			libpack_cache.CacheClear()
+			body := `{"query":"query { n }"}`
+			send := func(header, value string) *http.Response {
+				req := httptest.NewRequest("POST", "/v1/graphql", strings.NewReader(body))
+				req.Header.Set("Content-Type", "application/json")
+				if header != "" {
+					req.Header.Set(header, value)
+				}
+				resp, err := app.Test(req, fiber.TestConfig{Timeout: 10 * time.Second})
+				if err != nil {
+					t.Fatalf("request: %v", err)
+				}
+				_ = resp.Body.Close()
+				return resp
+			}
+
+			send("", "") // warm the cache
+			before := hits.Load()
+			resp := send(tt.header, tt.value)
+			if resp.Header.Get("X-Cache-Hit") == "true" {
+				t.Fatal("bypass request was answered from the cache")
+			}
+			if got := hits.Load(); got != before+1 {
+				t.Fatalf("bypass request must reach the backend: hits %d, want %d", got, before+1)
+			}
+			if resp := send("", ""); resp.Header.Get("X-Cache-Hit") != "true" {
+				t.Fatal("plain request after a bypass must still use the cache")
+			}
+		})
 	}
 }

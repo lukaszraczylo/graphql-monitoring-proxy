@@ -726,7 +726,9 @@ func performProxyRequest(c fiber.Ctx, proxyURL string) error {
 
 	// Check if request coalescing is enabled
 	rc := GetRequestCoalescer()
-	if rc != nil && cfg.RequestCoalescing.Enable {
+	// A cache-bypass read must not join an identical request already in flight:
+	// that one may have started before the write the caller needs to see.
+	if rc != nil && cfg.RequestCoalescing.Enable && !skipCacheRequested(c) {
 		// Use request coalescing to deduplicate identical concurrent requests
 		response, err := rc.Do(cacheKey, func() (*CoalescedResponse, error) {
 			// Execute the actual proxy request
