@@ -10,7 +10,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/avast/retry-go/v5 v5.1.1
 	github.com/goccy/go-json v0.12.0
-	github.com/gofiber/contrib/v3/websocket v1.2.15
+	github.com/gofiber/contrib/v3/websocket v1.2.16
 	github.com/gofiber/fiber/v3 v3.7.0
 	github.com/gofrs/flock v0.13.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
