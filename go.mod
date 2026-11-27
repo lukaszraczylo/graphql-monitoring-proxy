@@ -10,7 +10,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/avast/retry-go/v5 v5.1.1
 	github.com/goccy/go-json v0.12.0
-	github.com/gofiber/contrib/v3/websocket v1.2.16
+	github.com/gofiber/contrib/v3/websocket v1.3.0
 	github.com/gofiber/fiber/v3 v3.7.0
 	github.com/gofrs/flock v0.13.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -22,7 +22,7 @@ require (
 	github.com/lukaszraczylo/ask v0.0.0-20240916204100-6e9ef53a62d9
 	github.com/lukaszraczylo/go-simple-graphql v1.2.89
 	github.com/lukaszraczylo/oss-telemetry v0.2.5
-	github.com/redis/go-redis/v9 v9.23.0
+	github.com/redis/go-redis/v9 v9.24.0
 	github.com/sony/gobreaker/v2 v2.4.0
 	github.com/stretchr/testify v1.12.1
 	github.com/valyala/fasthttp v1.80.0
@@ -42,7 +42,7 @@ require (
 	github.com/fasthttp/websocket v1.5.12 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/gofiber/schema v1.10.0 // indirect
+	github.com/gofiber/schema v1.10.2 // indirect
 	github.com/gofiber/utils/v2 v2.6.5 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.34.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
